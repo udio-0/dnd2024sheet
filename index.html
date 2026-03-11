@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>D&D 2024 Character Sheet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Uncial+Antiqua&family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;600;700&family=Nunito:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- LOADING OVERLAY -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loading-box">
+      <div class="loading-dragon">⚔</div>
+      <div class="loading-title">D&D 2024 Character Sheet</div>
+      <div class="loading-bar"><div class="loading-fill" id="loading-fill"></div></div>
+      <div class="loading-text" id="loading-text">Initializing...</div>
+    </div>
+  </div>
+
+  <!-- ROLL RESULT TOASTS will be appended to body by dice.js -->
+
+  <div class="app">
+
+    <!-- TOP BAR (always visible, content changes per view) -->
+    <header class="topbar" id="topbar">
+      <div class="topbar-left">
+        <a href="#home" class="logo-link">
+          <span class="logo">D&amp;D</span>
+          <span class="logo-sub">2024</span>
+        </a>
+      </div>
+      <div class="topbar-center" id="topbar-title"></div>
+      <div class="topbar-right">
+        <button id="btn-2024" class="ua-toggle" title="Toggle 2024 edition content">
+          <span>'24</span>
+        </button>
+        <button id="btn-2014" class="ua-toggle" title="Toggle 2014 edition content">
+          <span>'14</span>
+        </button>
+        <button id="btn-ua" class="ua-toggle" title="Toggle Unearthed Arcana content">
+          <span id="ua-icon">UA</span>
+        </button>
+        <div class="theme-menu" id="theme-menu">
+          <button id="btn-theme" class="theme-toggle" title="Appearance">
+            <span id="theme-icon">&#9680;</span>
+          </button>
+          <div class="theme-panel" id="theme-panel">
+            <div class="theme-panel-section">
+              <div class="theme-panel-label">Light Themes</div>
+              <div class="theme-swatches" id="light-swatches"></div>
+            </div>
+            <div class="theme-panel-section">
+              <div class="theme-panel-label">Dark Themes</div>
+              <div class="theme-swatches" id="dark-swatches"></div>
+            </div>
+            <div class="theme-panel-section">
+              <div class="theme-panel-label">Font</div>
+              <div class="font-options" id="font-options"></div>
+            </div>
+            <div class="theme-panel-section">
+              <div class="theme-panel-label">Size</div>
+              <div class="font-size-options" id="font-size-options"></div>
+            </div>
+          </div>
+        </div>
+        <div class="roll-log-menu" id="roll-log-menu">
+          <button id="btn-roll-log" class="theme-toggle" title="Roll History">
+            <span>&#127922;</span>
+          </button>
+          <div class="roll-log-panel" id="roll-log-panel">
+            <div class="roll-log-header">
+              <span>Roll History</span>
+              <button id="roll-log-clear" class="roll-log-clear-btn" title="Clear log">Clear</button>
+            </div>
+            <div class="roll-log-list" id="roll-log-list">
+              <div class="roll-log-empty">No rolls yet this session.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============================================= -->
+    <!-- VIEW: HOME PAGE                               -->
+    <!-- ============================================= -->
+    <div id="view-home" class="view-container" style="display:none">
+      <div class="home-page">
+        <div class="home-hero">
+          <h1 class="home-title">Your Adventurers</h1>
+          <p class="home-subtitle">Choose a character or forge a new legend</p>
+          <div class="home-actions">
+            <button id="btn-new-char" class="btn btn-primary btn-lg">+ Create New Character</button>
+            <button id="btn-import-home" class="btn btn-lg">Import Character</button>
+            <input type="file" id="import-file-home" accept=".json" hidden>
+          </div>
+        </div>
+        <div id="character-cards" class="character-grid"></div>
+        <div id="empty-state" class="empty-state" style="display:none">
+          <div class="empty-icon">🏰</div>
+          <p>No adventurers yet.</p>
+          <p>Create your first character to begin!</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- VIEW: CHARACTER CREATION WIZARD               -->
+    <!-- ============================================= -->
+    <div id="view-wizard" class="view-container" style="display:none">
+      <div class="wizard">
+        <div class="wizard-progress" id="wizard-progress"></div>
+        <div class="wizard-body" id="wizard-body"></div>
+        <div class="wizard-nav" id="wizard-nav"></div>
+      </div>
+    </div>
+
+    <!-- ============================================= -->
+    <!-- VIEW: CHARACTER SHEET                         -->
+    <!-- ============================================= -->
+    <div id="view-sheet" class="view-container" style="display:none">
+
+      <!-- SHEET TABS -->
+      <nav class="tabs" id="sheet-tabs">
+        <button class="tab active" data-tab="main">Character</button>
+        <button class="tab" data-tab="combat">Combat</button>
+        <button class="tab" data-tab="spells">Spells</button>
+        <button class="tab" data-tab="features">Features</button>
+        <button class="tab" data-tab="chronicle">Chronicle</button>
+        <button class="tab" data-tab="notes">Notes</button>
+        <div class="tab-spacer"></div>
+        <button class="tab-undo-btn" id="btn-undo" title="Undo" disabled>&#8634;</button>
+        <button class="tab-undo-btn" id="btn-redo" title="Redo" disabled>&#8635;</button>
+      </nav>
+
+      <!-- TAB: CHARACTER MAIN -->
+      <div id="tab-main" class="tab-panel active">
+        <div class="char-header">
+          <div class="char-info-row">
+            <div class="info-field info-field-name">
+              <input type="text" id="charName" class="char-name-input" placeholder="Character Name" data-save="charName">
+              <div class="field-label">Name</div>
+            </div>
+            <div class="info-field">
+              <input type="text" id="charClass" list="class-list" placeholder="Class" data-save="charClass" autocomplete="off">
+              <div class="field-label">Class</div>
+            </div>
+            <div class="info-field info-field-sm">
+              <input type="text" id="charSubclass" list="subclass-list" placeholder="Subclass" data-save="charSubclass" autocomplete="off">
+              <div class="field-label">Subclass</div>
+            </div>
+            <div class="info-field info-field-xs level-field">
+              <button class="btn-level-up" id="btn-level-up" title="Level Up">
+                <span class="level-num" id="charLevel-display">1</span>
+              </button>
+              <input type="hidden" id="charLevel" value="1" data-save="charLevel">
+              <div class="field-label">Level</div>
+            </div>
+            <div class="info-field">
+              <input type="text" id="charSpecies" list="species-list" placeholder="Species" data-save="charSpecies" autocomplete="off">
+              <div class="field-label">Species</div>
+            </div>
+            <div class="info-field">
+              <input type="text" id="charBackground" list="bg-list" placeholder="Background" data-save="charBackground" autocomplete="off">
+              <div class="field-label">Background</div>
+            </div>
+            <div class="info-field info-field-sm">
+              <input type="text" id="charAlignment" list="alignment-list" placeholder="Alignment" data-save="charAlignment" autocomplete="off">
+              <datalist id="alignment-list">
+                <option value="Lawful Good">
+                <option value="Neutral Good">
+                <option value="Chaotic Good">
+                <option value="Lawful Neutral">
+                <option value="True Neutral">
+                <option value="Chaotic Neutral">
+                <option value="Lawful Evil">
+                <option value="Neutral Evil">
+                <option value="Chaotic Evil">
+              </datalist>
+              <div class="field-label">Alignment</div>
+            </div>
+            <div class="info-field info-field-sm">
+              <input type="number" id="charXP" value="0" min="0" data-save="charXP">
+              <div class="field-label">XP</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="sheet-body">
+          <!-- LEFT: Abilities, Saves, Skills -->
+          <div class="col col-left">
+            <div class="col-left-a">
+              <div class="ability-column" id="ability-column"></div>
+            </div>
+            <div class="col-left-b">
+              <div class="sheet-box insp-prof-box">
+                <div class="insp-row"><input type="checkbox" id="inspiration" data-save="inspiration"><label for="inspiration">Inspiration</label></div>
+                <div class="prof-row"><div class="badge" id="profBonus">+2</div><label>Proficiency Bonus</label></div>
+              </div>
+              <div class="sheet-box"><div class="box-title">Saving Throws</div><div id="save-list" class="stat-list"></div></div>
+              <div class="sheet-box"><div class="box-title">Skills</div><div id="skill-list" class="stat-list"></div></div>
+              <div class="sheet-box passive-box"><div class="badge" id="passivePerception">10</div><label>Passive Perception</label></div>
+            </div>
+            <div class="sheet-box col-left-full"><div class="box-title">Proficiencies &amp; Languages</div><textarea id="profLanguages" rows="4" data-save="profLanguages"></textarea></div>
+          </div>
+
+          <!-- CENTER: Combat stats, HP, Attacks, Personality -->
+          <div class="col col-center">
+            <!-- AC / Initiative / Speed — 3 equal columns -->
+            <div class="combat-row">
+              <div class="combat-box"><div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="armorClass" class="combat-value-input" placeholder="10" data-save="armorClass"><button class="spin-btn spin-plus">+</button></div></div><div class="combat-label">Armor Class</div></div>
+              <div class="combat-box"><div class="combat-value-container"><div class="badge badge-lg" id="initiative">+0</div></div><div class="combat-label">Initiative</div></div>
+              <div class="combat-box"><div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="speed" class="combat-value-input" placeholder="30" data-save="speed"><button class="spin-btn spin-plus">+</button></div></div><div class="combat-label">Speed</div></div>
+            </div>
+
+            <!-- HP (flexible) / HD (fixed) / DS (fixed, same as HD, thinner than top row) -->
+            <div class="combat-row hd-row">
+
+              <!-- Hit Points -->
+              <div class="combat-box hp-box">
+                <div class="hp-current-box">
+                  <button class="hp-btn hp-btn-minus" aria-label="Decrease HP">−</button>
+                  <input type="number" id="hpCurrent" placeholder="0" data-save="hpCurrent">
+                  <button class="hp-btn hp-btn-plus" aria-label="Increase HP">+</button>
+                </div>
+                <div class="hp-sub-row">
+                  <div class="hp-sub-field"><label class="hp-inline-label">Max</label><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="hpMax" class="hp-inline-input" placeholder="0" data-save="hpMax"><button class="spin-btn spin-plus">+</button></div></div>
+                  <div class="hp-sub-divider"></div>
+                  <div class="hp-sub-field"><label class="hp-inline-label">Temp</label><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="hpTemp" class="hp-inline-input" placeholder="0" data-save="hpTemp"><button class="spin-btn spin-plus">+</button></div></div>
+                </div>
+                <div class="combat-label">Hit Points</div>
+              </div>
+
+              <!-- Hit Dice -->
+              <div class="combat-box hd-box">
+                <div id="hd-rows" class="hd-rows"></div>
+                <div class="combat-label">Hit Dice</div>
+              </div>
+
+              <!-- Death Saves -->
+              <div class="combat-box ds-box">
+                <div class="death-saves-grid">
+                  <div class="death-row">
+                    <span class="death-row-label success">S</span>
+                    <input type="checkbox" class="death-cb success" data-save="ds0">
+                    <input type="checkbox" class="death-cb success" data-save="ds1">
+                    <input type="checkbox" class="death-cb success" data-save="ds2">
+                  </div>
+                  <div class="death-row">
+                    <span class="death-row-label failure">F</span>
+                    <input type="checkbox" class="death-cb failure" data-save="df0">
+                    <input type="checkbox" class="death-cb failure" data-save="df1">
+                    <input type="checkbox" class="death-cb failure" data-save="df2">
+                  </div>
+                </div>
+                <div class="combat-label">Death Saves</div>
+              </div>
+
+            </div>
+
+            <!-- Limited Resources — full width -->
+            <div class="sheet-box" id="resources-box" style="margin-bottom:8px">
+              <div class="box-title">Limited Resources</div>
+              <div id="resources-list"></div>
+              <div class="resource-add-row">
+                <input type="text" id="res-name" class="res-name-input" placeholder="e.g. Second Wind" autocomplete="off">
+                <input type="number" id="res-max" class="res-max-input" min="1" max="20" value="1" title="Max uses">
+                <select id="res-refresh" class="res-refresh-select">
+                  <option value="lr">Long Rest</option>
+                  <option value="sr">Short Rest</option>
+                  <option value="dawn">At Dawn</option>
+                  <option value="manual">Manual</option>
+                </select>
+                <button id="btn-add-resource" class="btn btn-sm">+ Add</button>
+              </div>
+            </div>
+
+            <div class="sheet-box"><div class="box-title">Attacks</div>
+              <table class="attack-table">
+  <colgroup>
+    <col class="col-atk-name">
+    <col class="col-atk-ability">
+    <col class="col-atk-prof">
+    <col class="col-atk-bonus">
+    <col class="col-atk-dice">
+    <col class="col-atk-type">
+    <col class="col-atk-mastery">
+    <col class="col-atk-ed">
+    <col class="col-atk-actions">
+  </colgroup>
+  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">P.</th><th>Bonus</th><th>Damage</th><th>Type</th><th>Mastery</th><th>Ed.</th><th></th></tr></thead>
+  <tbody id="attacks-body"></tbody>
+</table>
+              <button id="btn-add-attack" class="btn btn-sm">+ Add Attack</button>
+            </div>
+
+            <!-- INVENTORY (moved from its own tab) -->
+            <div class="sheet-box">
+              <div class="box-title">Inventory</div>
+              <div class="currency-bar">
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp"><button class="spin-btn spin-minus">−</button><label>CP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp"><button class="spin-btn spin-minus">−</button><label>SP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep"><button class="spin-btn spin-minus">−</button><label>EP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp"><button class="spin-btn spin-minus">−</button><label>GP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp"><button class="spin-btn spin-minus">−</button><label>PP</label></div>
+              </div>
+              <div class="item-search-bar" style="margin:6px 0"><input type="text" id="item-search" placeholder="Search items to add..." class="item-search-input" autocomplete="off"><div id="item-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+              <div class="inventory-grid">
+                <div class="inv-section"><h3>Weapons</h3><div class="inv-cards" id="inv-weapons"></div></div>
+                <div class="inv-section"><h3>Armor &amp; Shields</h3><div class="inv-cards" id="inv-armor"></div></div>
+                <div class="inv-section"><h3>Gear</h3><div class="inv-cards" id="inv-gear"></div></div>
+              </div>
+              <textarea id="equipmentNotes" rows="3" placeholder="Equipment notes..." data-save="equipmentNotes" style="margin-top:6px;width:100%"></textarea>
+            </div>
+          </div>
+
+          <!-- RIGHT: Species, Background, Class Features, Other Options, Feats, Magic Items, Proficiencies -->
+          <div class="col col-right">
+            <div class="sheet-box" id="species-info-box" style="display:none"><div class="box-title">Species Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
+            <div class="sheet-box" id="bg-info-box" style="display:none"><div class="box-title">Background</div><div class="auto-traits" id="bg-traits-text"></div></div>
+            <div class="sheet-box" id="class-features-box" style="display:none"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
+
+            <div class="sheet-box">
+              <div class="box-title">Other Character Options</div>
+              <div class="charopts-type-filter" id="charopts-filter">
+                <button class="charopt-filter-btn active" data-type="">All</button>
+                <button class="charopt-filter-btn" data-type="SG">Supernatural Gifts</button>
+                <button class="charopt-filter-btn" data-type="DG">Dark Gifts</button>
+                <button class="charopt-filter-btn" data-type="CS">Character Secrets</button>
+              </div>
+              <div id="charopts-container"></div>
+              <div class="feat-add-row">
+                <input type="text" id="charopt-search" list="charopt-list" placeholder="Search options..." autocomplete="off" class="feat-search-input">
+                <button id="btn-add-charopt" class="btn btn-sm">+ Add</button>
+              </div>
+            </div>
+
+            <div class="sheet-box"><div class="box-title">Feats</div><div id="feats-container"></div>
+              <div class="feat-add-row"><input type="text" id="feat-search" list="feat-list" placeholder="Search feat..." autocomplete="off" class="feat-search-input"><button id="btn-add-feat" class="btn btn-sm">+ Add</button></div>
+            </div>
+
+            <div class="sheet-box">
+              <div class="box-title">Magic Items</div>
+              <div id="magic-items-list"></div>
+              <div class="item-search-bar" style="margin-top:6px"><input type="text" id="magic-item-search" placeholder="Search magic items..." class="item-search-input" autocomplete="off"><div id="magic-item-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+            </div>
+
+            <div class="sheet-box" id="carry-capacity-box">
+              <div class="box-title carry-cap-title">
+                Carrying Capacity
+                <div class="carry-cap-toggles">
+                  <button class="carry-toggle-btn" id="coin-weight-btn" title="Count coin weight (50 coins = 1 lb.)">Coin Weight</button>
+                  <button class="carry-toggle-btn" id="carry-rule-btn" title="Use 2014 DMG encumbrance thresholds">Encumbrance</button>
+                </div>
+              </div>
+              <div id="carry-capacity-display"></div>
+            </div>
+          </div>
+        </div>
+      </div><!-- /tab-main -->
+
+      <!-- TAB: COMBAT -->
+      <div id="tab-combat" class="tab-panel">
+        <div class="combat-tracker" id="combat-tracker">
+          <!-- Rendered by combat.js -->
+        </div>
+      </div>
+
+      <!-- TAB: SPELLS -->
+      <div id="tab-spells" class="tab-panel">
+        <div class="spells-header">
+          <div class="spell-info-field"><input type="text" id="spellcastingClass" placeholder="Class" data-save="spellcastingClass" readonly><div class="field-label">Spellcasting Class</div></div>
+          <div class="spell-info-field">
+            <select id="spellcastingAbility" data-save="spellcastingAbility"><option value="">-- Ability --</option><option value="int">Intelligence</option><option value="wis">Wisdom</option><option value="cha">Charisma</option></select>
+            <div class="field-label">Spellcasting Ability</div>
+          </div>
+          <div class="spell-info-field"><div class="badge badge-lg" id="spellSaveDC">8</div><div class="field-label">Spell Save DC</div></div>
+          <div class="spell-info-field"><div class="badge badge-lg" id="spellAttackBonus">+0</div><div class="field-label">Spell Attack</div></div>
+        </div>
+        <div class="spell-slots-bar" id="spell-slots-bar"></div>
+        <div class="spell-search-bar"><input type="text" id="spell-search" placeholder="Search spells to add..." class="spell-search-input" autocomplete="off"><div id="spell-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+        <div class="spells-body">
+          <div class="spell-level-section" id="spell-section-0"><h3 class="spell-level-heading">Cantrips</h3><div class="spell-cards" id="spell-cards-0"></div></div>
+          <div id="spell-levels-mount"></div>
+        </div>
+      </div>
+
+      <!-- TAB: CHRONICLE -->
+      <div id="tab-chronicle" class="tab-panel">
+        <div class="chronicle-body">
+          <div class="chronicle-left">
+            <!-- Character Portrait -->
+            <div class="sheet-box chronicle-portrait-box">
+              <div class="box-title">Portrait</div>
+              <div class="chronicle-portrait" id="chronicle-portrait">
+                <img id="portrait-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:4px">
+                <div class="portrait-placeholder" id="portrait-placeholder">
+                  <div class="portrait-icon">⚔</div>
+                  <div class="portrait-hint">Click to upload</div>
+                </div>
+              </div>
+              <input type="file" id="portrait-file" accept="image/*" hidden>
+              <button class="btn btn-sm" id="portrait-upload-btn" style="margin-top:6px;width:100%">Upload Image</button>
+              <button class="btn btn-sm" id="portrait-clear-btn" style="margin-top:4px;width:100%;display:none">Remove Image</button>
+            </div>
+
+            <!-- Appearance -->
+            <div class="sheet-box">
+              <div class="box-title">Appearance</div>
+              <div class="appearance-grid">
+                <div class="mini-field"><input type="text" id="charAge" data-save="charAge" placeholder="Age"><label>Age</label></div>
+                <div class="mini-field"><input type="text" id="charHeight" data-save="charHeight" placeholder="Height"><label>Height</label></div>
+                <div class="mini-field"><input type="text" id="charWeight" data-save="charWeight" placeholder="Weight"><label>Weight</label></div>
+                <div class="mini-field"><input type="text" id="charEyes" data-save="charEyes"><label>Eyes</label></div>
+                <div class="mini-field"><input type="text" id="charSkin" data-save="charSkin"><label>Skin</label></div>
+                <div class="mini-field"><input type="text" id="charHair" data-save="charHair"><label>Hair</label></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chronicle-right">
+            <!-- Personality -->
+            <div class="sheet-box"><div class="box-title">Personality Traits</div><textarea id="personalityTraits" rows="3" data-save="personalityTraits"></textarea></div>
+            <div class="two-col-row">
+              <div class="sheet-box"><div class="box-title">Ideals</div><textarea id="ideals" rows="3" data-save="ideals"></textarea></div>
+              <div class="sheet-box"><div class="box-title">Bonds</div><textarea id="bonds" rows="3" data-save="bonds"></textarea></div>
+            </div>
+            <div class="sheet-box"><div class="box-title">Flaws</div><textarea id="flaws" rows="3" data-save="flaws"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Backstory</div><textarea id="backstory" rows="7" data-save="backstory"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Allies &amp; Organizations</div><textarea id="allies" rows="5" data-save="allies"></textarea></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB: FEATURES -->
+      <div id="tab-features" class="tab-panel">
+        <div class="features-body">
+          <div class="sheet-box" id="full-class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="full-class-subtitle"></span></div><div id="full-class-features" class="features-list"></div></div>
+          <div class="sheet-box" id="full-feats-box"><div class="box-title">Feats</div><div id="full-feats-list" class="features-list"></div></div>
+          <div class="sheet-box" id="full-charopts-box"><div class="box-title">Other Character Options</div><div id="full-charopts-list" class="features-list"></div></div>
+          <div class="sheet-box" id="full-species-box"><div class="box-title">Species Traits</div><div id="full-species-traits" class="features-list"></div></div>
+          <div class="sheet-box" id="full-bg-box"><div class="box-title">Background</div><div id="full-bg-features" class="features-list"></div></div>
+          <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures"></textarea></div>
+        </div>
+      </div>
+
+      <!-- TAB: NOTES -->
+      <div id="tab-notes" class="tab-panel">
+        <div class="notes-body">
+          <div class="sheet-box"><div class="box-title">Campaign Notes</div><textarea id="campaignNotes" rows="15" data-save="campaignNotes"></textarea></div>
+          <div class="sheet-box"><div class="box-title">NPC Tracker</div><textarea id="npcNotes" rows="10" data-save="npcNotes"></textarea></div>
+          <div class="sheet-box"><div class="box-title">Quest Log</div><textarea id="questNotes" rows="8" data-save="questNotes"></textarea></div>
+        </div>
+      </div>
+
+    </div><!-- /view-sheet -->
+
+  </div><!-- /app -->
+
+  <!-- Floating dice roller -->
+  <div class="dice-roller" id="dice-roller">
+    <button class="dice-toggle" id="dice-toggle">🎲</button>
+    <div class="dice-panel" id="dice-panel" style="display:none">
+      <div class="dice-buttons">
+        <button class="dice-btn" data-sides="4">d4</button>
+        <button class="dice-btn" data-sides="6">d6</button>
+        <button class="dice-btn" data-sides="8">d8</button>
+        <button class="dice-btn" data-sides="10">d10</button>
+        <button class="dice-btn" data-sides="12">d12</button>
+        <button class="dice-btn" data-sides="20">d20</button>
+        <button class="dice-btn" data-sides="100">d%</button>
+      </div>
+      <div class="dice-options">
+        <label>Count</label><input type="number" id="diceCount" value="1" min="1" max="20">
+        <label>Mod</label><input type="number" id="diceMod" value="0">
+      </div>
+      <div class="dice-result" id="dice-result">Click a die</div>
+    </div>
+  </div>
+
+  <!-- LEVEL UP MODAL -->
+  <div id="levelup-backdrop" class="levelup-backdrop" style="display:none">
+    <div class="levelup-modal">
+      <div class="levelup-header">
+        <h2 class="levelup-title" id="levelup-title">Level Up!</h2>
+        <button class="levelup-close" id="levelup-close">&times;</button>
+      </div>
+      <div class="levelup-body" id="levelup-body"></div>
+      <div class="levelup-footer">
+        <button class="btn levelup-btn-cancel" id="levelup-cancel">Cancel</button>
+        <button class="btn levelup-btn-confirm" id="levelup-confirm">Confirm Level Up</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARED DATALISTS (global — must be outside hidden view containers so browsers serve suggestions) -->
+  <datalist id="class-list"></datalist>
+  <datalist id="subclass-list"></datalist>
+  <datalist id="species-list"></datalist>
+  <datalist id="bg-list"></datalist>
+  <datalist id="feat-list"></datalist>
+  <datalist id="charopt-list"></datalist>
+
+  <!-- SCRIPTS (dependency order) -->
+  <script src="js/ua-data.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/router.js"></script>
+  <script src="js/dice.js"></script>
+  <script src="js/home.js"></script>
+  <script src="js/wizard.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/sheet.js"></script>
+  <script src="js/levelup.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
