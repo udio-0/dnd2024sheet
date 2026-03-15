@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>D&D 2024 Character Sheet</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Uncial+Antiqua&family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;600;700&family=Nunito:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Text:ital,wght@0,400;0,600;1,400&family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Uncial+Antiqua&family=IM+Fell+English:ital@0;1&family=Raleway:wght@400;600;700&family=Nunito:wght@400;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,600;1,400&family=Lato:ital,wght@0,400;0,700;1,400&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -64,8 +64,15 @@
               <div class="theme-panel-label">Size</div>
               <div class="font-size-options" id="font-size-options"></div>
             </div>
+            <div class="theme-panel-section">
+              <div class="theme-panel-label">Style</div>
+              <button class="font-bold-btn" id="btn-font-bold" title="Toggle bold text">B Bold</button>
+            </div>
           </div>
         </div>
+        <button id="btn-export-pdf" class="ua-toggle" title="Export character to PDF" style="display:none">
+          <span>PDF</span>
+        </button>
         <div class="roll-log-menu" id="roll-log-menu">
           <button id="btn-roll-log" class="theme-toggle" title="Roll History">
             <span>&#127922;</span>
@@ -143,7 +150,7 @@
               <input type="text" id="charName" class="char-name-input" placeholder="Character Name" data-save="charName">
               <div class="field-label">Name</div>
             </div>
-            <div class="info-field">
+            <div class="info-field info-field-class">
               <input type="text" id="charClass" list="class-list" placeholder="Class" data-save="charClass" autocomplete="off">
               <div class="field-label">Class</div>
             </div>
@@ -162,7 +169,7 @@
               <input type="text" id="charSpecies" list="species-list" placeholder="Species" data-save="charSpecies" autocomplete="off">
               <div class="field-label">Species</div>
             </div>
-            <div class="info-field">
+            <div class="info-field info-field-background">
               <input type="text" id="charBackground" list="bg-list" placeholder="Background" data-save="charBackground" autocomplete="off">
               <div class="field-label">Background</div>
             </div>
@@ -204,21 +211,35 @@
               <div class="sheet-box passive-box"><div class="badge" id="passivePerception">10</div><label>Passive Perception</label></div>
             </div>
             <div class="sheet-box col-left-full"><div class="box-title">Proficiencies &amp; Languages</div><textarea id="profLanguages" rows="4" data-save="profLanguages"></textarea></div>
+            <div class="sheet-box col-left-full" id="species-info-box" style="display:none"><div class="box-title">Specie Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
+            <div class="sheet-box col-left-full" id="class-features-box" style="display:none"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
           </div>
 
           <!-- CENTER: Combat stats, HP, Attacks, Personality -->
           <div class="col col-center">
-            <!-- AC / Initiative / Speed — 3 equal columns -->
-            <div class="combat-row">
-              <div class="combat-box"><div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="armorClass" class="combat-value-input" placeholder="10" data-save="armorClass"><button class="spin-btn spin-plus">+</button></div></div><div class="combat-label">Armor Class</div></div>
+            <!-- Unified combat grid: AC/Init/Speed on top, HP/Rest/DeathSaves on bottom -->
+            <div class="combat-grid">
+              <!-- Row 1 -->
+              <div class="combat-box ac-cover-box">
+                <div class="ac-cover-layout">
+                  <div class="ac-cover-col">
+                    <button class="cover-btn" data-cover="0" title="No Cover">None</button>
+                    <button class="cover-btn" data-cover="2" title="Half Cover (+2 AC, +2 Dex saves)">Half</button>
+                  </div>
+                  <div class="ac-center">
+                    <div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="armorClass" class="combat-value-input" placeholder="10" data-save="armorClass" min="0" max="99"><button class="spin-btn spin-plus">+</button></div></div>
+                  </div>
+                  <div class="ac-cover-col">
+                    <button class="cover-btn" data-cover="5" title="Three-Quarters Cover (+5 AC, +5 Dex saves)">¾</button>
+                    <button class="cover-btn" data-cover="total" title="Total Cover — can't be targeted directly">Total</button>
+                  </div>
+                </div>
+                <div class="combat-label">Armor Class</div>
+              </div>
               <div class="combat-box"><div class="combat-value-container"><div class="badge badge-lg" id="initiative">+0</div></div><div class="combat-label">Initiative</div></div>
-              <div class="combat-box"><div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="speed" class="combat-value-input" placeholder="30" data-save="speed"><button class="spin-btn spin-plus">+</button></div></div><div class="combat-label">Speed</div></div>
-            </div>
+              <div class="combat-box"><div class="combat-value-container"><div class="spin-wrap"><button class="spin-btn spin-minus">−</button><input type="number" id="speed" class="combat-value-input" placeholder="30" data-save="speed" min="0" max="999"><button class="spin-btn spin-plus">+</button></div></div><div class="combat-label">Speed</div></div>
 
-            <!-- HP (flexible) / HD (fixed) / DS (fixed, same as HD, thinner than top row) -->
-            <div class="combat-row hd-row">
-
-              <!-- Hit Points -->
+              <!-- Row 2 -->
               <div class="combat-box hp-box">
                 <div class="hp-current-box">
                   <button class="hp-btn hp-btn-minus" aria-label="Decrease HP">−</button>
@@ -233,31 +254,39 @@
                 <div class="combat-label">Hit Points</div>
               </div>
 
-              <!-- Hit Dice -->
-              <div class="combat-box hd-box">
-                <div id="hd-rows" class="hd-rows"></div>
-                <div class="combat-label">Hit Dice</div>
+              <div class="rest-col">
+                <div class="combat-box rest-box">
+                  <button class="rest-btn" id="btn-long-rest-main" title="Long Rest — restore HP, slots, change masteries">Long Rest</button>
+                </div>
+                <div class="combat-box rest-box">
+                  <button class="rest-btn" id="btn-short-rest-main" title="Short Rest — spend hit dice, refresh short-rest features">
+                    <span>S. Rest</span>
+                    <div class="rest-hd-display" id="ds-hd-section"></div>
+                  </button>
+                </div>
+                <div class="combat-box rest-box">
+                  <button class="rest-btn" id="btn-dawn-rest-main" title="Dawn — refresh features that recharge at dawn">Dawn</button>
+                </div>
               </div>
 
-              <!-- Death Saves -->
               <div class="combat-box ds-box">
-                <div class="death-saves-grid">
-                  <div class="death-row">
-                    <span class="death-row-label success">S</span>
-                    <input type="checkbox" class="death-cb success" data-save="ds0">
-                    <input type="checkbox" class="death-cb success" data-save="ds1">
-                    <input type="checkbox" class="death-cb success" data-save="ds2">
-                  </div>
-                  <div class="death-row">
-                    <span class="death-row-label failure">F</span>
-                    <input type="checkbox" class="death-cb failure" data-save="df0">
-                    <input type="checkbox" class="death-cb failure" data-save="df1">
-                    <input type="checkbox" class="death-cb failure" data-save="df2">
+                <div class="ds-inner">
+                  <button class="ds-roll-bar" id="btn-death-save-roll" title="Roll Death Saving Throw (DC 10)"></button>
+                  <div class="death-saves-grid">
+                    <div class="death-row">
+                      <span class="death-icon heart" data-save="ds0" title="Death Save Success"></span>
+                      <span class="death-icon heart" data-save="ds1" title="Death Save Success"></span>
+                      <span class="death-icon heart" data-save="ds2" title="Death Save Success"></span>
+                    </div>
+                    <div class="death-row">
+                      <span class="death-icon skull" data-save="df0" title="Death Save Failure"></span>
+                      <span class="death-icon skull" data-save="df1" title="Death Save Failure"></span>
+                      <span class="death-icon skull" data-save="df2" title="Death Save Failure"></span>
+                    </div>
                   </div>
                 </div>
                 <div class="combat-label">Death Saves</div>
               </div>
-
             </div>
 
             <!-- Limited Resources — full width -->
@@ -267,11 +296,11 @@
               <div class="resource-add-row">
                 <input type="text" id="res-name" class="res-name-input" placeholder="e.g. Second Wind" autocomplete="off">
                 <input type="number" id="res-max" class="res-max-input" min="1" max="20" value="1" title="Max uses">
-                <select id="res-refresh" class="res-refresh-select">
+                <select id="res-refresh" class="res-refresh-select" title="When does this resource refresh?">
                   <option value="lr">Long Rest</option>
                   <option value="sr">Short Rest</option>
                   <option value="dawn">At Dawn</option>
-                  <option value="manual">Manual</option>
+                  <option value="manual">Manual Refresh</option>
                 </select>
                 <button id="btn-add-resource" class="btn btn-sm">+ Add</button>
               </div>
@@ -290,7 +319,7 @@
     <col class="col-atk-ed">
     <col class="col-atk-actions">
   </colgroup>
-  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">P.</th><th>Bonus</th><th>Damage</th><th>Type</th><th>Mastery</th><th>Ed.</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">Prof</th><th>Bon</th><th>Dmg</th><th>Type</th><th>Mastery</th><th>Ed.</th><th></th></tr></thead>
   <tbody id="attacks-body"></tbody>
 </table>
               <button id="btn-add-attack" class="btn btn-sm">+ Add Attack</button>
@@ -318,9 +347,24 @@
 
           <!-- RIGHT: Species, Background, Class Features, Other Options, Feats, Magic Items, Proficiencies -->
           <div class="col col-right">
-            <div class="sheet-box" id="species-info-box" style="display:none"><div class="box-title">Species Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
-            <div class="sheet-box" id="bg-info-box" style="display:none"><div class="box-title">Background</div><div class="auto-traits" id="bg-traits-text"></div></div>
-            <div class="sheet-box" id="class-features-box" style="display:none"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
+
+            <!-- CONDITIONS -->
+            <div class="sheet-box" id="conditions-box">
+              <div class="box-title">Conditions</div>
+              <div id="conditions-grid" class="conditions-grid-2col"></div>
+            </div>
+
+            <!-- COMBAT ECONOMY -->
+            <div class="sheet-box" id="combat-economy-box">
+              <div class="box-title">Combat Economy</div>
+              <div id="combat-economy-content"></div>
+            </div>
+
+            <!-- EQUIPPED GEAR -->
+            <div class="sheet-box" id="equipped-gear-box">
+              <div class="box-title">Equipped Gear</div>
+              <div id="equipped-slots"></div>
+            </div>
 
             <div class="sheet-box">
               <div class="box-title">Other Character Options</div>
@@ -377,10 +421,41 @@
             <div class="field-label">Spellcasting Ability</div>
           </div>
           <div class="spell-info-field"><div class="badge badge-lg" id="spellSaveDC">8</div><div class="field-label">Spell Save DC</div></div>
-          <div class="spell-info-field"><div class="badge badge-lg" id="spellAttackBonus">+0</div><div class="field-label">Spell Attack</div></div>
+          <div class="spell-info-field"><div class="badge badge-lg spell-atk-rollable" id="spellAttackBonus" title="Roll Spell Attack">+0</div><div class="field-label">Spell Attack</div></div>
+          <div class="spell-info-field spell-prepared-count">
+            <div class="badge badge-lg" id="spellPreparedCount">0</div>
+            <div class="field-label">Prepared</div>
+          </div>
         </div>
+
+        <!-- Concentration tracker (inline in spell tab) -->
+        <div class="spell-conc-bar" id="spell-conc-bar">
+          <label class="spell-conc-toggle" title="Toggle concentration">
+            <input type="checkbox" id="spell-conc-active">
+            <span class="spell-conc-icon">&#9673;</span>
+            <span>Concentrating</span>
+          </label>
+          <input type="text" id="spell-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
+          <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
+          <button class="btn btn-sm spell-conc-drop-btn" id="spell-conc-drop" title="Drop concentration">Drop</button>
+        </div>
+
         <div class="spell-slots-bar" id="spell-slots-bar"></div>
-        <div class="spell-search-bar"><input type="text" id="spell-search" placeholder="Search spells to add..." class="spell-search-input" autocomplete="off"><div id="spell-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+
+        <!-- Spell filters -->
+        <div class="spell-filter-bar" id="spell-filter-bar">
+          <div class="spell-search-bar"><input type="text" id="spell-search" placeholder="Search spells to add..." class="spell-search-input" autocomplete="off"><div id="spell-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+          <div class="spell-filters">
+            <button class="spell-filter-btn active" data-filter="all" title="Show all spells">All</button>
+            <button class="spell-filter-btn" data-filter="prepared" title="Show only prepared spells">Prepared</button>
+            <button class="spell-filter-btn" data-filter="action" title="Show spells with Action casting time">Action</button>
+            <button class="spell-filter-btn" data-filter="bonus" title="Show spells with Bonus Action casting time">Bonus</button>
+            <button class="spell-filter-btn" data-filter="reaction" title="Show spells with Reaction casting time">Reaction</button>
+            <button class="spell-filter-btn" data-filter="concentration" title="Show Concentration spells">Conc.</button>
+            <button class="spell-filter-btn" data-filter="ritual" title="Show Ritual spells">Ritual</button>
+          </div>
+        </div>
+
         <div class="spells-body">
           <div class="spell-level-section" id="spell-section-0"><h3 class="spell-level-heading">Cantrips</h3><div class="spell-cards" id="spell-cards-0"></div></div>
           <div id="spell-levels-mount"></div>
@@ -428,6 +503,7 @@
               <div class="sheet-box"><div class="box-title">Bonds</div><textarea id="bonds" rows="3" data-save="bonds"></textarea></div>
             </div>
             <div class="sheet-box"><div class="box-title">Flaws</div><textarea id="flaws" rows="3" data-save="flaws"></textarea></div>
+            <div class="sheet-box" id="bg-flavor-box" style="display:none"><div class="box-title" id="bg-flavor-title">Background</div><div class="auto-traits" id="bg-flavor-text"></div></div>
             <div class="sheet-box"><div class="box-title">Backstory</div><textarea id="backstory" rows="7" data-save="backstory"></textarea></div>
             <div class="sheet-box"><div class="box-title">Allies &amp; Organizations</div><textarea id="allies" rows="5" data-save="allies"></textarea></div>
           </div>
@@ -440,8 +516,7 @@
           <div class="sheet-box" id="full-class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="full-class-subtitle"></span></div><div id="full-class-features" class="features-list"></div></div>
           <div class="sheet-box" id="full-feats-box"><div class="box-title">Feats</div><div id="full-feats-list" class="features-list"></div></div>
           <div class="sheet-box" id="full-charopts-box"><div class="box-title">Other Character Options</div><div id="full-charopts-list" class="features-list"></div></div>
-          <div class="sheet-box" id="full-species-box"><div class="box-title">Species Traits</div><div id="full-species-traits" class="features-list"></div></div>
-          <div class="sheet-box" id="full-bg-box"><div class="box-title">Background</div><div id="full-bg-features" class="features-list"></div></div>
+          <div class="sheet-box" id="full-species-box"><div class="box-title">Specie Traits</div><div id="full-species-traits" class="features-list"></div></div>
           <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures"></textarea></div>
         </div>
       </div>
@@ -461,9 +536,21 @@
 
   <!-- Floating dice roller -->
   <div class="dice-roller" id="dice-roller">
-    <button class="dice-toggle" id="dice-toggle">🎲</button>
-    <div class="dice-panel" id="dice-panel" style="display:none">
-      <div class="dice-buttons">
+    <button class="dice-toggle" id="dice-toggle">
+      <svg class="dice-toggle-icon" viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
+        <polygon points="50,2 97,28 97,72 50,98 3,72 3,28" fill="var(--red)" stroke="var(--gold)" stroke-width="4" stroke-linejoin="round"/>
+        <line x1="50" y1="2" x2="50" y2="98" stroke="var(--gold-dark)" stroke-width="1.2" opacity="0.5"/>
+        <line x1="3" y1="28" x2="97" y2="72" stroke="var(--gold-dark)" stroke-width="1.2" opacity="0.5"/>
+        <line x1="97" y1="28" x2="3" y2="72" stroke="var(--gold-dark)" stroke-width="1.2" opacity="0.5"/>
+        <text x="50" y="58" text-anchor="middle" fill="var(--gold-light)" font-family="Cinzel, serif" font-size="28" font-weight="700">20</text>
+      </svg>
+      <span class="dice-toggle-result" id="dice-toggle-result"></span>
+    </button>
+    <div class="dice-panel" id="dice-panel">
+      <div class="dice-formula-bar" id="dice-formula-bar">
+        <div class="dice-formula-chips" id="dice-formula-chips"></div>
+      </div>
+      <div class="dice-grid">
         <button class="dice-btn" data-sides="4">d4</button>
         <button class="dice-btn" data-sides="6">d6</button>
         <button class="dice-btn" data-sides="8">d8</button>
@@ -471,12 +558,25 @@
         <button class="dice-btn" data-sides="12">d12</button>
         <button class="dice-btn" data-sides="20">d20</button>
         <button class="dice-btn" data-sides="100">d%</button>
+        <div class="dice-mod-inline">
+          <label>Mod</label>
+          <div class="dice-opt-spin">
+            <button class="dice-opt-minus" data-target="diceMod">−</button>
+            <input type="number" id="diceMod" value="0">
+            <button class="dice-opt-plus" data-target="diceMod">+</button>
+          </div>
+        </div>
       </div>
-      <div class="dice-options">
-        <label>Count</label><input type="number" id="diceCount" value="1" min="1" max="20">
-        <label>Mod</label><input type="number" id="diceMod" value="0">
+      <div class="dice-mode-row">
+        <button class="dice-mode-btn" data-mode="normal" title="Normal roll">Normal</button>
+        <button class="dice-mode-btn" data-mode="advantage" title="Advantage (d20 only)">Adv</button>
+        <button class="dice-mode-btn" data-mode="disadvantage" title="Disadvantage (d20 only)">Dis</button>
       </div>
-      <div class="dice-result" id="dice-result">Click a die</div>
+      <div class="dice-action-row">
+        <button class="dice-roll-btn" id="dice-roll-btn" disabled>Roll</button>
+        <button class="dice-clear-btn" id="dice-clear-btn">Clear</button>
+      </div>
+      <div class="dice-result" id="dice-result">Build an expression, then roll</div>
     </div>
   </div>
 
@@ -510,7 +610,24 @@
   <script src="js/router.js"></script>
   <script src="js/dice.js"></script>
   <script src="js/home.js"></script>
+  <script src="js/conditions.js"></script>
+  <script src="js/resources.js"></script>
   <script src="js/wizard.js"></script>
+  <!-- REST MODAL -->
+  <div id="rest-modal-backdrop" class="rest-modal-backdrop" style="display:none">
+    <div class="rest-modal" id="rest-modal">
+      <div class="rest-modal-header">
+        <h2 class="rest-modal-title" id="rest-modal-title">Rest</h2>
+        <button class="rest-modal-close" id="rest-modal-close" title="Cancel">✕</button>
+      </div>
+      <div class="rest-modal-body" id="rest-modal-body"></div>
+      <div class="rest-modal-footer">
+        <button class="btn" id="rest-modal-cancel">Cancel</button>
+        <button class="btn btn-primary" id="rest-modal-confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/combat.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/levelup.js"></script>

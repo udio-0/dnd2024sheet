@@ -2759,7 +2759,7 @@ window.UA2024_DATA = {
       "_requiresSpecies": "Aetherborn",
       "_grantsAttack": {
         "name": "Drain Life",
-        "ability": "cha",
+        "ability": "str",
         "prof": true,
         "damageDice": "1d6",
         "damageType": "Necrotic",
@@ -2771,7 +2771,7 @@ window.UA2024_DATA = {
         {
           "type": "entries",
           "name": "Drain Life",
-          "entries": ["You can drain the life essence of creatures you touch. As an action, make a melee spell attack against a creature within reach. On a hit, the target takes 1d6 Necrotic damage, and you regain Hit Points equal to the damage dealt. If you go 7 days without dealing this damage, your Hit Point maximum is reduced by 1d6 per week until you use Drain Life and finish a Long Rest."]
+          "entries": ["You can drain the life essence of creatures you touch. As an action, make an unarmed strike against a creature within reach. On a hit, the target takes 1d6 Necrotic damage, and you regain Hit Points equal to the damage dealt. If you go 7 days without dealing this damage, your Hit Point maximum is reduced by 1d6 per week until you use Drain Life and finish a Long Rest."]
         }
       ]
     },

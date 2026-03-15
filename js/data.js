@@ -100,8 +100,14 @@ function entriesToHtml(entries) {
   return parseEntryHtml(entries);
 }
 
+const FILLER_PHRASES = /^(you gain the following benefits\.?|you gain the following\.|choose one of the following options?\.?|you have the following benefits\.?)$/i;
+
 function parseEntryHtml(entry) {
-  if (typeof entry === 'string') return `<p>${stripTags(entry)}</p>`;
+  if (typeof entry === 'string') {
+    const text = stripTags(entry);
+    if (FILLER_PHRASES.test(text.trim())) return '';
+    return `<p>${text}</p>`;
+  }
   if (!entry || typeof entry !== 'object') return '';
   if (Array.isArray(entry)) return entry.map(parseEntryHtml).filter(Boolean).join('');
   const addPunctHtml = name => /[.!?:]$/.test(name) ? name : name + '.';
@@ -146,6 +152,14 @@ function parseEntryHtml(entry) {
   return '';
 }
 
+const PROPERTY_NAMES = {
+  A: 'Ammunition', AF: 'Ammunition (Firearm)', BF: 'Burst Fire', F: 'Finesse',
+  H: 'Heavy', L: 'Light', LD: 'Loading', R: 'Reach', RLD: 'Reload',
+  S: 'Special', T: 'Thrown', '2H': 'Two-Handed', V: 'Versatile',
+  // 2024 additions
+  'Nick': 'Nick', 'Graze': 'Graze', 'Push': 'Push', 'Sap': 'Sap', 'Slow': 'Slow', 'Topple': 'Topple', 'Vex': 'Vex',
+};
+
 function stripTags(text) {
   if (typeof text !== 'string') return '';
   return text
@@ -154,6 +168,12 @@ function stripTags(text) {
     .replace(/\{@(?:hit|atk) ([^}]+)\}/g, '$1')
     .replace(/\{@dc (\d+)\}/g, 'DC $1')
     .replace(/\{@(?:dice|damage) ([^|}]+)(?:\|[^}]*)?\}/g, '$1')
+    .replace(/\{@itemProperty ([^|}]+)(?:\|[^|]*)?\|([^}]+)\}/g, '$2')  // {@itemProperty H|XPHB|Heavy} → Heavy
+    .replace(/\{@itemProperty ([^|}]+)(?:\|[^}]*)?\}/g, (_, key) => PROPERTY_NAMES[key.trim()] || key.trim())
+    .replace(/\{@(?:variantrule|condition|status|skill|sense) ([^|}]+)\|([^|}]*)\|([^}]+)\}/g, '$3')  // 3-segment: use display text
+    .replace(/\{@(?:variantrule|condition|status|skill|sense) ([^|}]+)\|[^}]*\}/g, '$1')             // 2-segment: use name
+    .replace(/\{@action ([^|]+)\|[^}]*\}/g, '$1')                // {@action Attack|XPHB} → Attack
+    .replace(/\{@property ([^|}]+)(?:\|[^}]*)?\}/g, (_, key) => PROPERTY_NAMES[key.trim()] || key.trim())
     .replace(/\{@\w+ ([^|}]+)(?:\|[^}]*)?\}/g, '$1')
     .replace(/\{@\w+\}/g, '')
     .replace(/\{[^}]*\}/g, '');  // catch-all: remove any remaining braces
@@ -184,6 +204,7 @@ const DndData = {
   races: [],
   subraces: [],
   backgrounds: [],
+  backgroundFluff: [],
   feats: [],
   classes: [],
   classDetails: {},
@@ -255,6 +276,10 @@ async function loadAllData(progressCallback) {
       DndData.items = [...DndData.items, ...variants];
     }
     DndData.allItems = [...DndData.baseItems, ...DndData.items];
+    // Deduplicate items: when the same name exists in both 2014 and 2024 sources, prefer the 2024 version.
+    // Items only in 2014 sources (no 2024 replacement) are kept as-is.
+    const _2024_ITEM_SOURCES = new Set(['XPHB', 'XDMG', 'XMM', 'EFA', 'LFL', 'ABH', 'FRHoF']);
+    DndData.allItems = deduplicateByName(DndData.allItems, src => _2024_ITEM_SOURCES.has(src));
 
     // SPELLS - Load spell index, then ALL spell files
     progress('Loading spell index...');
@@ -402,12 +427,18 @@ async function loadAllData(progressCallback) {
 
     // BACKGROUNDS (ALL)
     progress('Loading backgrounds...');
-    const bgData = await fetchJson(`${DATA_BASE}/backgrounds.json`);
+    const [bgData, bgFluffData] = await Promise.all([
+      fetchJson(`${DATA_BASE}/backgrounds.json`),
+      fetchJson(`${DATA_BASE}/fluff-backgrounds.json`),
+    ]);
     if (bgData) {
       DndData.backgrounds = (bgData.background || []).map(b => {
         b._src = sourceName(b.source);
         return b;
       });
+    }
+    if (bgFluffData) {
+      DndData.backgroundFluff = bgFluffData.backgroundFluff || [];
     }
 
     // FEATS (ALL)
@@ -584,14 +615,17 @@ async function loadAllData(progressCallback) {
 }
 
 // ---- DEDUPLICATION ----
-// When same spell/item name appears in multiple sources, prefer preferredSource, else keep all
+// When same spell/item name appears in multiple sources, prefer preferredSource (string or predicate fn), else keep first found
 function deduplicateByName(arr, preferredSource) {
+  const isPreferred = typeof preferredSource === 'function'
+    ? preferredSource
+    : (src) => src === preferredSource;
   const byName = {};
   arr.forEach(item => {
     const key = item.name.toLowerCase();
     if (!byName[key]) {
       byName[key] = item;
-    } else if (item.source === preferredSource && byName[key].source !== preferredSource) {
+    } else if (isPreferred(item.source) && !isPreferred(byName[key].source)) {
       byName[key] = item;
     }
     // Keep first found otherwise
@@ -730,6 +764,7 @@ function getClassFeaturesByLevel(className) {
     byLevel[lvl].push({
       name: f.name,
       text: entriesToText(f.entries),
+      html: entriesToHtml(f.entries),
     });
   });
   return byLevel;
@@ -744,11 +779,33 @@ function getClassInfo(className) {
   // Detect Fighting Style feature (Fighter, Ranger, Paladin)
   const fightingStyleFeature = details.features.find(f => /fighting style/i.test(f.name));
   const fightingStyleLevel = fightingStyleFeature ? (fightingStyleFeature.level || 1) : 0;
+  // Detect Weapon Mastery feature (Barbarian, Fighter, Paladin, Ranger, Rogue in 2024)
+  const weaponMasteryFeature = details.features.find(f => /weapon mastery/i.test(f.name) && (f.level || 1) === 1);
+  const weaponMasteryCount = weaponMasteryFeature ? (weaponMasteryFeature._masteryCount || 2) : 0;
   // Cantrips known at level 1
   const cantripCount = cls.cantripProgression?.[0] ?? null;
+  // Full cantrip progression array (indexed by level-1)
+  const cantripProgression = cls.cantripProgression || null;
   // Prepared spells at level 1: fixed number from spellsKnown, or a formula string for prepared casters
   const spellsKnownAtL1 = cls.spellsKnown?.[0] ?? null;
+  const spellsKnownProgression = cls.spellsKnown || null;
   const preparedSpellsFormula = cls.preparedSpells || null;
+  // Prepared spells progression (indexed by level-1) — some classes have this instead of formula
+  const preparedSpellsProgression = cls.preparedSpellsProgression || null;
+
+  // Spellbook caster detection (Wizard): starts with 6 spells, gains 2 per level
+  // Check feature name, feature entries text, and class name as fallback
+  const isSpellbookCaster = className.toLowerCase() === 'wizard'
+    || details.features.some(f => f.level === 1 && (
+      /\bspellbook\b/i.test(f.name || '')
+      || (f.entries || []).some(e => typeof e === 'string' ? /\bspellbook\b/i.test(e) : /\bspellbook\b/i.test(JSON.stringify(e)))
+    ));
+  const spellbookSpellsAtL1 = isSpellbookCaster ? 6 : null;
+  const spellbookSpellsPerLevel = isSpellbookCaster ? 2 : null;
+
+  // Spell slot progression — standard full/half/third/pact caster tables
+  const casterProgression = cls.casterProgression || null;
+
   return {
     name: cls.name,
     source: cls.source,
@@ -761,13 +818,225 @@ function getClassInfo(className) {
     skillChoices: cls.startingProficiencies?.skills?.[0]?.choose || null,
     expertiseCount: expertiseFeature ? 2 : 0,
     fightingStyleLevel,
+    weaponMasteryCount,
     subclasses: details.subclasses.map(sc => ({ name: sc.name, source: sc.source, src: sourceName(sc.source) })),
     primaryAbility: cls.primaryAbility || [],
     startingEquipment: cls.startingEquipment || null,
     cantripCount,
+    cantripProgression,
     spellsKnownAtL1,
+    spellsKnownProgression,
     preparedSpellsFormula,
+    preparedSpellsProgression,
+    spellcastingAbility: cls.spellcastingAbility || null,
+    spellbookSpellsAtL1,
+    spellbookSpellsPerLevel,
+    casterProgression,
   };
+}
+
+// Standard spell slot tables by caster progression type
+const SPELL_SLOT_TABLE = {
+  full: [
+    // lvl:  1st 2nd 3rd 4th 5th 6th 7th 8th 9th
+    /* 1 */ [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 2 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 3 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 4 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /* 5 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /* 6 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /* 7 */ [4, 3, 3, 1, 0, 0, 0, 0, 0],
+    /* 8 */ [4, 3, 3, 2, 0, 0, 0, 0, 0],
+    /* 9 */ [4, 3, 3, 3, 1, 0, 0, 0, 0],
+    /*10 */ [4, 3, 3, 3, 2, 0, 0, 0, 0],
+    /*11 */ [4, 3, 3, 3, 2, 1, 0, 0, 0],
+    /*12 */ [4, 3, 3, 3, 2, 1, 0, 0, 0],
+    /*13 */ [4, 3, 3, 3, 2, 1, 1, 0, 0],
+    /*14 */ [4, 3, 3, 3, 2, 1, 1, 0, 0],
+    /*15 */ [4, 3, 3, 3, 2, 1, 1, 1, 0],
+    /*16 */ [4, 3, 3, 3, 2, 1, 1, 1, 0],
+    /*17 */ [4, 3, 3, 3, 2, 1, 1, 1, 1],
+    /*18 */ [4, 3, 3, 3, 3, 1, 1, 1, 1],
+    /*19 */ [4, 3, 3, 3, 3, 2, 1, 1, 1],
+    /*20 */ [4, 3, 3, 3, 3, 2, 2, 1, 1],
+  ],
+  half: [
+    /* 1 */ [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 2 */ [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 3 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 4 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 5 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 6 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 7 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /* 8 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /* 9 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /*10 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /*11 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /*12 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /*13 */ [4, 3, 3, 1, 0, 0, 0, 0, 0],
+    /*14 */ [4, 3, 3, 1, 0, 0, 0, 0, 0],
+    /*15 */ [4, 3, 3, 2, 0, 0, 0, 0, 0],
+    /*16 */ [4, 3, 3, 2, 0, 0, 0, 0, 0],
+    /*17 */ [4, 3, 3, 3, 1, 0, 0, 0, 0],
+    /*18 */ [4, 3, 3, 3, 1, 0, 0, 0, 0],
+    /*19 */ [4, 3, 3, 3, 2, 0, 0, 0, 0],
+    /*20 */ [4, 3, 3, 3, 2, 0, 0, 0, 0],
+  ],
+  third: [
+    /* 1 */ [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 2 */ [0, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 3 */ [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 4 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 5 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 6 */ [3, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 7 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 8 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 9 */ [4, 2, 0, 0, 0, 0, 0, 0, 0],
+    /*10 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /*11 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /*12 */ [4, 3, 0, 0, 0, 0, 0, 0, 0],
+    /*13 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /*14 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /*15 */ [4, 3, 2, 0, 0, 0, 0, 0, 0],
+    /*16 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /*17 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /*18 */ [4, 3, 3, 0, 0, 0, 0, 0, 0],
+    /*19 */ [4, 3, 3, 1, 0, 0, 0, 0, 0],
+    /*20 */ [4, 3, 3, 1, 0, 0, 0, 0, 0],
+  ],
+  pact: [
+    /* 1 */ [1, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 2 */ [2, 0, 0, 0, 0, 0, 0, 0, 0],
+    /* 3 */ [0, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 4 */ [0, 2, 0, 0, 0, 0, 0, 0, 0],
+    /* 5 */ [0, 0, 2, 0, 0, 0, 0, 0, 0],
+    /* 6 */ [0, 0, 2, 0, 0, 0, 0, 0, 0],
+    /* 7 */ [0, 0, 0, 2, 0, 0, 0, 0, 0],
+    /* 8 */ [0, 0, 0, 2, 0, 0, 0, 0, 0],
+    /* 9 */ [0, 0, 0, 0, 2, 0, 0, 0, 0],
+    /*10 */ [0, 0, 0, 0, 2, 0, 0, 0, 0],
+    /*11 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*12 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*13 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*14 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*15 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*16 */ [0, 0, 0, 0, 0, 3, 0, 0, 0],
+    /*17 */ [0, 0, 0, 0, 0, 4, 0, 0, 0],
+    /*18 */ [0, 0, 0, 0, 0, 4, 0, 0, 0],
+    /*19 */ [0, 0, 0, 0, 0, 4, 0, 0, 0],
+    /*20 */ [0, 0, 0, 0, 0, 4, 0, 0, 0],
+  ],
+};
+
+/** Get spell slots for a class at a given level. Returns array of 9 values (1st-9th). */
+function getSpellSlots(className, level) {
+  const info = getClassInfo(className);
+  if (!info) return [0,0,0,0,0,0,0,0,0];
+  const prog = info.casterProgression;
+  if (!prog) return [0,0,0,0,0,0,0,0,0];
+  const table = SPELL_SLOT_TABLE[prog];
+  if (!table) return [0,0,0,0,0,0,0,0,0];
+  return table[Math.min(level, 20) - 1] || [0,0,0,0,0,0,0,0,0];
+}
+
+/** Get the max spell level a class can cast at a given character level. */
+function getMaxSpellLevel(className, level) {
+  const slots = getSpellSlots(className, level);
+  for (let i = 8; i >= 0; i--) {
+    if (slots[i] > 0) return i + 1;
+  }
+  return 0;
+}
+
+/** Returns a sorted list of Simple and Martial Melee weapons available for Weapon Mastery selection. */
+function getMeleeWeaponsForMastery() {
+  return getWeaponsForMastery(false);
+}
+
+/** Returns weapons for Mastery. If includeRanged is true, includes ranged weapons too. */
+function getWeaponsForMastery(includeRanged) {
+  const SIMPLE_MELEE = [
+    'Club', 'Dagger', 'Greatclub', 'Handaxe', 'Javelin', 'Light Hammer',
+    'Mace', 'Quarterstaff', 'Sickle', 'Spear',
+  ];
+  const MARTIAL_MELEE = [
+    'Battleaxe', 'Flail', 'Glaive', 'Greataxe', 'Greatsword', 'Halberd',
+    'Lance', 'Longsword', 'Maul', 'Morningstar', 'Pike', 'Rapier',
+    'Scimitar', 'Shortsword', 'Trident', 'War Pick', 'Warhammer', 'Whip',
+  ];
+  const SIMPLE_RANGED = ['Light Crossbow', 'Shortbow', 'Sling', 'Dart'];
+  const MARTIAL_RANGED = ['Blowgun', 'Hand Crossbow', 'Heavy Crossbow', 'Longbow', 'Musket', 'Net'];
+  const result = [
+    ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+    ...MARTIAL_MELEE.map(n => ({ name: n, category: 'Martial Melee' })),
+  ];
+  if (includeRanged) {
+    result.push(
+      ...SIMPLE_RANGED.map(n => ({ name: n, category: 'Simple Ranged' })),
+      ...MARTIAL_RANGED.map(n => ({ name: n, category: 'Martial Ranged' })),
+    );
+  }
+  return result;
+}
+
+/**
+ * Returns the weapons available for Weapon Mastery selection for a given class,
+ * filtered to only weapons the class has proficiency with.
+ */
+function getMasteryWeaponsForClass(className) {
+  const SIMPLE_MELEE = [
+    'Club', 'Dagger', 'Greatclub', 'Handaxe', 'Javelin', 'Light Hammer',
+    'Mace', 'Quarterstaff', 'Sickle', 'Spear',
+  ];
+  const MARTIAL_MELEE = [
+    'Battleaxe', 'Flail', 'Glaive', 'Greataxe', 'Greatsword', 'Halberd',
+    'Lance', 'Longsword', 'Maul', 'Morningstar', 'Pike', 'Rapier',
+    'Scimitar', 'Shortsword', 'Trident', 'War Pick', 'Warhammer', 'Whip',
+  ];
+  const SIMPLE_RANGED = ['Light Crossbow', 'Shortbow', 'Sling', 'Dart'];
+  const MARTIAL_RANGED = ['Blowgun', 'Hand Crossbow', 'Heavy Crossbow', 'Longbow', 'Musket', 'Net'];
+
+  // Martial melee weapons with Finesse or Light property (Rogue proficiency)
+  const MARTIAL_FINESSE_OR_LIGHT = ['Rapier', 'Scimitar', 'Shortsword', 'Whip'];
+
+  switch (className) {
+    case 'Rogue':
+      // Simple weapons + Martial weapons with Finesse or Light
+      return [
+        ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+        ...MARTIAL_FINESSE_OR_LIGHT.map(n => ({ name: n, category: 'Martial Melee' })),
+        ...SIMPLE_RANGED.map(n => ({ name: n, category: 'Simple Ranged' })),
+      ];
+    case 'Barbarian':
+      // Simple and Martial weapons
+      return [
+        ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+        ...MARTIAL_MELEE.map(n => ({ name: n, category: 'Martial Melee' })),
+      ];
+    case 'Fighter':
+    case 'Paladin':
+      // Simple and Martial weapons (all)
+      return [
+        ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+        ...MARTIAL_MELEE.map(n => ({ name: n, category: 'Martial Melee' })),
+        ...SIMPLE_RANGED.map(n => ({ name: n, category: 'Simple Ranged' })),
+        ...MARTIAL_RANGED.map(n => ({ name: n, category: 'Martial Ranged' })),
+      ];
+    case 'Ranger':
+      // Simple and Martial weapons (all)
+      return [
+        ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+        ...MARTIAL_MELEE.map(n => ({ name: n, category: 'Martial Melee' })),
+        ...SIMPLE_RANGED.map(n => ({ name: n, category: 'Simple Ranged' })),
+        ...MARTIAL_RANGED.map(n => ({ name: n, category: 'Martial Ranged' })),
+      ];
+    default:
+      // Fallback: all melee weapons
+      return [
+        ...SIMPLE_MELEE.map(n => ({ name: n, category: 'Simple Melee' })),
+        ...MARTIAL_MELEE.map(n => ({ name: n, category: 'Martial Melee' })),
+      ];
+  }
 }
 
 function getSpeciesInfo(name, source) {
@@ -1067,9 +1336,18 @@ const STANDARD_LANGUAGES = [
   'Sylvan', 'Undercommon',
 ];
 
-function getFeatInfo(name) {
+function getFeatInfo(name, src) {
   const lower = (name || '').toLowerCase();
-  const feat = DndData.feats.find(f => f.name.toLowerCase() === lower);
+  const matches = DndData.feats.filter(f => f.name.toLowerCase() === lower);
+  if (!matches.length) return null;
+  // If a source was specified, prefer that exact match
+  let feat = src ? (matches.find(f => f._src === src) || matches[0]) : null;
+  // Otherwise prefer 2024 sources (XPHB first, then any 2024 source)
+  if (!feat) {
+    feat = matches.find(f => f.source === 'XPHB')
+      || matches.find(f => typeof is2024Source === 'function' && is2024Source(f.source))
+      || matches[0];
+  }
   if (!feat) return null;
   return {
     name: feat.name,

@@ -98,6 +98,36 @@ window.Dice = {
     return result;
   },
 
+  // Roll a compound expression: array of dice groups + flat modifier
+  // Each group: { count, sides, mode: 'normal'|'advantage'|'disadvantage' }
+  rollCompound(groups, flatMod = 0) {
+    const groupResults = groups.map(g => {
+      if (g.sides === 20 && g.count === 1 && g.mode === 'advantage') {
+        return { ...this.rollAdvantage(0), groupLabel: 'd20 (Adv)' };
+      }
+      if (g.sides === 20 && g.count === 1 && g.mode === 'disadvantage') {
+        return { ...this.rollDisadvantage(0), groupLabel: 'd20 (Dis)' };
+      }
+      const result = this.rollExpression(`${g.count}d${g.sides}+0`);
+      return { ...result, groupLabel: `${g.count}d${g.sides}` };
+    });
+
+    const subtotal = groupResults.reduce((sum, r) => sum + r.total, 0);
+    const grandTotal = subtotal + flatMod;
+
+    // Detect nat20/nat1 from the first d20 group (if any)
+    const d20Group = groupResults.find(r => r.used !== undefined);
+    const used = d20Group ? d20Group.used : null;
+
+    return {
+      groups: groupResults,
+      modifier: flatMod,
+      total: grandTotal,
+      used,
+      compound: true,
+    };
+  },
+
   // Format modifier as signed string
   _fmtMod(mod) {
     if (mod === undefined || mod === null) return ' + 0';
@@ -107,6 +137,23 @@ window.Dice = {
 
   // Build the breakdown line: "rolled + mod = total"
   _buildBreakdown(result) {
+    // Compound multi-group rolls
+    if (result.compound) {
+      const parts = result.groups.map(g => {
+        if (g.advantage || g.disadvantage) {
+          const tag = g.advantage ? 'Adv' : 'Dis';
+          const r1c = g.used === g.r1 ? 'roll-kept' : 'roll-dropped';
+          const r2c = g.used === g.r2 ? 'roll-kept' : 'roll-dropped';
+          return `<span class="${r1c}">${g.r1}</span>,<span class="${r2c}">${g.r2}</span> (${tag})→${g.used}`;
+        }
+        if (g.kept && g.kept.length) return g.kept.join('+');
+        return `${g.total}`;
+      });
+      const modVal = result.modifier || 0;
+      const modStr = modVal ? (modVal > 0 ? ` + ${modVal}` : ` - ${Math.abs(modVal)}`) : '';
+      return parts.join(' + ') + modStr + ` = <strong>${result.total}</strong>`;
+    }
+
     const mod = result.modifier || 0;
     // Advantage / disadvantage d20 rolls
     if (result.advantage || result.disadvantage) {

@@ -140,6 +140,7 @@ document.addEventListener('change', e => {
     { id: 'fantasy',  label: 'Fantasy',  title: "'Uncial Antiqua', serif",             body: "'IM Fell English', Georgia, serif" },
     { id: 'modern',   label: 'Modern',   title: "'Raleway', sans-serif",               body: "'Nunito', sans-serif" },
     { id: 'refined',  label: 'Refined',  title: "'Cormorant Garamond', serif",         body: "'Lato', sans-serif" },
+    { id: 'clean',    label: 'Clean',    title: "'Inter', sans-serif",                  body: "'Inter', sans-serif" },
   ];
 
   const FONT_SIZES = [
@@ -150,14 +151,26 @@ document.addEventListener('change', e => {
     { id: 'xl',  label: 'XL',  value: '18px' },
   ];
 
+  function applyBold(on) {
+    document.documentElement.classList.toggle('font-bold', on);
+    localStorage.setItem('dnd_font_bold', on ? '1' : '0');
+    const btn = document.getElementById('btn-font-bold');
+    if (btn) btn.classList.toggle('active', on);
+  }
+
   function initTheme() {
     const savedTheme = localStorage.getItem('dnd_theme_name') || 'parchment';
     const savedFont  = localStorage.getItem('dnd_font')       || 'classic';
     const savedSize  = localStorage.getItem('dnd_font_size')  || 'md';
+    const savedBold  = localStorage.getItem('dnd_font_bold')  === '1';
     applyTheme(savedTheme);
     applyFont(savedFont);
     applyFontSize(savedSize);
+    applyBold(savedBold);
     buildThemePanel();
+    document.getElementById('btn-font-bold')?.addEventListener('click', () => {
+      applyBold(!document.documentElement.classList.contains('font-bold'));
+    });
 
     document.getElementById('btn-theme')?.addEventListener('click', e => {
       e.stopPropagation();
@@ -492,6 +505,8 @@ document.addEventListener('change', e => {
       Router.showView('view-home');
       const titleEl = document.getElementById('topbar-title');
       if (titleEl) titleEl.textContent = '';
+      const pdfBtn = document.getElementById('btn-export-pdf');
+      if (pdfBtn) pdfBtn.style.display = 'none';
       Home.render();
     });
 
@@ -500,12 +515,18 @@ document.addEventListener('change', e => {
       Router.showView('view-wizard');
       const titleEl = document.getElementById('topbar-title');
       if (titleEl) titleEl.textContent = '';
+      const pdfBtn = document.getElementById('btn-export-pdf');
+      if (pdfBtn) pdfBtn.style.display = 'none';
       Wizard.start();
     });
 
     // Character sheet
     Router.register('sheet/:id', (params) => {
       Router.showView('view-sheet');
+      const pdfBtn = document.getElementById('btn-export-pdf');
+      if (pdfBtn) pdfBtn.style.display = '';
+      Sheet.teardown();
+      Combat.teardown();
       Sheet.init(params.id);
       Combat.init();
 
@@ -521,6 +542,15 @@ document.addEventListener('change', e => {
       }
     });
   }
+
+  // ---- PDF EXPORT ----
+  document.getElementById('btn-export-pdf').addEventListener('click', () => {
+    document.body.classList.add('pdf-printing');
+    window.print();
+    window.addEventListener('afterprint', () => {
+      document.body.classList.remove('pdf-printing');
+    }, { once: true });
+  });
 
   // ---- DATALIST SHOW-ALL ON FOCUS ----
   // Clears the input on focus so all datalist options show, restores if user doesn't pick anything

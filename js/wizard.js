@@ -78,6 +78,41 @@ function _parseBgAbility(abilityArr) {
   return { pool, modes, fixedBonus, isFixed };
 }
 
+// Highlight D&D keywords in spell tooltip HTML
+function _highlightSpellKeywords(html) {
+  // Damage types
+  const dmgTypes = 'acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder';
+  html = html.replace(new RegExp(`\\b(${dmgTypes})( damage)\\b`, 'gi'), '<span class="wiz-kw-dmg">$1$2</span>');
+  html = html.replace(new RegExp(`\\b(${dmgTypes})\\b(?!<\\/span>)`, 'gi'), (m, p1) => {
+    // Avoid double-wrapping
+    return `<span class="wiz-kw-dmg">${p1}</span>`;
+  });
+  // Conditions
+  const conditions = 'blinded|charmed|deafened|frightened|grappled|incapacitated|invisible|paralyzed|petrified|poisoned|prone|restrained|stunned|unconscious|exhaustion';
+  html = html.replace(new RegExp(`\\b(${conditions})\\b`, 'gi'), '<span class="wiz-kw-cond">$1</span>');
+  // Dice rolls (e.g. 1d6, 2d8, 8d6, 1d20)
+  html = html.replace(/\b(\d+d\d+(?:\s*\+\s*\d+)?)\b/g, '<span class="wiz-kw-dice">$1</span>');
+  // Saving throws (e.g. "Dexterity saving throw", "DC 15")
+  html = html.replace(/\b(DC\s*\d+)\b/g, '<span class="wiz-kw-dc">$1</span>');
+  html = html.replace(/\b((?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+saving\s+throw)s?\b/gi, '<span class="wiz-kw-save">$1</span>');
+  // Spell attack / attack roll
+  html = html.replace(/\b((?:ranged|melee)\s+spell\s+attack)\b/gi, '<span class="wiz-kw-atk">$1</span>');
+  return html;
+}
+
+function _positionSpellTooltip(tip, e) {
+  const pad = 12;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let x = e.clientX + pad, y = e.clientY + pad;
+  const rect = tip.getBoundingClientRect();
+  if (x + rect.width > vw - pad) x = e.clientX - rect.width - pad;
+  if (y + rect.height > vh - pad) y = e.clientY - rect.height - pad;
+  if (x < pad) x = pad;
+  if (y < pad) y = pad;
+  tip.style.left = x + 'px';
+  tip.style.top = y + 'px';
+}
+
 window.Wizard = {
   steps: ['species', 'background', 'class', 'abilities', 'equipment', 'spells', 'options', 'review'],
   stepLabels: ['Species', 'Background', 'Class', 'Abilities', 'Equipment', 'Spells', 'Options', 'Review'],
@@ -87,6 +122,7 @@ window.Wizard = {
   start() {
     this.draft = { charLevel: 1, feats: [], charSpells: [], inventory: [], attacks: [], charOptions: [] };
     this.currentStep = 0;
+    this.maxVisitedStep = 0;
     this.renderStep();
   },
 
@@ -126,6 +162,7 @@ window.Wizard = {
       } else {
         this.currentStep++;
       }
+      if (this.currentStep > (this.maxVisitedStep || 0)) this.maxVisitedStep = this.currentStep;
       this.renderStep();
       document.getElementById('wizard-body')?.scrollTo(0, 0);
     }
@@ -167,6 +204,10 @@ window.Wizard = {
         const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
         if (styles.length) return 'Please choose a Fighting Style for your class.';
       }
+      if (info?.weaponMasteryCount > 0) {
+        const chosen = (d._weaponMasteryChoices || []).length;
+        if (chosen < info.weaponMasteryCount) return `Please choose ${info.weaponMasteryCount} weapons for Weapon Mastery (${chosen}/${info.weaponMasteryCount} selected).`;
+      }
     }
     if (step === 'equipment') {
       const spent = (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) / 100, 0);
@@ -185,10 +226,20 @@ window.Wizard = {
       const _cantripsSel = _nonRacial.filter(s => s.level === 0).length;
       const _prepSel = _nonRacial.filter(s => s.level === 1).length;
       const _maxC = _ci?.cantripCount ?? null;
-      let _maxP = _ci?.spellsKnownAtL1 ?? null;
-      if (_maxP === null && _ci?.preparedSpellsFormula) _maxP = Math.max(1, 1 + Math.floor(((d.int || 10) - 10) / 2));
+      // Spellbook casters: use spellbook count (6); otherwise known or prepared count
+      let _maxP;
+      if (_ci?.spellbookSpellsAtL1 != null) {
+        _maxP = _ci.spellbookSpellsAtL1;
+      } else {
+        _maxP = _ci?.spellsKnownAtL1 ?? null;
+        if (_maxP === null && _ci?.preparedSpellsFormula) {
+          const _spAb = _ci.spellcastingAbility || 'int';
+          _maxP = Math.max(1, 1 + Math.floor(((d[_spAb] || 10) - 10) / 2));
+        }
+      }
       if (_maxC !== null && _cantripsSel < _maxC) return `Choose ${_maxC} cantrip${_maxC !== 1 ? 's' : ''} (${_cantripsSel}/${_maxC} selected).`;
-      if (_maxP !== null && _prepSel < _maxP) return `Choose ${_maxP} 1st-level spell${_maxP !== 1 ? 's' : ''} (${_prepSel}/${_maxP} selected).`;
+      const _spellLabel = _ci?.spellbookSpellsAtL1 != null ? 'spellbook spell' : '1st-level spell';
+      if (_maxP !== null && _prepSel < _maxP) return `Choose ${_maxP} ${_spellLabel}${_maxP !== 1 ? 's' : ''} (${_prepSel}/${_maxP} selected).`;
     }
     if (step === 'abilities') {
       const ABS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
@@ -276,7 +327,7 @@ window.Wizard = {
   finish() {
     const d = this.draft;
     d._meta = { wizardComplete: true };
-    d.charName = d.charName || 'New Character';
+    d.charName = d.charName?.trim() || 'New Character';
 
     // Save languages
     if (d._bgLanguages?.length) d.languages = d._bgLanguages;
@@ -400,21 +451,39 @@ window.Wizard = {
       .replace(/ches$/i, 'ch').replace(/ies$/i, 'y').replace(/([^aeiou])s$/i, '$1')
       .replace(/^./, c => c.toUpperCase());
 
+    // Liquid vessel names — must match Sheet._LIQUID_CONTAINERS
+    const _LIQUID_NAMES = new Set(['waterskin','flask','vial','jug','pitcher','pot','tankard','bottle']);
+    const _LIQUID_PINTS = { waterskin:4, flask:1, vial:1, jug:1, pitcher:1, pot:1, tankard:1, bottle:1 };
+    const _isLiquid = n => _LIQUID_NAMES.has((n || '').toLowerCase().trim());
+
     const toInvEntry = ({ name, qty }) => {
       const allItems = DndData.allItems || [];
       const found = allItems.find(i => i.name.toLowerCase() === name.toLowerCase())
                || allItems.find(i => i.name.toLowerCase() === _singularize(name).toLowerCase());
-      const isContainer = !!(found?.containerCapacity || found?.capacity || _CONTAINER_NAMES.test(name || ''));
+      // Volume-only containerCapacity (liquid vessels) should NOT become folder containers — matches sheet.js logic
+      const hasVolumeOnlyCapacity = found?.containerCapacity
+        && !found.containerCapacity.weight
+        && !found.containerCapacity.item
+        && found.containerCapacity.volume;
+      const isLiquid = _isLiquid(name);
+      const isContainer = !isLiquid && !!(
+        (!hasVolumeOnlyCapacity && (found?.containerCapacity || found?.capacity)) ||
+        _CONTAINER_NAMES.test(name || '')
+      );
       // When splitting plural-named containers into individual entries, use the singular form
       const entryName = (isContainer && (qty || 1) > 1) ? _singularize(name) : name;
+      const fullWeight = found?.weight || 0;
+      const maxPints = isLiquid ? (_LIQUID_PINTS[(name || '').toLowerCase().trim()] || 0) : 0;
+      const PINT_LBS = 1;
+      const emptyWeight = isLiquid ? Math.max(0, fullWeight - maxPints * PINT_LBS) : 0;
       const makeOne = () => ({
         name: entryName,
         qty: isContainer ? 1 : (qty || 1),
         type: found?._type || '',
         damage: found?._dmgStr || '',
-        mastery: (found?.mastery || []).join(', '),
+        mastery: (found?.mastery || []).map(m => m.split('|')[0]).join(', '),
         properties: found?._propStr || '',
-        weight: found?.weight || 0,
+        weight: fullWeight,
         value: found?._valueStr || '',
         _valueCp: found?.value || 0,
         ac: found?.ac || 0,
@@ -425,6 +494,11 @@ window.Wizard = {
           containerKey: Date.now().toString(36) + Math.random().toString(36).slice(2),
           containerCapacity: found?.containerCapacity || null,
           capacityStr: found?.capacity || null,
+        }),
+        ...(isLiquid && {
+          pints: maxPints,
+          emptyWeight,
+          liquidKey: Date.now().toString(36) + Math.random().toString(36).slice(2),
         }),
       });
       // Containers don't stack — expand qty into separate entries
@@ -460,10 +534,10 @@ window.Wizard = {
     if (d.inventory?.length) {
       const merged = [];
       for (const item of d.inventory) {
-        if (item.isContainer) {
+        if (item.isContainer || item.liquidKey) {
           merged.push({ ...item });
         } else {
-          const existing = merged.find(i => i.name.toLowerCase() === item.name.toLowerCase() && !i.isContainer);
+          const existing = merged.find(i => i.name.toLowerCase() === item.name.toLowerCase() && !i.isContainer && !i.liquidKey);
           if (existing) existing.qty += item.qty || 1;
           else merged.push({ ...item });
         }
@@ -501,12 +575,35 @@ window.Wizard = {
     // Apply expertise choices from class step
     (d._expertiseChoices || []).forEach(sk => { d['skillExpert_' + sk] = true; });
 
+    // Apply weapon mastery choices
+    if (d._weaponMasteryChoices?.length) {
+      d.weaponMastery = [...d._weaponMasteryChoices];
+    }
+
     // Apply fighting style as a feat
     if (d._fightingStyle) {
       if (!d.feats) d.feats = [];
-      if (!d.feats.some(f => f.toLowerCase() === d._fightingStyle.toLowerCase())) {
+      if (!d.feats.some(f => (typeof f === 'string' ? f : f.name).toLowerCase() === d._fightingStyle.toLowerCase())) {
         d.feats.push(d._fightingStyle);
       }
+    }
+
+    // Auto-populate class, species, and feat resources
+    if (typeof ClassResources !== 'undefined') {
+      ClassResources.addStartingResources(d);
+    }
+
+    // Auto-set spell slots based on class at level 1
+    if (d.charClass && typeof getSpellSlots === 'function') {
+      const slots = getSpellSlots(d.charClass, 1);
+      for (let i = 0; i < 9; i++) {
+        d[`slotMax_${i + 1}`] = slots[i];
+      }
+    }
+
+    // Set spellcasting ability from class
+    if (classInfo?.spellcastingAbility) {
+      d.spellcastingAbility = classInfo.spellcastingAbility;
     }
 
     // Init combat state
@@ -535,8 +632,14 @@ window.Wizard = {
       if (isOptionsLocked) {
         step.title = 'Enable 2014 content to unlock this step';
       }
+      const maxVisited = this.maxVisitedStep || 0;
+      const isVisited = i <= maxVisited && i > this.currentStep;
+      if (isVisited) step.className += ' visited';
       step.innerHTML = `<div class="wiz-step-dot">${i < this.currentStep ? '✓' : i + 1}</div><div class="wiz-step-label">${this.stepLabels[i]}</div>`;
-      if (i < this.currentStep && !isOptionsLocked) step.addEventListener('click', () => { this.currentStep = i; this.renderStep(); });
+      if (i !== this.currentStep && i <= maxVisited && !isOptionsLocked) {
+        step.style.cursor = 'pointer';
+        step.addEventListener('click', () => { this.currentStep = i; this.renderStep(); });
+      }
       bar.appendChild(step);
       if (i < this.steps.length - 1) {
         const line = document.createElement('div');
@@ -556,7 +659,19 @@ window.Wizard = {
       <button class="btn btn-primary btn-lg" id="wiz-next">${isLast ? 'Create Character ✓' : 'Next →'}</button>
     `;
     nav.querySelector('#wiz-back')?.addEventListener('click', () => this.back());
-    nav.querySelector('#wiz-next')?.addEventListener('click', () => isLast ? this.finish() : this.next());
+    nav.querySelector('#wiz-next')?.addEventListener('click', () => {
+      if (isLast) {
+        if (!this.draft.charName?.trim()) {
+          this._showValidationError('Please enter a character name before finishing.');
+          const nameInput = document.getElementById('wiz-char-name');
+          if (nameInput) { nameInput.focus(); nameInput.style.outline = '2px solid var(--danger, #c00)'; }
+          return;
+        }
+        this.finish();
+      } else {
+        this.next();
+      }
+    });
   },
 
   // ========== STEP: SPECIES ==========
@@ -569,7 +684,7 @@ window.Wizard = {
         <input type="text" id="wiz-species-search" list="species-list" class="wiz-search" placeholder="Search species..." value="${d.charSpecies || ''}" autocomplete="off">
         <div id="wiz-species-preview" class="wiz-preview"></div>
       </div>
-      <div id="wiz-optional-tooltip" style="display:none;position:fixed;z-index:9999;max-width:380px;background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:12px 16px;font-size:0.78rem;color:var(--ink-light,#3D2B18);line-height:1.6;box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:none"></div>`;
+      <div id="wiz-optional-tooltip" style="display:none;position:fixed;z-index:9999;width:500px;max-width:min(500px,90vw);background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:12px 16px;font-size:0.82rem;color:var(--ink-light,#3D2B18);line-height:1.55;box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:none"></div>`;
     const input = document.getElementById('wiz-species-search');
     const preview = document.getElementById('wiz-species-preview');
     const renderPreview = (info, subraceInfo) => {
@@ -1082,10 +1197,10 @@ window.Wizard = {
     const preview = document.getElementById('wiz-class-preview');
     const skillDiv = document.getElementById('wiz-skill-choices');
 
-    const showPreview = (name) => {
-      const info = getClassInfo(name);
+    const showPreview = (className) => {
+      const info = getClassInfo(className);
       if (!info) { preview.innerHTML = '<div class="wiz-hint">Select a class to see details</div>'; skillDiv.innerHTML = ''; return; }
-      d.charClass = name;
+      d.charClass = className;
       d._classInfo = info;
       d.speed = d._speciesInfo?.speed || 30;
 
@@ -1115,6 +1230,12 @@ window.Wizard = {
         const count = info.skillChoices.count || 2;
         d._classSkillChoices = d._classSkillChoices || [];
 
+        // Skills already granted by the chosen background
+        const bgSkills = new Set(Object.keys(d._bgInfo?.skillProf || {}).map(_normalizeSkillKey));
+
+        // Remove any class picks that duplicate background skills (edge case: user changed background)
+        d._classSkillChoices = d._classSkillChoices.filter(s => !bgSkills.has(s));
+
         const heading = document.createElement('h4');
         heading.className = 'wiz-subtitle';
         heading.textContent = `Choose ${count} Skill Proficiencies`;
@@ -1126,6 +1247,7 @@ window.Wizard = {
           const atLimit = d._classSkillChoices.length >= count;
           grid.querySelectorAll('.wiz-checkbox-label').forEach(lbl => {
             const inp = lbl.querySelector('input');
+            if (lbl.classList.contains('bg-granted')) return; // always locked
             const isChecked = inp.checked;
             const shouldDisable = atLimit && !isChecked;
             inp.disabled = shouldDisable;
@@ -1136,22 +1258,26 @@ window.Wizard = {
         from.forEach(sk => {
           const normSk = _normalizeSkillKey(sk);
           const labelText = _skillLabel(normSk);
+          const fromBg = bgSkills.has(normSk);
           const checked = d._classSkillChoices.includes(normSk);
           const div = document.createElement('label');
-          div.className = 'wiz-checkbox-label' + (checked ? ' selected' : '');
-          div.innerHTML = `<input type="checkbox" value="${normSk}" ${checked ? 'checked' : ''}> ${labelText}`;
-          div.querySelector('input').addEventListener('change', function () {
-            if (this.checked) {
-              if (d._classSkillChoices.length >= count) { this.checked = false; return; }
-              d._classSkillChoices.push(normSk);
-            } else {
-              d._classSkillChoices = d._classSkillChoices.filter(s => s !== normSk);
-            }
-            d['skillProf_' + normSk] = this.checked;
-            div.classList.toggle('selected', this.checked);
-            updateSkillStates();
-            renderExpertise();
-          });
+          div.className = 'wiz-checkbox-label' + (fromBg ? ' bg-granted disabled' : (checked ? ' selected' : ''));
+          div.title = fromBg ? 'Already granted by your background' : '';
+          div.innerHTML = `<input type="checkbox" value="${normSk}" ${fromBg ? 'disabled' : (checked ? 'checked' : '')}> ${labelText}${fromBg ? ' <span class="wiz-bg-tag">background</span>' : ''}`;
+          if (!fromBg) {
+            div.querySelector('input').addEventListener('change', function () {
+              if (this.checked) {
+                if (d._classSkillChoices.length >= count) { this.checked = false; return; }
+                d._classSkillChoices.push(normSk);
+              } else {
+                d._classSkillChoices = d._classSkillChoices.filter(s => s !== normSk);
+              }
+              d['skillProf_' + normSk] = this.checked;
+              div.classList.toggle('selected', this.checked);
+              updateSkillStates();
+              renderExpertise();
+            });
+          }
           grid.appendChild(div);
         });
         updateSkillStates();
@@ -1266,6 +1392,82 @@ window.Wizard = {
           fsSection.appendChild(descEl);
 
           skillDiv.appendChild(fsSection);
+        }
+      }
+
+      // ---- Weapon Mastery (Barbarian, Fighter, Paladin, Ranger, Rogue in 2024) ----
+      if (info.weaponMasteryCount > 0) {
+        const weapons = typeof getMasteryWeaponsForClass === 'function' ? getMasteryWeaponsForClass(d.charClass) : (typeof getMeleeWeaponsForMastery === 'function' ? getMeleeWeaponsForMastery() : []);
+        if (weapons.length) {
+          d._weaponMasteryChoices = d._weaponMasteryChoices || [];
+          const count = info.weaponMasteryCount;
+
+          const wmSection = document.createElement('div');
+          wmSection.className = 'wiz-weapon-mastery-section';
+
+          const heading = document.createElement('h4');
+          heading.className = 'wiz-subtitle';
+          heading.textContent = `Choose ${count} Weapon${count !== 1 ? 's' : ''} for Weapon Mastery`;
+          wmSection.appendChild(heading);
+
+          const note = document.createElement('p');
+          note.className = 'wiz-desc';
+          note.textContent = 'You know the Mastery property of these weapons. You may swap one choice after each Long Rest.';
+          wmSection.appendChild(note);
+
+          const countBadge = document.createElement('div');
+          countBadge.className = 'wiz-mastery-count';
+          countBadge.textContent = `${d._weaponMasteryChoices.length}/${count} selected`;
+          wmSection.appendChild(countBadge);
+
+          const renderWmGrid = () => {
+            countBadge.textContent = `${d._weaponMasteryChoices.length}/${count} selected`;
+            const atLimit = d._weaponMasteryChoices.length >= count;
+            wmSection.querySelectorAll('.wiz-mastery-label').forEach(lbl => {
+              const inp = lbl.querySelector('input');
+              const isChecked = inp.checked;
+              inp.disabled = atLimit && !isChecked;
+              lbl.classList.toggle('disabled', atLimit && !isChecked);
+            });
+          };
+
+          // Group by category
+          const byCategory = {};
+          weapons.forEach(w => {
+            if (!byCategory[w.category]) byCategory[w.category] = [];
+            byCategory[w.category].push(w);
+          });
+
+          Object.entries(byCategory).forEach(([cat, weps]) => {
+            const catLabel = document.createElement('div');
+            catLabel.className = 'wiz-mastery-category';
+            catLabel.textContent = cat;
+            wmSection.appendChild(catLabel);
+
+            const grid = document.createElement('div');
+            grid.className = 'wiz-checkbox-grid wiz-mastery-grid';
+            weps.forEach(w => {
+              const checked = d._weaponMasteryChoices.includes(w.name);
+              const lbl = document.createElement('label');
+              lbl.className = 'wiz-checkbox-label wiz-mastery-label' + (checked ? ' selected' : '');
+              lbl.innerHTML = `<input type="checkbox" value="${w.name}" ${checked ? 'checked' : ''}> ${w.name}`;
+              lbl.querySelector('input').addEventListener('change', function () {
+                if (this.checked) {
+                  if (d._weaponMasteryChoices.length >= count) { this.checked = false; return; }
+                  d._weaponMasteryChoices.push(w.name);
+                  lbl.classList.add('selected');
+                } else {
+                  d._weaponMasteryChoices = d._weaponMasteryChoices.filter(n => n !== w.name);
+                  lbl.classList.remove('selected');
+                }
+                renderWmGrid();
+              });
+              grid.appendChild(lbl);
+            });
+            wmSection.appendChild(grid);
+          });
+
+          skillDiv.appendChild(wmSection);
         }
       }
     };
@@ -1593,11 +1795,37 @@ window.Wizard = {
     } else {
       ABS.forEach(ab => { if (d[ab] == null) d[ab] = 10; });
       infoEl.innerHTML = `<p class="wiz-desc">Enter any score from 1–30 directly.</p>`;
-      renderBoxes((ab, score) => `<input type="number" class="wiz-ab-input" data-ab="${ab}" value="${score ?? 10}" placeholder="10" min="1" max="30">`);
+      renderBoxes((ab, score) => `<div class="wiz-ab-manual-row">
+        <button class="wiz-pb-btn wiz-manual-btn" data-ab="${ab}" data-dir="-1"${(score ?? 10) <= 1 ? ' disabled' : ''}>−</button>
+        <input type="number" class="wiz-ab-input" data-ab="${ab}" value="${score ?? 10}" placeholder="10" min="1" max="30">
+        <button class="wiz-pb-btn wiz-manual-btn" data-ab="${ab}" data-dir="1"${(score ?? 10) >= 30 ? ' disabled' : ''}>+</button>
+      </div>`);
+      const refreshManualBtns = (ab) => {
+        const box = boxesEl.querySelector(`.wiz-ab-box[data-ab="${ab}"]`);
+        if (!box) return;
+        const minus = box.querySelector('.wiz-manual-btn[data-dir="-1"]');
+        const plus = box.querySelector('.wiz-manual-btn[data-dir="1"]');
+        if (minus) minus.disabled = (d[ab] ?? 10) <= 1;
+        if (plus) plus.disabled = (d[ab] ?? 10) >= 30;
+      };
       boxesEl.querySelectorAll('.wiz-ab-input').forEach(inp => {
         inp.addEventListener('input', () => {
           d[inp.dataset.ab] = inp.value !== '' ? (parseInt(inp.value) || null) : null;
           refreshMod(inp.dataset.ab);
+          refreshManualBtns(inp.dataset.ab);
+        });
+      });
+      boxesEl.querySelectorAll('.wiz-manual-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const ab = btn.dataset.ab, dir = parseInt(btn.dataset.dir);
+          const cur = d[ab] ?? 10;
+          const nv = cur + dir;
+          if (nv < 1 || nv > 30) return;
+          d[ab] = nv;
+          const inp = boxesEl.querySelector(`.wiz-ab-input[data-ab="${ab}"]`);
+          if (inp) inp.value = nv;
+          refreshMod(ab);
+          refreshManualBtns(ab);
         });
       });
     }
@@ -1915,7 +2143,7 @@ window.Wizard = {
         div.className = 'ac-item';
         div.innerHTML = `<span class="ac-item-name">${item.name} <small>[${item._src}]</small></span><span class="ac-item-detail">${item._type}${item._dmgStr ? ' | ' + item._dmgStr : ''} | ${item._valueStr}</span>`;
         div.addEventListener('click', () => {
-          d.inventory.push({ name: item.name, type: item._type, damage: item._dmgStr || '', mastery: (item.mastery || []).join(', '), properties: item._propStr || '', weight: item.weight || 0, value: item._valueStr || '', _valueCp: item.value || 0, ac: item.ac || 0, rarity: item.rarity || 'none', category: item._category, qty: 1 });
+          d.inventory.push({ name: item.name, type: item._type, damage: item._dmgStr || '', mastery: (item.mastery || []).map(m => m.split('|')[0]).join(', '), properties: item._propStr || '', weight: item.weight || 0, value: item._valueStr || '', _valueCp: item.value || 0, ac: item.ac || 0, rarity: item.rarity || 'none', category: item._category, qty: 1 });
           renderList();
           input.value = '';
           dropdown.style.display = 'none';
@@ -1944,19 +2172,56 @@ window.Wizard = {
     const level1 = spells.filter(s => s.level === 1);
     d.charSpells = d.charSpells || [];
 
+    // Detect racial cantrips from species so we can grey them out
+    const racialCantripNames = new Set();
+    if (d._speciesInfo && typeof parseRacialSpells === 'function') {
+      const _srObj = d.charSubrace ? d._speciesInfo.subraces?.find(sr => sr.name === d.charSubrace) : null;
+      const _racialAddSpells = _srObj?.additionalSpells?.length
+        ? _srObj.additionalSpells : (d._speciesInfo.additionalSpells || []);
+      if (_racialAddSpells.length) {
+        const _racialParsed = parseRacialSpells(_racialAddSpells, d.charSubrace || '', _srObj?.entries);
+        (_racialParsed.cantrips || []).filter(Boolean).forEach(n => racialCantripNames.add(n.toLowerCase()));
+      }
+      // Fallback: scan species/subrace traits text for "{@spell X}" cantrip references
+      // This catches species whose cantrip is described in traits but not in additionalSpells
+      if (racialCantripNames.size === 0) {
+        const traitsHtml = _srObj?.entries
+          ? (Array.isArray(_srObj.entries) ? _srObj.entries : [_srObj.entries]).map(e => typeof e === 'string' ? e : JSON.stringify(e)).join(' ')
+          : (d._speciesInfo.traitsHtml || '');
+        const cantripMatches = traitsHtml.matchAll(/\{@spell ([^|}]+)[^}]*\}/gi);
+        for (const m of cantripMatches) {
+          const spellName = m[1].trim().toLowerCase();
+          // Only add if it's actually a cantrip in the spell data
+          const isCantrip = cantrips.some(c => c.name.toLowerCase() === spellName);
+          if (isCantrip) racialCantripNames.add(spellName);
+        }
+      }
+    }
+
     // Determine limits from class data
     const classInfo = className ? getClassInfo(className) : null;
     const maxCantrips = classInfo?.cantripCount ?? null;
-    // Prepared spell count: for known-casters it's a fixed number; for prepared casters it's level+mod
-    // At level 1 with average INT 16 (+3): level(1) + mod(3) = 4. Parse formula or use spellsKnownAtL1.
-    let maxPrepared = classInfo?.spellsKnownAtL1 ?? null;
-    if (maxPrepared === null && classInfo?.preparedSpellsFormula) {
-      // Formula is "<$level$> + <$int_mod$>" — evaluate at level 1 with draft INT
-      const intMod = Math.floor(((d.int || 10) - 10) / 2);
-      maxPrepared = 1 + intMod; // level 1 + int mod
+    const isSpellbook = classInfo?.spellbookSpellsAtL1 != null;
+
+    // Spell limit at level 1:
+    // - Spellbook casters (Wizard): pick 6 spells for the spellbook
+    // - Known casters (Bard, Sorcerer, Warlock, Ranger): fixed spellsKnown count
+    // - Prepared casters (Cleric, Druid, Paladin): level + ability mod
+    let maxSpells;
+    if (isSpellbook) {
+      maxSpells = classInfo.spellbookSpellsAtL1; // 6 for Wizard
+    } else {
+      maxSpells = classInfo?.spellsKnownAtL1 ?? null;
+      if (maxSpells === null && classInfo?.preparedSpellsFormula) {
+        const spellAb = classInfo.spellcastingAbility || 'int';
+        const abScore = d[spellAb] || 10;
+        const abMod = Math.floor((abScore - 10) / 2);
+        maxSpells = 1 + abMod; // level 1 + ability mod
+      }
     }
-    // Never allow 0 or negative prepared spells
-    if (maxPrepared !== null) maxPrepared = Math.max(1, maxPrepared);
+    // Never allow 0 or negative
+    if (maxSpells !== null) maxSpells = Math.max(1, maxSpells);
+    const maxPrepared = maxSpells; // alias for backward compat in renderCounter
 
     const countSelected = (level) => d.charSpells.filter(s => s.level === level && !s.racial).length;
 
@@ -1976,12 +2241,21 @@ window.Wizard = {
     };
 
     const cantripLabel = maxCantrips !== null ? `Cantrips <small style="font-weight:normal;color:var(--ink-faint)">(choose ${maxCantrips})</small>` : 'Cantrips';
-    const prepLabel = maxPrepared !== null ? `1st-Level Spells <small style="font-weight:normal;color:var(--ink-faint)">(choose ${maxPrepared})</small>` : '1st-Level Spells';
+    const spellSectionTitle = isSpellbook ? 'Spellbook' : '1st-Level Spells';
+    const spellSectionHint = isSpellbook
+      ? `(choose ${maxSpells} for your spellbook)`
+      : maxSpells !== null ? `(choose ${maxSpells})` : '';
+    const prepLabel = spellSectionHint
+      ? `${spellSectionTitle} <small style="font-weight:normal;color:var(--ink-faint)">${spellSectionHint}</small>`
+      : spellSectionTitle;
+    const descText = isSpellbook
+      ? `Choose ${maxCantrips || 3} cantrips and ${maxSpells} 1st-level spells for your ${className} spellbook. You can later prepare ${Math.max(1, 1 + Math.floor(((d[classInfo?.spellcastingAbility || 'int'] || 10) - 10) / 2))} of these spells after a Long Rest.`
+      : `Select cantrips and 1st-level spells for your ${className || 'class'}.`;
 
     container.innerHTML = `
       <div class="wiz-section">
         <h2 class="wiz-title">Choose Spells</h2>
-        <p class="wiz-desc">Select cantrips and 1st-level spells for your ${className || 'class'}.</p>
+        <p class="wiz-desc">${descText}</p>
         <div class="wiz-spell-group">
           <h3>${cantripLabel} <span id="wiz-cantrip-counter" style="font-size:0.82rem;margin-left:8px"></span></h3>
           <input type="text" id="wiz-cantrip-filter" class="wiz-search wiz-search-sm" placeholder="Filter cantrips..." autocomplete="off">
@@ -1999,33 +2273,76 @@ window.Wizard = {
       if (!el) return;
       const max = level === 0 ? maxCantrips : maxPrepared;
       el.innerHTML = '';
+      // Table header
+      const header = document.createElement('div');
+      header.className = 'wiz-spell-row wiz-spell-header';
+      header.innerHTML = `
+        <span class="wiz-spell-col-check"></span>
+        <span class="wiz-spell-col-name">Name</span>
+        <span class="wiz-spell-col-school">School</span>
+        <span class="wiz-spell-col-cast">Casting Time</span>
+        <span class="wiz-spell-col-range">Range</span>
+        <span class="wiz-spell-col-comp">Components</span>
+        <span class="wiz-spell-col-dur">Duration</span>`;
+      el.appendChild(header);
       spellsToRender.forEach(spell => {
+        const isRacial = level === 0 && racialCantripNames.has(spell.name.toLowerCase());
         const isSelected = d.charSpells.some(s => s.name === spell.name);
         const atMax = max !== null && countSelected(level) >= max && !isSelected;
-        const div = document.createElement('label');
-        div.className = 'wiz-spell-item' + (isSelected ? ' selected' : '') + (atMax ? ' disabled' : '');
-        if (atMax) div.style.opacity = '0.45';
-        div.innerHTML = `
-          <input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax ? 'disabled' : ''}>
-          <span class="wiz-spell-name">${spell.name}</span>
-          <span class="wiz-spell-meta">${spell._schoolName} | ${spell._castTime} | ${spell._rangeStr}</span>`;
-        div.querySelector('input').addEventListener('change', function () {
+        const isDisabled = isRacial || atMax;
+        const row = document.createElement('label');
+        row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (isDisabled ? ' disabled' : '');
+        if (isDisabled) row.style.opacity = '0.45';
+        row.innerHTML = `
+          <span class="wiz-spell-col-check"><input type="checkbox" ${isRacial ? 'checked disabled' : (isSelected ? 'checked' : '')} ${atMax ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name">${spell.name}${isRacial ? ' <small style="color:var(--ink-faint)">(from species)</small>' : ''}</span>
+          <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+          <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+          <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+          <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+          <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        // Tooltip on hover
+        row.addEventListener('mouseenter', (e) => {
+          let tip = document.getElementById('wiz-spell-tooltip');
+          if (!tip) {
+            tip = document.createElement('div');
+            tip.id = 'wiz-spell-tooltip';
+            tip.className = 'wiz-spell-tooltip';
+            document.body.appendChild(tip);
+          }
+          const desc = entriesToHtml(spell.entries || []);
+          const higher = spell.entriesHigherLevel ? `<p class="wiz-tip-higher"><strong>At Higher Levels.</strong> ${entriesToHtml(spell.entriesHigherLevel)}</p>` : '';
+          const header = `<div class="wiz-tip-header"><span class="wiz-tip-name">${spell.name}</span><span class="wiz-tip-level">${spell._levelStr} ${spell._schoolName ? '— ' + spell._schoolName : ''}</span></div>`;
+          const meta = `<div class="wiz-tip-meta">${spell._castTime || ''} | ${spell._rangeStr || ''} | ${spell._componentsStr || ''} | ${spell._durationStr || ''}</div>`;
+          tip.innerHTML = header + meta + '<div class="wiz-tip-body">' + _highlightSpellKeywords(desc + higher) + '</div>';
+          tip.style.display = 'block';
+          _positionSpellTooltip(tip, e);
+        });
+        row.addEventListener('mousemove', (e) => {
+          const tip = document.getElementById('wiz-spell-tooltip');
+          if (tip) _positionSpellTooltip(tip, e);
+        });
+        row.addEventListener('mouseleave', () => {
+          const tip = document.getElementById('wiz-spell-tooltip');
+          if (tip) tip.style.display = 'none';
+        });
+        row.querySelector('input').addEventListener('change', function () {
+          if (isRacial) { this.checked = true; return; } // cannot toggle racial cantrips
           if (this.checked) {
             if (max !== null && countSelected(level) >= max) { this.checked = false; return; }
             d.charSpells.push({ name: spell.name, level, prepared: true });
           } else {
             d.charSpells = d.charSpells.filter(s => s.name !== spell.name);
           }
-          div.classList.toggle('selected', this.checked);
+          row.classList.toggle('selected', this.checked);
           renderCounter(level);
-          // Re-render to update disabled states on other items
           const q = (level === 0
             ? document.getElementById('wiz-cantrip-filter')
             : document.getElementById('wiz-spell1-filter'))?.value.toLowerCase() || '';
           const filtered = (level === 0 ? cantrips : level1).filter(s => !q || s.name.toLowerCase().includes(q));
           renderSpellList(filtered, containerId, level);
         });
-        el.appendChild(div);
+        el.appendChild(row);
       });
       renderCounter(level);
     };
@@ -2081,7 +2398,8 @@ window.Wizard = {
         if (o.source === 'UA2024') { if (!ua || !show24) return false; }
         else if (typeof is2024Source === 'function' && is2024Source(o.source)) { if (!show24) return false; }
         else { if (!show14) return false; }
-        if (o._requiresSpecies && o._requiresSpecies.toLowerCase() !== (d.charSpecies || '').toLowerCase()) return false;
+        const _speciesBase = (d.charSpecies || '').split(' — ')[0].trim().toLowerCase();
+        if (o._requiresSpecies && o._requiresSpecies.toLowerCase() !== _speciesBase) return false;
         if (typeFilter.current && o._typeCode !== typeFilter.current) return false;
         if (query.length > 1 && !o.name.toLowerCase().includes(query)) return false;
         return true;
@@ -2095,12 +2413,11 @@ window.Wizard = {
           <div class="wiz-opts-meta">${opt._typeName} — ${opt._src}</div>`;
         item.addEventListener('click', () => {
           const idx = d.charOptions.indexOf(opt.name);
-          if (idx >= 0) {
+          const wasSelected = idx >= 0;
+          if (wasSelected) {
             d.charOptions.splice(idx, 1);
-            item.classList.remove('selected');
           } else {
             d.charOptions.push(opt.name);
-            item.classList.add('selected');
           }
           if (preview) {
             preview.innerHTML = `<div class="wiz-preview-card">
@@ -2108,6 +2425,19 @@ window.Wizard = {
               <div class="wiz-stat-row"><strong>${opt._typeName}</strong></div>
               <div class="wiz-traits">${(opt.description || '').replace(/\n/g, '<br>')}</div>
             </div>`;
+          }
+          // Clear search so the full list shows and the item is visible
+          const searchEl = document.getElementById('wiz-opts-search');
+          if (searchEl && searchEl.value) {
+            searchEl.value = '';
+          }
+          renderList();
+          updateChosen();
+          // If we just selected, scroll to the item in the refreshed list
+          if (!wasSelected) {
+            const listEl = document.getElementById('wiz-opts-list');
+            const target = listEl?.querySelector('.wiz-opts-item.selected');
+            if (target) target.scrollIntoView({ block: 'nearest' });
           }
         });
         item.addEventListener('mouseenter', () => {
@@ -2210,7 +2540,33 @@ window.Wizard = {
           </div>
           <div class="wiz-review-card">
             <h4>Ability Scores</h4>
-            ${ABS.map(ab => `<div>${AB_NAMES[ab]}: <strong>${d[ab] || 10}</strong> (${mod(d[ab])})</div>`).join('')}
+            ${(() => {
+              // Compute background ASI bonuses for display
+              const bgBonus = {};
+              ABS.forEach(ab => { bgBonus[ab] = 0; });
+              if (d._bgAsi) {
+                const t = d._bgAsi.type;
+                if (t === 'fixed' && d._bgInfo?.ability) {
+                  const { fixedBonus: fb } = _parseBgAbility(d._bgInfo.ability);
+                  for (const [k, v] of Object.entries(fb)) { if (bgBonus[k] !== undefined) bgBonus[k] = v; }
+                } else if (t === 'two_one') {
+                  if (d._bgAsi.twoAb) bgBonus[d._bgAsi.twoAb] = 2;
+                  if (d._bgAsi.oneAb && d._bgAsi.oneAb !== d._bgAsi.twoAb) bgBonus[d._bgAsi.oneAb] = 1;
+                } else if (t === 'two_plus_one') {
+                  if (d._bgAsi.twoAb) bgBonus[d._bgAsi.twoAb] = 1;
+                  if (d._bgAsi.oneAb && d._bgAsi.oneAb !== d._bgAsi.twoAb) bgBonus[d._bgAsi.oneAb] = 1;
+                } else if (t === 'all_three') {
+                  (d._bgAsi.threeAbs || []).forEach(ab => { bgBonus[ab] = 1; });
+                }
+              }
+              return ABS.map(ab => {
+                const base = d[ab] || 10;
+                const bonus = bgBonus[ab] || 0;
+                const total = Math.min(20, base + bonus);
+                const bonusStr = bonus > 0 ? ` <span style="color:var(--green);font-size:0.85rem">+${bonus} BG</span>` : '';
+                return `<div>${AB_NAMES[ab]}: <strong>${total}</strong> (${mod(total)})${bonusStr}</div>`;
+              }).join('');
+            })()}
           </div>
           <div class="wiz-review-card">
             ${(() => {
@@ -2289,6 +2645,23 @@ window.Wizard = {
           <div class="wiz-review-card">
             <h4>Other Options (${(d.charOptions || []).length})</h4>
             ${(d.charOptions || []).map(o => `<div>• ${o}</div>`).join('') || '<div>None</div>'}
+          </div>
+          <div class="wiz-review-card">
+            ${(() => {
+              const bgSkills = new Set(Object.keys(d._bgInfo?.skillProf || {}).map(_normalizeSkillKey));
+              const classSkills = new Set((d._classSkillChoices || []).map(_normalizeSkillKey));
+              const allSkills = [...new Set([...bgSkills, ...classSkills])].sort();
+              const rows = allSkills.map(sk => {
+                const label = _skillLabel(sk);
+                const tag = bgSkills.has(sk) && classSkills.has(sk)
+                  ? ' <span class="wiz-review-skill-tag">background &amp; class</span>'
+                  : bgSkills.has(sk)
+                    ? ' <span class="wiz-review-skill-tag">background</span>'
+                    : ' <span class="wiz-review-skill-tag">class</span>';
+                return `<div>• ${label}${tag}</div>`;
+              }).join('');
+              return `<h4>Skill Proficiencies (${allSkills.length})</h4>${rows || '<div>None</div>'}`;
+            })()}
           </div>
         </div>
       </div>`;

@@ -1,0 +1,642 @@
+================================================================================
+  D&D 2024 CHARACTER SHEET — FUTURE IMPLEMENTATION PLAN
+  Rest System, Weapon Mastery, Class Features, and All Character Options
+================================================================================
+
+This document serves as a comprehensive blueprint for extending the rest system,
+weapon mastery, and class/species/background features to every class, subclass,
+species, background, and item in the app. It is written to be applied by a
+future developer (or AI instance) with full context of the codebase architecture.
+
+--------------------------------------------------------------------------------
+ARCHITECTURE OVERVIEW (READ FIRST)
+--------------------------------------------------------------------------------
+
+Key files and responsibilities:
+  - js/data.js        : Data loading (5etools API + UA2024_DATA), helper
+                        functions (getClassInfo, getSpeciesInfo, etc.)
+  - js/ua-data.js     : Bundled UA/2024 data for classes/species not yet in
+                        the 5etools fetch (add new content here)
+  - js/wizard.js      : 8-step character creation wizard
+  - js/sheet.js       : Main character sheet rendering and logic
+  - js/combat.js      : Combat tab, hit dice, and REST MODAL SYSTEM
+  - js/levelup.js     : Level-up modal (ASIs, subclass, HP, new features)
+  - js/store.js       : CharStore — localStorage per-character storage
+
+Character data is stored in localStorage as JSON keyed by character ID.
+Key fields relevant to this plan:
+  - charClass, charSubclass, charSpecies, charBackground, charLevel
+  - resources: [{name, max, used, refresh}]   — limited use features
+  - weaponMastery: [string, ...]              — chosen mastery weapons
+  - hitDice: [{die, total, used}]             — hit dice tracking
+  - charSpells: [{name, level, prepared}]     — known/prepared spells
+
+The REST MODAL SYSTEM (js/combat.js) is the central hub for all rest logic.
+It has three entry points:
+  _openRestModal('short')  → Short Rest modal
+  _openRestModal('long')   → Long Rest modal
+  _openRestModal('dawn')   → Dawn modal
+
+Each modal type calls a body-builder function and a do-execute function.
+
+
+================================================================================
+SECTION 1: WEAPON MASTERY — FULL IMPLEMENTATION
+================================================================================
+
+CURRENT STATE (as of this commit):
+  - Barbarian gets weapon mastery picker during character creation (wizard.js)
+  - getClassInfo() returns weaponMasteryCount detected from class feature data
+  - getMeleeWeaponsForMastery() returns all Simple/Martial Melee weapons
+  - Long Rest modal allows swapping ONE mastery weapon per rest
+  - Mastery is stored as weaponMastery: [string] in character data
+
+WHAT STILL NEEDS TO BE DONE:
+
+1. SCALE MASTERY COUNT BY LEVEL (currently only partially handled in combat.js)
+   The Barbarian Weapon Mastery column is:
+     Level 1:  2 weapons
+     Level 4:  3 weapons
+     Level 10: 4 weapons
+   Other 2024 classes with Weapon Mastery:
+     Fighter:  3 at lv1, 4 at lv4, 5 at lv10
+     Paladin:  2 at lv1, 3 at lv4
+     Ranger:   2 at lv1, 3 at lv4
+     Rogue:    2 at lv1, 3 at lv5
+
+   IMPLEMENTATION:
+   - In data.js getClassInfo(), add a `weaponMasteryTable` field: an array of
+     {level, count} objects read from the class features table.
+   - In combat.js _buildLongRestBody(), replace the hardcoded Barbarian check
+     with a general lookup: find the highest table entry whose level <= charLevel.
+   - In levelup.js, when leveling up check if weaponMasteryCount increased and
+     prompt the player to choose the additional weapon(s).
+
+2. DISPLAY MASTERY ON SHEET
+   - In the Attacks table (sheet.js), when an attack's weapon name matches a
+     weapon in CharStore.lv('weaponMastery'), auto-display the mastery property.
+   - The mastery property for each weapon is available in DndData.allItems —
+     look for item.mastery array (e.g. ['Topple|XPHB', 'Vex|XPHB']).
+   - Strip the source tag: 'Topple|XPHB' → 'Topple'.
+   - Add a read-only mastery display badge in the attack row.
+
+3. RANGED WEAPON MASTERY
+   - Some classes (Fighter, Ranger, Rogue) can also choose Ranged weapons.
+   - Add getMeleeAndRangedWeaponsForMastery() that includes Simple/Martial Ranged.
+   - In getClassInfo(), detect whether the class gets ranged weapon mastery too
+     (look for "Simple or Martial weapon" vs "Simple or Martial Melee weapon"
+     in the feature text).
+   - Pass an `allowRanged` flag to the wizard mastery picker section.
+
+4. MASTERY SWAP ON LEVEL UP
+   - In levelup.js, if the new level crosses a mastery threshold (e.g. Barbarian
+     hits level 4), show a mastery-slot-increase step where the player chooses
+     the new additional weapon.
+
+
+================================================================================
+SECTION 2: REST SYSTEM — COMPLETE CLASS-BY-CLASS GUIDE
+================================================================================
+
+The rest modal system is in js/combat.js. The three modal types and what each
+class should offer within them:
+
+─────────────────────────────────────────────────
+SHORT REST — _buildShortRestBody / _doShortRest
+─────────────────────────────────────────────────
+Features that refresh on Short Rest (refresh: 'sr'):
+
+  BARBARIAN   : Nothing special — Rage does NOT refresh on short rest.
+  BARD        : Bardic Inspiration (starting at level 5 onward it's LR;
+                before level 5 it refreshes on short rest — Bard 2014 only).
+  FIGHTER     : Second Wind (1 use, refresh SR), Action Surge (1–2 uses SR),
+                Indomitable (LR). Fighter 2024: Second Wind restores HP.
+  MONK        : Discipline Points (all expended points recovered on SR),
+                Stunning Strike (uses Discipline Points).
+  RANGER      : Nothing specifically SR in 2024.
+  WARLOCK     : Spell Slots (ALL warlock spell slots recover on SR) — this
+                is THE most important SR feature. In _doShortRest, detect if
+                charClass === 'Warlock' and restore all warlock spell slots.
+  WIZARD      : Arcane Recovery (short rest feature — recover some spell slots
+                once per day). This is once-per-LR, usable during SR.
+
+  IMPLEMENTATION NOTES:
+  - Warlock slot recovery: in _doShortRest(), check charClass. If Warlock,
+    restore all spell slots (same logic as LR slot restore in _doLongRest).
+  - Wizard Arcane Recovery: store as a resource with refresh='lr'. It appears
+    in the SR modal because it's used during SR. To handle: add a flag
+    'usableOnShortRest: true' to such resources, and show them in the SR modal
+    under "Once-per-day features usable during Short Rest."
+  - Generally, auto-populate class resources on character creation/level-up
+    (see Section 4 of this document).
+
+─────────────────────────────────────────────────
+LONG REST — _buildLongRestBody / _doLongRest
+─────────────────────────────────────────────────
+Features that refresh on Long Rest (refresh: 'lr'):
+
+  ALL CLASSES   : HP to max, half hit dice restored (min 1 per type),
+                  all spell slots restored, death saves reset,
+                  exhaustion -1. Already implemented.
+
+  BARBARIAN     : Rage uses (all), Weapon Mastery swap (1 weapon).
+  BARD          : Bardic Inspiration (lv 5+), Magical Secrets uses.
+  CLERIC        : Channel Divinity (1–3 uses depending on level),
+                  Divine Intervention (1 use).
+  DRUID         : Wild Shape (uses), Wild Strikes, Beast Spells.
+  FIGHTER       : Indomitable (1–3 uses). Second Wind / Action Surge already
+                  refresh on SR so they restore here too (LR includes SR).
+  MONK          : Discipline Points already LR (all restored), Perfect Self,
+                  Empty Body.
+  PALADIN       : Lay on Hands (HP pool restored fully), Channel Divinity,
+                  Divine Smite slots (all spell slots restore).
+  RANGER        : Foe Slayer, some subclass features.
+  ROGUE         : Reliable Talent (passive, no tracking), Uncanny Dodge
+                  (passive), Evasion (passive). Stroke of Luck (1 use LR).
+  SORCERER      : Sorcery Points (all), Metamagic, Innate Sorcery.
+  WARLOCK       : Mystic Arcanum (1 use per level 6/7/8/9 — LR, NOT SR).
+  WIZARD        : Signature Spells (once per SR but reset on LR).
+
+  LONG REST OPTIONAL CHOICES:
+  Some classes make choices during a Long Rest:
+  - Barbarian: Swap one Weapon Mastery choice (ALREADY IMPLEMENTED).
+  - Druid: Choose Wild Shape form (if rule is form-change-on-LR).
+  - Wizard: Change prepared spells — in the LR modal, show a link/note
+    directing the player to the Spells tab to update prepared spells.
+    Flag prepared spells as "prepared spells may be changed after LR."
+  - Cleric/Paladin/Druid: Prepared spells change — same note as Wizard.
+  - Any class with "practice weapon drills" (Weapon Mastery): show the
+    mastery swap UI.
+
+─────────────────────────────────────────────────
+DAWN — _buildDawnBody / _doDawn
+─────────────────────────────────────────────────
+Features that refresh at dawn (refresh: 'dawn'):
+
+  CLERIC        : Divine Intervention recharges at dawn in some variants.
+  DRUID         : Some Wild Shape forms list "recharge at dawn."
+  ITEMS         : Many magic items recharge at dawn:
+                    - Ring of Three Wishes (some interpretations)
+                    - Staff of the Magi (recharges 2d6+4 charges at dawn)
+                    - Wand of Fireballs (recharges 1d6+1 charges at dawn)
+                    - Deck of Many Things (optional)
+                    - Most "X charges, regains Y at dawn" items
+  PATH OF THE BERSERKER (Barbarian subclass level 10: Retaliation):
+                  Retaliation is a reaction, not a tracked resource.
+                  NOT dawn-refresh.
+  PATH OF WILD MAGIC (Barbarian subclass):
+                  Wild Surge (no per-rest tracking — random on rage).
+
+  IMPLEMENTATION:
+  Dawn resources are already supported (refresh: 'dawn'). The key task is
+  auto-populating magic item charges as dawn resources when items are added
+  to inventory. See Section 5 of this document.
+
+
+================================================================================
+SECTION 3: BARBARIAN — COMPLETE FEATURE CHECKLIST
+================================================================================
+
+When a Barbarian character is created or levels up, the following resources
+and features should be auto-populated in the character's `resources` array.
+
+AUTO-ADD ON CHARACTER CREATION (level 1):
+  - Rage:
+      name: "Rage", max: 2, refresh: 'lr'
+      (Note: max scales with level — see table below)
+  - Weapon Mastery: HANDLED via weaponMastery[] array, not resources.
+
+RAGE USES TABLE (XPHB 2024):
+  Level 1–2:   2 uses,  +2 damage
+  Level 3–5:   3 uses,  +2 damage
+  Level 6–8:   4 uses,  +2 damage
+  Level 9–11:  4 uses,  +3 damage
+  Level 12–16: 5 uses,  +3 damage
+  Level 17–19: 6 uses,  +4 damage
+  Level 20:    Unlimited (set max to 99 or add special flag)
+
+WEAPON MASTERY TABLE:
+  Level 1–3:  2 weapons
+  Level 4–9:  3 weapons
+  Level 10+:  4 weapons
+
+FEATURES BY LEVEL (no resource tracking needed — informational only):
+  Level 1:  Rage (tracked), Unarmored Defense, Weapon Mastery (tracked)
+  Level 2:  Danger Sense (passive), Reckless Attack (passive)
+  Level 3:  Barbarian Subclass, Primal Knowledge (+1 skill)
+  Level 4:  Ability Score Improvement, Weapon Mastery +1 slot
+  Level 5:  Extra Attack (passive), Fast Movement (passive)
+  Level 6:  Subclass feature, Rage Uses +1 (now 4)
+  Level 7:  Feral Instinct (passive), Instinctive Pounce (passive)
+  Level 8:  Ability Score Improvement
+  Level 9:  Brutal Strike (uses Reckless Attack — no separate tracking)
+  Level 10: Subclass feature, Weapon Mastery +1 slot (now 4)
+  Level 11: Relentless Rage (passive — no resource use)
+  Level 12: Ability Score Improvement, Rage Uses +1 (now 5)
+  Level 13: Improved Brutal Strike (Hamstring Blow — no resource)
+  Level 14: Subclass feature
+  Level 15: Persistent Rage (passive — rage won't end on low roll)
+  Level 16: Ability Score Improvement
+  Level 17: Improved Brutal Strike (Staggering/Sundering), Rage Uses +1 (6)
+  Level 18: Indomitable Might (passive — STR check minimum = STR score)
+  Level 19: Epic Boon
+  Level 20: Primal Champion (+4 STR/+4 CON), Unlimited Rage
+
+PATH OF THE BERSERKER (Subclass):
+  Level 3:  Frenzy
+              - During Rage, bonus action attack each turn (no extra resource;
+                it's an extension of Rage)
+              - After Rage: 1 level of Exhaustion (auto-track: when Rage ends
+                after using Frenzy, increment exhaustion by 1)
+              AUTO-ADD resource: "Frenzy (active this Rage): max 1, refresh SR
+              (cleared when rage ends)" — or handle via UI checkbox on rage
+  Level 6:  Mindless Rage
+              - Immunity to Charmed/Frightened while Raging — passive, no track
+  Level 10: Retaliation
+              - Reaction attack when creature damages you — passive, no track
+  Level 14: Intimidating Presence
+              AUTO-ADD resource: "Intimidating Presence": max 1, refresh LR
+              (Can frighten a creature; once used, must LR to use again
+               — unless the target is immune)
+
+IMPLEMENTATION STEPS FOR BARBARIAN AUTO-POPULATION:
+
+1. In wizard.js _finalize(), after class is confirmed as 'Barbarian', call
+   a helper function addClassStartingResources(draft) that reads the class
+   feature data and pushes default resources into draft.resources.
+
+2. In levelup.js, when confirming a level-up, call
+   updateClassResources(charClass, charSubclass, newLevel) which:
+     a. Updates existing class resources (e.g., Rage max from 2 → 3 at lv3)
+     b. Adds new resources for newly gained features
+     c. Does NOT duplicate resources already present (check by name)
+
+3. Store rage damage bonus separately for display:
+     CharStore.sv('rageDamageBonus', 2)  // or 3, 4 based on level
+   Show it in the combat stats or as a note in the Rage resource.
+
+
+================================================================================
+SECTION 4: ALL CLASS AUTO-POPULATION GUIDE
+================================================================================
+
+This section outlines what resources to auto-add for each 2024 XPHB class.
+All auto-resources should be added in wizard.js _finalize() and updated in
+levelup.js on level-up. The helper function signature should be:
+
+  function getClassStartingResources(className, subclassName, level, charData)
+  Returns: [{name, max, used, refresh, notes?}]
+
+─────────────────────────────────────────
+BARBARIAN (see Section 3 for full table)
+─────────────────────────────────────────
+  Level 1: Rage (2 uses, LR)
+  Level 3 (Berserker): Intimidating Presence (1 use, LR at lv14)
+
+─────────────────────────────────────────
+BARD
+─────────────────────────────────────────
+  Level 1: Bardic Inspiration (proficiency bonus uses, SR before lv5, LR lv5+)
+  Level 6: Countercharm (no resource — action during combat)
+  Level 10: Magical Secrets (tracked if chosen spells are limited)
+  Subclass College of Lore: Cutting Words (Bardic Inspiration uses)
+
+  NOTE: Bardic Inspiration max = proficiency bonus. Update on every level.
+
+─────────────────────────────────────────
+CLERIC
+─────────────────────────────────────────
+  Level 1: Channel Divinity (1 use at lv1, 2 at lv6, 3 at lv18, refresh SR)
+  Level 17: Divine Intervention (1 use, LR)
+  Subclass features (e.g. Life Domain: Blessed Healer, Disciple of Life) — passive
+
+─────────────────────────────────────────
+DRUID
+─────────────────────────────────────────
+  Level 2: Wild Shape (proficiency bonus uses per day, SR)
+  Level 10: Wild Strikes (passive — extra die on Wild Shape attack)
+  Level 20: Beast Spells (passive)
+  Subclass Circle of the Moon: Enhanced uses of Wild Shape
+
+─────────────────────────────────────────
+FIGHTER
+─────────────────────────────────────────
+  Level 1: Second Wind (1 use, SR), Weapon Mastery (3 at lv1)
+  Level 2: Action Surge (1 use, SR; 2 uses at lv17)
+  Level 9: Indomitable (1 use LR, 2 at lv13, 3 at lv17)
+  Subclass Battlemaster: Superiority Dice (4d8 at lv3, scale up, SR)
+  Subclass Champion: Improved Critical (passive)
+  Subclass Eldritch Knight: spell slots (standard wizard progression)
+
+─────────────────────────────────────────
+MONK
+─────────────────────────────────────────
+  Level 1: Discipline Points (= Monk level, SR)
+            Martial Arts die (passive — no tracking needed, show die size)
+  Level 2: Flurry of Blows (costs Discipline Points)
+  Level 3: Deflect Attacks (costs Discipline Points for redirect)
+  Level 5: Stunning Strike (costs 1 Discipline Point per use)
+  Level 20: Perfect Self (if no Discipline Points at start of combat,
+              regain 4 — triggers automatically, consider auto-detect)
+
+─────────────────────────────────────────
+PALADIN
+─────────────────────────────────────────
+  Level 1: Weapon Mastery (2 at lv1, 3 at lv4)
+  Level 2: Lay on Hands (HP pool = Paladin level × 5, LR)
+            Divine Smite (uses spell slots — tracked by slot system)
+            Channel Divinity (2 uses, SR) — added at lv3 technically
+  Level 5: Extra Attack (passive)
+  Level 20: Sacred Weapon (passive in 2024)
+
+─────────────────────────────────────────
+RANGER
+─────────────────────────────────────────
+  Level 1: Weapon Mastery (2 at lv1, 3 at lv4)
+            Favored Enemy (passive in 2024)
+  Level 2: Deft Explorer (passive)
+  Level 20: Foe Slayer (1 use, LR)
+  Subclass Hunter: Hunter's Prey (passive)
+
+─────────────────────────────────────────
+ROGUE
+─────────────────────────────────────────
+  Level 1: Weapon Mastery (2 at lv1, 3 at lv5)
+            Sneak Attack (passive — show die at each level)
+  Level 5: Uncanny Dodge (reaction, passive — no tracking)
+  Level 11: Reliable Talent (passive)
+  Level 20: Stroke of Luck (1 use, LR)
+  Subclass Assassin: Assassinate (advantage passive)
+  Subclass Thief: Supreme Sneak, Thief's Reflexes (passive)
+  Subclass Arcane Trickster: spell slots (standard wizard progression)
+
+─────────────────────────────────────────
+SORCERER
+─────────────────────────────────────────
+  Level 2: Sorcery Points (= Sorcerer level, LR)
+            Metamagic (choices made, tracked as informational)
+  Level 2: Innate Sorcery (1 use, LR)
+  Level 20: Sorcerous Restoration (restores 4 SP on SR, once per SR)
+
+─────────────────────────────────────────
+WARLOCK
+─────────────────────────────────────────
+  Level 1: Spell Slots (refresh on SR — SPECIAL: restore ALL slots on SR)
+  Level 2: Eldritch Invocations (choices — informational)
+  Level 6+: Mystic Arcanum (1 use per spell level 6/7/8/9, LR)
+  Level 20: Eldritch Master (1 use, LR — request full slot restore)
+
+  CRITICAL IMPLEMENTATION NOTE:
+  In _doShortRest(), add a check:
+    if (charClass === 'Warlock') { restore all warlock spell slots }
+  Warlock DOES NOT restore slots on LR additionally — they refresh on SR.
+  The LR slot restore should SKIP warlock slots (or it's fine to restore
+  them too since they'd already be full from SR).
+
+─────────────────────────────────────────
+WIZARD
+─────────────────────────────────────────
+  Level 2: Arcane Recovery (1 use LR, usable during SR to recover some slots)
+            Store as: {name: "Arcane Recovery", max: 1, refresh: 'lr',
+                       usableOnShortRest: true}
+            In _buildShortRestBody(), show LR resources with usableOnShortRest.
+  Level 6: Subclass features
+  Level 18: Spell Mastery (2 spells always prepared and free to cast — passive)
+  Level 20: Signature Spells (1 SR each for 2 specific 3rd-level spells)
+              Store: {name: "Signature Spell: [name]", max: 1, refresh: 'sr'}
+
+
+================================================================================
+SECTION 5: SPECIES FEATURES — AUTO-POPULATION GUIDE
+================================================================================
+
+Species features with limited uses should be auto-added to resources on
+character creation. Here is the pattern for common 2024 XPHB species:
+
+  ELF (High Elf): Detect Magic cantrip — no resource
+  GNOME (Forest): Speak with Small Beasts — no resource
+  TIEFLING: Hellish Rebuke (spell, uses Charisma spellcasting, LR limit)
+              {name: "Tiefling Racial Spells", max: 1, refresh: 'lr'}
+  DRAGONBORN: Breath Weapon (proficiency bonus uses, LR)
+              {name: "Breath Weapon", max: profBonus, refresh: 'lr'}
+  HALF-ORC: Relentless Endurance (1 use, LR)
+              {name: "Relentless Endurance", max: 1, refresh: 'lr'}
+  ARDLING: Angelic Flight (1 use, SR)
+              {name: "Angelic Flight", max: 1, refresh: 'sr'}
+  AASIMAR: Healing Hands (1 use, LR)
+              {name: "Healing Hands", max: 1, refresh: 'lr'}
+  DUERGAR: Duergar Magic (1 use LR for Enlarge/Reduce)
+  GITHYANKI: Astral Knowledge (1 use LR)
+  GITHZERAI: Psychic Resilience (1 use LR)
+  GEM DRAGONBORN: Gem Flight (1 use, LR)
+  ORC: Relentless Endurance (1 use, LR)
+  GOLIATH: Giant's Legacy — Powerful Build (passive); Stone's Endurance (PB uses, LR)
+
+  IMPLEMENTATION:
+  In wizard.js _finalize(), after applying species data, call:
+    addSpeciesStartingResources(draft)
+  This reads the species entries text, detects limited-use patterns
+  (phrases like "once per Long Rest", "number of times equal to your
+  proficiency bonus"), and adds the corresponding resource entry.
+
+  Pattern detection heuristics (search feature text):
+    "once" + ("long rest" OR "LR") → max: 1, refresh: 'lr'
+    "once" + ("short rest" OR "SR") → max: 1, refresh: 'sr'
+    "at dawn" → refresh: 'dawn'
+    "proficiency bonus" + "per" → max: profBonus (dynamic, update on level-up)
+    "number of times equal to your [Ability] modifier" → max: abilityMod
+
+
+================================================================================
+SECTION 6: BACKGROUND FEATURES — AUTO-POPULATION GUIDE
+================================================================================
+
+2024 XPHB backgrounds generally do NOT have limited-use features (they grant
+proficiencies, languages, and starting equipment). However, some 2014 and
+custom backgrounds have Origin Feats or special features with limited uses.
+
+  CHARLATAN: False Identity — passive, no tracking
+  CRIMINAL: Thieves' Tools proficiency — passive
+  FOLK HERO: Rustic Hospitality — passive/social
+  NOBLE: Position of Privilege — passive/social
+  SAGE: Researcher — passive
+
+  Origin Feat (2024): Each background grants one Origin Feat.
+  Many Origin Feats are passive but some have limited uses:
+    Alert: Initiative bonus — passive
+    Crafter: Discount — passive
+    Healer: Stabilize uses — Healer feat: {name: "Healer", max: 1, refresh: 'sr'}
+    Lucky: Luck Points (3 uses, LR)
+              {name: "Luck Points", max: 3, refresh: 'lr'}
+    Magic Initiate: spell once per LR
+              {name: "Magic Initiate: [Spell]", max: 1, refresh: 'lr'}
+    Tavern Brawler: passive (d4 unarmed)
+    Tough: +2 HP per level — passive
+    War Caster: passive
+
+  IMPLEMENTATION:
+  In wizard.js _finalize(), after applying background and Origin Feat:
+    addFeatResources(featName, draft)
+  This checks the feat name against a known table of feats with limited uses
+  and adds the appropriate resource entry.
+
+
+================================================================================
+SECTION 7: MAGIC ITEMS — AUTO-POPULATION GUIDE
+================================================================================
+
+When a magic item with charges is added to inventory, auto-create a dawn
+resource entry for it.
+
+COMMON PATTERNS in item text:
+  "X charges" + "regains" + Y + "charges" + "at dawn"
+  → {name: "[Item Name] Charges", max: X, used: 0, refresh: 'dawn'}
+
+  "once per day" or "once per long rest"
+  → {name: "[Item Name]", max: 1, refresh: 'lr'}
+
+  "once per short rest"
+  → {name: "[Item Name]", max: 1, refresh: 'sr'}
+
+SPECIFIC ITEMS TO HANDLE:
+  Staff of the Magi:     max: 50 charges, dawn recovery (2d6+4)
+                         → store as: {name: "Staff of the Magi", max: 50,
+                                      refresh: 'dawn', rechargeRoll: '2d6+4'}
+  Wand of Fireballs:     max: 7 charges, dawn: 1d6+1
+  Rod of Lordly Might:   max: 6 charges, dawn: 1d6
+  Cloak of Invisibility: max: 2 hours use, dawn refresh
+  Ring of Regeneration:  passive (no tracking)
+  Amulet of Health:      passive
+  Bag of Holding:        no charges
+
+IMPLEMENTATION STEPS:
+1. When adding an item to inventory (sheet.js addInventoryItem or inventory modal),
+   check item._isMagic and item.entries text for the patterns above.
+2. If a charge pattern is detected, prompt: "Add [X] charges as a tracked
+   resource?" with a Yes/No dialog.
+3. If Yes, push to resources array with appropriate refresh type.
+4. In the dawn modal, display all resources with refresh: 'dawn' and show
+   the rechargeRoll if present (show a dice button to roll recovery).
+
+ATTUNEMENT:
+  - Track attuned items as CharStore.sv('attunedItems', ['item1', 'item2', 'item3'])
+  - Maximum 3 attuned items (unless a feature allows more).
+  - In the Long Rest modal, show current attuned items with checkboxes to
+    change attunement (add/remove up to 3 slots).
+  - In inventory, add an "Attune" button next to magic items that require it.
+
+
+================================================================================
+SECTION 8: GIFTS AND OTHER CHARACTER OPTIONS
+================================================================================
+
+The app has a charOptions array for Supernatural Gifts, Dark Gifts, and other
+character options from UA/special rules. These often have limited uses.
+
+SUPERNATURAL GIFTS (from PHB/UA):
+  Gift of the Chromatic Dragon: Chromatic Infusion (1 use, LR)
+  Gift of the Metallic Dragon:  Protective Wings (PB uses, LR)
+  Gift of the Gem Dragon:       Telekinetic Reprisal (PB uses, LR)
+
+DARK GIFTS (from Van Richten's):
+  These vary; most are passive or have once-per-day uses.
+
+IMPLEMENTATION:
+  Extend the charOptions data in ua-data.js to include:
+    _resources: [{name, maxFormula, refresh}]
+  Where maxFormula can be 'PB' (proficiency bonus), a number, or a dice expr.
+  Then in wizard.js _finalize() or sheet.js init, resolve these and push to
+  character resources.
+
+
+================================================================================
+SECTION 9: LEVEL-UP INTEGRATION
+================================================================================
+
+In levelup.js, when a level-up is confirmed, the system should:
+
+1. DETECT RESOURCE CHANGES
+   Call getClassStartingResources(className, subclassName, newLevel) and compare
+   against current resources. For each new/changed resource:
+     a. New feature: push to resources array
+     b. Updated max (e.g. Rage 2→3): find by name and update max
+     c. Changed refresh type: update refresh field
+
+2. DETECT WEAPON MASTERY THRESHOLD CROSSED
+   If newLevel is 4, 5, or 10 (class-dependent), show a mastery-weapon picker
+   step in the level-up modal so the player chooses the new weapon slot.
+
+3. DETECT SUBCLASS ACQUISITION (level 3 for most classes)
+   When subclass is chosen, call getSubclassStartingResources(subclassName, 3)
+   and add subclass resources (e.g. Berserker: Intimidating Presence at lv14).
+
+4. RAGE DAMAGE BADGE
+   Store CharStore.sv('rageDamageBonus', N) and display it on the sheet.
+   Update it on every Barbarian level-up using the table in Section 3.
+
+
+================================================================================
+SECTION 10: IMPLEMENTATION PRIORITY ORDER
+================================================================================
+
+Suggested order for completing the remaining work:
+
+PHASE 1 — Core class auto-population:
+  1. Create addClassStartingResources(draft) in wizard.js or a new resources.js
+  2. Implement for: Barbarian, Fighter, Paladin, Ranger (weapon mastery classes)
+  3. Implement for: Warlock (SR slot recovery), Sorcerer (SP), Monk (DP)
+  4. Update levelup.js to call updateClassResources on level-up
+
+PHASE 2 — Weapon mastery enhancements:
+  1. Scale mastery count by level (using weaponMasteryTable)
+  2. Display mastery property in attack rows (from DndData item data)
+  3. Add ranged weapon mastery for Fighter/Ranger/Rogue
+  4. Level-up mastery slot increase prompt
+
+PHASE 3 — Species and background resources:
+  1. Add addSpeciesStartingResources() in wizard.js
+  2. Add addFeatResources() for Origin Feats with limited uses
+  3. Handle proficiency-bonus-scaling resources (update on level-up)
+
+PHASE 4 — Magic item integration:
+  1. Charge auto-detection when item is added to inventory
+  2. Dawn modal: add recharge roll UI for items with rechargeRoll
+  3. Attunement tracking UI in inventory and Long Rest modal
+
+PHASE 5 — Subclasses (beyond Berserker):
+  Repeat the Berserker pattern for all subclasses, starting with the
+  most popular: Sorcerer (Wild Magic, Draconic), Warlock (Fiend, Archfey),
+  Wizard (Evoker, Diviner), Paladin (Devotion, Ancients).
+
+PHASE 6 — Prepared spell change prompts:
+  In Long Rest modal, for Wizard/Cleric/Druid/Paladin, show a "Change
+  Prepared Spells" button that navigates to the Spells tab.
+
+
+================================================================================
+NOTES ON DATA SOURCES
+================================================================================
+
+- 5etools JSON is the primary source for class features, spell data, items.
+  Base URL: https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/
+  Class files: data/class/class-{barbarian|bard|cleric...}.json
+  Each class JSON has:
+    class[0].classFeature  → array of features with level, name, entries
+    class[0].classTableGroups → the progression table (includes mastery column)
+
+- For weapon mastery counts per level, parse classTableGroups looking for
+  the column labelled "Weapon Mastery" and read the value at each level.
+
+- For checking if a weapon has a mastery property: DndData.allItems
+  item.mastery = ['Topple|XPHB']  → strip source tag for display.
+
+
+================================================================================
+END OF FUTURE PLAN
+================================================================================
+Last updated: 2026-03-12
+Implemented so far: Barbarian weapon mastery (wizard), 3-button rest system
+  (Short Rest with hit dice modal, Long Rest with mastery swap, Dawn),
+  resource refresh-type tracking (dropdown kept for categorization),
+  individual resource reset buttons removed (rest modal handles bulk reset).
+================================================================================

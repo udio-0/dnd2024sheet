@@ -94,9 +94,16 @@ window.Sheet = {
     this.initCharOptions();
     this.initResources();
     this.initWeightTracking();
+    this._initSpellConcentration();
+    this._initSpellFilters();
+    this._initSpellAttackRoll();
+    if (typeof Combat !== 'undefined') Combat.initDeathSaves();
     this.recalcAll();
     this.syncXPToLevel();
     this.refreshAttackList();
+    this.updateSubclassAccess();
+    this.initEquippedGear();
+    this.initCombatEconomy();
     if (typeof LevelUp !== 'undefined') LevelUp.init();
 
   },
@@ -185,10 +192,84 @@ window.Sheet = {
       cb.addEventListener('change', () => { this.sv(`saveProf_${s.key}`, cb.checked); this.recalcAll(); });
       row.querySelector('.stat-val').addEventListener('click', () => {
         const mod = parseInt(this.$(`save-${s.key}`)?.textContent) || 0;
-        const result = Dice.rollD20(mod);
-        Dice.showResult(`${s.label} Save`, result);
+        this._conditionRollD20(`${s.label} Save`, mod, 'save', s.key);
       });
     });
+  },
+
+  // ---- BUILD TOOL PROFICIENCIES (appended to skill-list) ----
+  buildToolProficiencies() {
+    const container = this.$('skill-list');
+    if (!container) return;
+    // Remove any existing tool rows
+    container.querySelectorAll('.tool-prof-row').forEach(r => r.remove());
+    const tools = CharStore.lv('toolProficiencies', []);
+    if (!tools.length) return;
+    const prof = this.getProfBonus(this.getLevel());
+    tools.forEach((toolName, idx) => {
+      const key = 'tool_' + toolName.replace(/\W+/g, '_').toLowerCase();
+      const isProf = CharStore.lv(`toolProf_${key}`, true);
+      const isExpert = CharStore.lv(`toolExpert_${key}`, false);
+      const initState = isExpert ? 2 : isProf ? 1 : 0;
+      const bonus = isExpert ? prof * 2 : isProf ? prof : 0;
+      const row = document.createElement('div');
+      row.className = 'stat-row tool-prof-row' + (idx === 0 ? ' tool-prof-separator' : '');
+      row.innerHTML = `
+        <span class="skill-state-toggle" data-toolkey="${key}" data-state="${initState}" title="Click to cycle: none / proficient / expertise"></span>
+        <span class="stat-val stat-val-btn" id="tool-val-${key}" title="Roll ${toolName} check">${this.fmtMod(bonus)}</span>
+        <span class="stat-label">${toolName.replace(/\b\w/g, c => c.toUpperCase())}</span>
+        <span class="stat-tag" style="opacity:0.5">TOOL</span>`;
+      container.appendChild(row);
+      const toggle = row.querySelector('.skill-state-toggle');
+      toggle.addEventListener('click', () => {
+        const cur = parseInt(toggle.dataset.state);
+        const next = (cur + 1) % 3;
+        toggle.dataset.state = next;
+        CharStore.sv(`toolProf_${key}`, next >= 1);
+        CharStore.sv(`toolExpert_${key}`, next === 2);
+        this.recalcAll();
+      });
+      row.querySelector('.stat-val').addEventListener('click', () => {
+        const p = this.getProfBonus(this.getLevel());
+        const st = parseInt(toggle.dataset.state);
+        const b = st === 2 ? p * 2 : st === 1 ? p : 0;
+        Dice.showResult(`${toolName} Check`, Dice.rollD20(b));
+      });
+    });
+  },
+
+  // ---- REFRESH PROFICIENCIES & LANGUAGES TEXTAREA ----
+  refreshProfLanguages() {
+    const el = this.$('profLanguages');
+    if (!el) return;
+    const parts = [];
+    const toSentenceCase = s => s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s;
+    // Merge background-chosen languages and class languages (e.g. Thieves' Cant) into one line
+    const classLangs = CharStore.lv('classLanguages', []);
+    const chosenLangs = CharStore.lv('languages', []);
+    const allLangs = [
+      ...(chosenLangs.length ? chosenLangs : (() => {
+        const bgLang = CharStore.lv('bgLanguages', { fixed: [], chooseCount: 0 });
+        return bgLang.fixed;
+      })()),
+      ...classLangs.filter(l => !chosenLangs.some(c => c.toLowerCase() === l.toLowerCase())),
+    ];
+    if (allLangs.length) parts.push(`Languages: ${allLangs.map(toSentenceCase).join(', ')}`);
+    else {
+      const bgLang = CharStore.lv('bgLanguages', { fixed: [], chooseCount: 0 });
+      if (bgLang.chooseCount) parts.push(`Languages: +${bgLang.chooseCount} of your choice`);
+    }
+    // Tool proficiencies from background
+    const tools = CharStore.lv('toolProficiencies', []);
+    if (tools.length) parts.push(`Tools: ${tools.map(toSentenceCase).join(', ')}`);
+    // Weapon proficiencies from class
+    const wpn = CharStore.lv('classWeaponProf', []);
+    if (wpn.length) parts.push(`Weapons: ${wpn.map(w => toSentenceCase(stripTags(w))).join(', ')}`);
+    // Armor proficiencies from class
+    const arm = CharStore.lv('classArmorProf', []);
+    if (arm.length) parts.push(`Armor: ${arm.map(a => toSentenceCase(stripTags(a))).join(', ')}`);
+    el.value = parts.join('\n');
+    CharStore.sv('profLanguages', el.value);
   },
 
   // ---- BUILD SKILLS ----
@@ -219,10 +300,10 @@ window.Sheet = {
       });
       row.querySelector('.stat-val').addEventListener('click', () => {
         const mod = parseInt(this.$(`skill-${s.key}`)?.textContent) || 0;
-        const result = Dice.rollD20(mod);
-        Dice.showResult(`${s.label} Check`, result);
+        this._conditionRollD20(`${s.label} Check`, mod, 'check', s.ability);
       });
     });
+    this.buildToolProficiencies();
   },
 
   // ---- RECALCULATION ENGINE ----
@@ -242,13 +323,26 @@ window.Sheet = {
     if (profEl) profEl.textContent = this.fmtMod(prof);
 
     const initEl = this.$('initiative');
-    if (initEl) initEl.textContent = this.fmtMod(mods.dex);
+    if (initEl) {
+      initEl.textContent = this.fmtMod(mods.dex);
+      if (!initEl.dataset.rollBound) {
+        initEl.dataset.rollBound = '1';
+        initEl.style.cursor = 'pointer';
+        initEl.addEventListener('click', () => {
+          const mod = parseInt(initEl.textContent) || 0;
+          this._conditionRollD20('Initiative', mod, 'initiative', 'dex');
+        });
+      }
+    }
 
     // Saves
+    const coverBonus = this._getCoverBonus();
     const SAVES = this.ABILITIES.map(a => ({ key: a, label: this.ABILITY_NAMES[a] }));
     SAVES.forEach(s => {
       const cb = this.qs(`.save-prof[data-save-ab="${s.key}"]`);
-      const total = mods[s.key] + (cb?.checked ? prof : 0);
+      let total = mods[s.key] + (cb?.checked ? prof : 0);
+      // Cover applies to Dex saves
+      if (s.key === 'dex' && coverBonus > 0) total += coverBonus;
       const el = this.$(`save-${s.key}`);
       if (el) el.textContent = this.fmtMod(total);
     });
@@ -265,6 +359,17 @@ window.Sheet = {
       const el = this.$(`skill-${s.key}`);
       if (el) el.textContent = this.fmtMod(total);
       if (s.key === 'perception') percBonus = bonus;
+    });
+
+    // Tool proficiencies
+    const tools = CharStore.lv('toolProficiencies', []);
+    tools.forEach(toolName => {
+      const key = 'tool_' + toolName.replace(/\W+/g, '_').toLowerCase();
+      const toggle = this.qs(`.skill-state-toggle[data-toolkey="${key}"]`);
+      const state = parseInt(toggle?.dataset.state || '1');
+      const bonus = state === 2 ? prof * 2 : state === 1 ? prof : 0;
+      const el = this.$(`tool-val-${key}`);
+      if (el) el.textContent = this.fmtMod(bonus);
     });
 
     // Passive perception
@@ -285,6 +390,8 @@ window.Sheet = {
     this.renderCarryCapacity();
     this.qsa('#attacks-body tr').forEach(tr => tr._refreshRow?.());
     if (typeof Combat !== 'undefined') Combat.syncHitDice();
+    this._updateEquippedACSummary();
+    this.applyConditionEffects();
   },
 
   // ---- BIND SIMPLE FIELDS ----
@@ -292,10 +399,11 @@ window.Sheet = {
     this.qsa('[data-save]').forEach(el => {
       const key = el.dataset.save;
       if (el.type === 'checkbox') el.checked = this.lv(key, false);
-      else { const v = this.lv(key, null); if (v !== null) el.value = v; }
+      else el.value = this.lv(key, '');
       const handler = () => {
         this.sv(key, el.type === 'checkbox' ? el.checked : el.value);
         if (this.ABILITIES.includes(key) || key === 'charLevel' || key === 'spellcastingAbility') this.recalcAll();
+        if (key === 'charLevel') this.updateSubclassAccess();
         if (key === 'charName') {
           const titleEl = this.$('topbar-title');
           if (titleEl) titleEl.textContent = el.value || 'Character Sheet';
@@ -361,8 +469,7 @@ window.Sheet = {
       </td>
       <td><input type="text" class="atk-type" placeholder="Slashing" value="${data.damageType || ''}"></td>
       <td><input type="text" class="atk-mastery" placeholder="—" value="${data.mastery || ''}"></td>
-      <td class="atk-ed-cell"><button class="atk-src-btn" title="Toggle edition"></button></td>
-      <td class="atk-actions-cell"><button class="atk-del-btn" title="Remove">✕</button></td>`;
+      <td class="atk-ed-cell"><button class="atk-src-btn" title="Toggle edition"></button></td>`;
     tbody.appendChild(tr);
 
     const nameInput    = tr.querySelector('.atk-name');
@@ -398,13 +505,22 @@ window.Sheet = {
       const src = srcBtn.dataset.src || '';
       const isXphb = /^xphb$/i.test(src);
       masteryInput.disabled = !isXphb;
+
+      // Highlight mastery input if weapon is in character's weaponMastery list
+      const weaponName = nameInput.value.trim();
+      const charMastery = CharStore.lv('weaponMastery', []) || [];
+      const isActive = weaponName &&
+        charMastery.some(m => m.toLowerCase() === weaponName.toLowerCase()) &&
+        masteryInput.value.trim();
+      masteryInput.classList.toggle('active-mastery', !!isActive);
+      masteryInput.title = isActive ? 'Weapon Mastery active: ' + masteryInput.value.trim() : '';
     };
     tr._refreshRow = refreshRow;
 
     // ---- bonus button: click to roll attack ----
     bonusBtn.addEventListener('click', () => {
       const bonusVal = parseInt(bonusBtn.textContent) || 0;
-      Dice.showResult(`${nameInput.value || 'Attack'} Attack`, Dice.rollD20(bonusVal));
+      this._conditionRollD20(`${nameInput.value || 'Attack'} Attack`, bonusVal, 'attack');
     });
 
     // ---- damage button: click to roll, double-click to edit ----
@@ -435,7 +551,6 @@ window.Sheet = {
     abilitySelect.addEventListener('change', () => { refreshRow(); this.saveAttacks(); });
     profCb.addEventListener('click', () => { profCb.dataset.state = profCb.dataset.state === '1' ? '0' : '1'; refreshRow(); this.saveAttacks(); });
     tr.querySelectorAll('.atk-name, .atk-type, .atk-mastery').forEach(i => i.addEventListener('input', () => this.saveAttacks()));
-    tr.querySelector('.atk-del-btn').addEventListener('click', () => { tr.remove(); this.saveAttacks(); this.refreshAttackList(); });
 
     // ---- source/edition toggle ----
     let variants = [];
@@ -474,6 +589,7 @@ window.Sheet = {
     // ---- name change: auto-fill from DndData ----
     nameInput.addEventListener('change', () => {
       const val = nameInput.value.trim().toLowerCase();
+      if (val === '✕ delete this entry') { tr.remove(); this.saveAttacks(); this.refreshAttackList(); return; }
       if (!val) return;
 
       if (val === 'unarmed strike') {
@@ -566,20 +682,20 @@ window.Sheet = {
     const scInput = this.$('spellcastingClass');
     if (scInput) { scInput.value = className; this.sv('spellcastingClass', className); }
 
-    // Add class language proficiencies (e.g. Thieves' Cant for Rogue)
+    // Store class weapon/armor proficiencies
+    this.sv('classWeaponProf', info.weaponProf || []);
+    this.sv('classArmorProf', info.armorProf || []);
+
+    // Store class language proficiencies (e.g. Thieves' Cant for Rogue, Druidic)
+    const classLangs = [];
     if (typeof getClassFeaturesByLevel === 'function') {
       const features = getClassFeaturesByLevel(className);
       const level1 = features[1] || [];
-      const langFeatures = level1.filter(f => /thieves.+cant/i.test(f.name) || /cant/i.test(f.name) && /rogue/i.test(className));
-      langFeatures.forEach(f => {
-        const profEl = this.$('profLanguages');
-        if (profEl && !profEl.value.includes(f.name)) {
-          profEl.value = profEl.value ? profEl.value + '\n' + f.name : f.name;
-          this.sv('profLanguages', profEl.value);
-        }
-      });
+      level1.filter(f => /thieves.+cant|druidic/i.test(f.name)).forEach(f => classLangs.push(f.name));
     }
+    this.sv('classLanguages', classLangs);
 
+    this.refreshProfLanguages();
     this.displayClassFeatures(className);
     this.renderFightingStylePicker(info);
 
@@ -604,7 +720,26 @@ window.Sheet = {
         });
     }
 
+    this.updateSubclassAccess();
     this.recalcAll();
+  },
+
+  // Enable or disable the subclass input based on current level vs subclass unlock level
+  updateSubclassAccess() {
+    const subInput = this.$('charSubclass');
+    if (!subInput) return;
+    const className = this.lv('charClass', '');
+    const level = this.getLevel();
+    const subclassLevel = (typeof LevelUp !== 'undefined' && LevelUp.SUBCLASS_LEVELS)
+      ? (LevelUp.SUBCLASS_LEVELS[className] || 3)
+      : 3;
+    const locked = level < subclassLevel;
+    subInput.disabled = locked;
+    subInput.title = locked ? `Subclass unlocks at level ${subclassLevel}` : '';
+    if (locked) {
+      subInput.value = '';
+      this.sv('charSubclass', '');
+    }
   },
 
   displayClassFeatures(className) {
@@ -617,13 +752,74 @@ window.Sheet = {
     if (box && textEl) {
       box.style.display = 'block';
       if (subtitleEl) subtitleEl.textContent = `(${className} Lv.${level})`;
-      const summary = [];
+      const items = [];
       for (let l = 1; l <= level; l++) {
         if (features[l]) {
-          features[l].forEach(f => summary.push(`Lv.${l}: ${f.name}`));
+          features[l].forEach(f => items.push({ label: `Lv.${l}: ${f.name}`, html: f.html || f.text || '' }));
         }
       }
-      textEl.innerHTML = summary.map(s => `<div>${s}</div>`).join('') || '<div>No features found.</div>';
+      if (!items.length) {
+        textEl.innerHTML = '<div>No features found.</div>';
+      } else {
+        textEl.innerHTML = `<div class="cf-two-col">${items.map((it, i) =>
+          `<div class="cf-item" data-cf-idx="${i}">${it.label}</div>`
+        ).join('')}</div>`;
+        // JS-driven tooltips with keyword highlighting
+        let tip = null;
+        const _highlightTooltip = (raw) => {
+          // Highlight dice rolls (e.g. 1d6, 2d8+3)
+          let out = raw.replace(/\b(\d*d\d+(?:\s*[+\-]\s*\d+)?)\b/g, '<span class="cf-tip-dice">$1</span>');
+          // Highlight key D&D terms
+          const keywords = [
+            'Advantage', 'Disadvantage', 'Proficiency Bonus',
+            'Saving Throw', 'Saving Throws', 'Attack Roll', 'Attack Rolls',
+            'Ability Check', 'Ability Checks', 'D20 Test',
+            'Short Rest', 'Long Rest',
+            'Hit Points', 'Hit Point', 'Hit Point Die', 'Hit Point Dice',
+            'Bonus Action', 'Reaction', 'Action',
+            'Resistance', 'Immunity', 'Vulnerable',
+            'Bludgeoning', 'Piercing', 'Slashing', 'Fire', 'Cold', 'Lightning',
+            'Thunder', 'Acid', 'Poison', 'Necrotic', 'Radiant', 'Force', 'Psychic',
+            'Bloodied', 'Construct', 'Undead',
+            'Concentration', 'Cantrip',
+            'Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
+          ];
+          const kwPattern = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
+          out = out.replace(kwPattern, '<span class="cf-tip-kw">$1</span>');
+          return out;
+        };
+        textEl.querySelectorAll('.cf-item').forEach(el => {
+          const idx = parseInt(el.dataset.cfIdx);
+          const rawHtml = items[idx]?.html;
+          if (!rawHtml) return;
+          el.addEventListener('mouseenter', () => {
+            if (tip) tip.remove();
+            tip = document.createElement('div');
+            tip.className = 'cf-tooltip';
+            tip.innerHTML = _highlightTooltip(rawHtml);
+            document.body.appendChild(tip);
+            const rect = el.getBoundingClientRect();
+            const vh = window.innerHeight;
+            const vw = window.innerWidth;
+            let top = rect.bottom + 4;
+            let left = rect.left;
+            // Flip above if overflowing bottom
+            if (top + tip.offsetHeight > vh) top = rect.top - tip.offsetHeight - 4;
+            // Clamp to viewport edges
+            top = Math.max(8, Math.min(top, vh - tip.offsetHeight - 8));
+            left = Math.max(8, Math.min(left, vw - tip.offsetWidth - 8));
+            tip.style.top = top + 'px';
+            tip.style.left = left + 'px';
+            // Allow mouse to enter tooltip for scrolling
+            tip.addEventListener('mouseleave', () => { if (tip) { tip.remove(); tip = null; } });
+          });
+          el.addEventListener('mouseleave', (e) => {
+            // Don't remove if mouse moved onto the tooltip itself
+            if (tip && e.relatedTarget && tip.contains(e.relatedTarget)) return;
+            if (tip) { tip.remove(); tip = null; }
+          });
+        });
+      }
     }
 
     const fullEl = this.$('full-class-features');
@@ -663,7 +859,7 @@ window.Sheet = {
     const feats = this.lv('feats', []);
     const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
     if (!styles.length) return;
-    const hasOne = feats.some(f => styles.some(s => s.name.toLowerCase() === f.toLowerCase()));
+    const hasOne = feats.some(f => styles.some(s => s.name.toLowerCase() === this._featName(f).toLowerCase()));
     if (hasOne) return;
 
     // Build picker UI
@@ -766,26 +962,26 @@ window.Sheet = {
     const racialSpells = parseRacialSpells(info.additionalSpells, subraceName, subraceEntries);
     const level = this.getLevel();
 
-    // Get existing racial spell names to avoid duplicates
+    // Get existing racial spell names to avoid duplicates (normalised to lowercase)
     const existingRacial = new Set(
-      (this.lv('charSpells', []) || []).filter(s => s.racial).map(s => s.name)
+      (this.lv('charSpells', []) || []).filter(s => s.racial).map(s => s.name.toLowerCase())
     );
 
     const capName = n => n ? n.replace(/\b\w/g, c => c.toUpperCase()) : n;
     const toAdd = [];
     racialSpells.cantrips.forEach(name => {
-      if (name && !existingRacial.has(name))
+      if (name && !existingRacial.has(name.toLowerCase()))
         toAdd.push({ name: capName(name), level: 0, prepared: true, racial: true });
     });
     if (level >= 3) {
       racialSpells.level3.forEach(name => {
-        if (name && !existingRacial.has(name))
+        if (name && !existingRacial.has(name.toLowerCase()))
           toAdd.push({ name: capName(name), level: 1, prepared: true, racial: true });
       });
     }
     if (level >= 5) {
       racialSpells.level5.forEach(name => {
-        if (name && !existingRacial.has(name))
+        if (name && !existingRacial.has(name.toLowerCase()))
           toAdd.push({ name: capName(name), level: 2, prepared: true, racial: true });
       });
     }
@@ -872,12 +1068,12 @@ window.Sheet = {
     const textEl = this.$('species-traits-text');
     if (box && textEl) {
       box.style.display = 'block';
-      let txt = `${info.name} — ${info.src}`;
-      txt += `\nSize: ${info.size} | Speed: ${info.speed} ft.`;
-      if (flySpeed) txt += ` | Fly: ${flySpeed} ft.`;
-      if (swimSpeed) txt += ` | Swim: ${swimSpeed} ft.`;
-      if (darkvision) txt += ` | Darkvision: ${darkvision} ft.`;
-      if (info.abilityBonus && info.abilityBonus !== 'None (set by background)') txt += `\nAbility Bonus: ${info.abilityBonus}`;
+      const titleEl = box.querySelector('.box-title');
+      if (titleEl) titleEl.textContent = `Specie Traits - ${info.name}`;
+      let txt = `Size: ${info.size}`;
+      if (flySpeed) txt += `\nFly: ${flySpeed} ft.`;
+      if (swimSpeed) txt += `\nSwim: ${swimSpeed} ft.`;
+      if (darkvision) txt += `\nDarkvision: ${darkvision} ft.`;
       if (resist.length) txt += `\nResistances: ${resist.join(', ')}`;
       if (subraceInfo) txt += `\nLineage: ${subraceInfo.name}`;
       textEl.textContent = txt;
@@ -890,13 +1086,10 @@ window.Sheet = {
       // Base race entry
       const div = document.createElement('div');
       div.className = 'feature-entry';
-      let statsHtml = `<p><strong>Size:</strong> ${info.size} &nbsp;|&nbsp; <strong>Speed:</strong> ${info.speed} ft.`;
+      let statsHtml = `<p><strong>Size:</strong> ${info.size}`;
       if (flySpeed) statsHtml += ` &nbsp;|&nbsp; <strong>Fly:</strong> ${flySpeed} ft.`;
       if (swimSpeed) statsHtml += ` &nbsp;|&nbsp; <strong>Swim:</strong> ${swimSpeed} ft.`;
       if (darkvision) statsHtml += ` &nbsp;|&nbsp; <strong>Darkvision:</strong> ${darkvision} ft.`;
-      if (info.abilityBonus && info.abilityBonus !== 'None (set by background)') {
-        statsHtml += `</p><p><strong>Ability Bonus:</strong> ${info.abilityBonus}`;
-      }
       if (resist.length) statsHtml += `</p><p><strong>Resistances:</strong> ${resist.join(', ')}`;
       statsHtml += '</p>';
       div.innerHTML = `
@@ -972,82 +1165,50 @@ window.Sheet = {
       if (featName) this.addFeat(featName);
     }
 
-    // Auto-populate Proficiencies & Languages textarea (only when background changes)
+    // Store background tool & language proficiencies, then refresh display
     if (isNewBg) {
-      const AB = { str:'Strength', dex:'Dexterity', con:'Constitution', int:'Intelligence', wis:'Wisdom', cha:'Charisma' };
-      const parts = [];
-      const skills = Object.keys(info.skillProf);
-      if (skills.length) parts.push(`Skills: ${skills.join(', ')}`);
-
+      // Tool proficiencies → go to skills list, not the textarea
       const toolKeys = Object.keys(info.toolProf);
       const fixedTools = toolKeys.filter(k => k !== 'choose' && info.toolProf[k] === true);
       const chooseTools = info.toolProf.choose;
-      if (fixedTools.length) parts.push(`Tools: ${fixedTools.join(', ')}`);
-      if (chooseTools) parts.push(`Tools: choose ${chooseTools.count || 1}`);
+      const allTools = [...fixedTools];
+      if (chooseTools) {
+        const count = chooseTools.count || 1;
+        for (let i = 0; i < count; i++) allTools.push(`Tool (choose ${i + 1})`);
+      }
+      this.sv('toolProficiencies', allTools);
+      this.buildToolProficiencies();
 
+      // Languages → store for textarea
       if (typeof parseLanguageProf === 'function') {
         const lang = parseLanguageProf(info.languageProf);
-        if (lang.fixed.length) parts.push(`Languages: ${lang.fixed.join(', ')}`);
-        if (lang.chooseCount) parts.push(`Languages: +${lang.chooseCount} of your choice`);
+        this.sv('bgLanguages', { fixed: lang.fixed, chooseCount: lang.chooseCount });
+      } else {
+        this.sv('bgLanguages', { fixed: [], chooseCount: 0 });
       }
-
-      const langEl = this.$('profLanguages');
-      if (langEl) {
-        langEl.value = parts.join('\n');
-        this.sv('profLanguages', langEl.value);
-      }
+      this.refreshProfLanguages();
     }
 
-    // Build ability score increase text (2024 rules)
-    const AB = { str:'Strength', dex:'Dexterity', con:'Constitution', int:'Intelligence', wis:'Wisdom', cha:'Charisma' };
-    let abilityHtml = '';
-    const abList = [];
-    if (info.ability) {
-      for (const [k, v] of Object.entries(info.ability)) {
-        if (k === 'choose') {
-          (v.from || []).forEach(a => { if (AB[a] && !abList.includes(AB[a])) abList.push(AB[a]); });
-        } else if (typeof v === 'number' && AB[k]) {
-          if (!abList.includes(AB[k])) abList.push(AB[k]);
-        }
-      }
-    }
-    if (abList.length) {
-      abilityHtml = `A background lists three of your character's ability scores: <strong>${abList.join(', ')}</strong>. Increase one by 2 and another by 1, or increase all three by 1. None of these increases can raise a score above 20.`;
-    } else {
-      abilityHtml = `A background lists three of your character's ability scores. Increase one by 2 and another by 1, or increase all three by 1. None of these increases can raise a score above 20.`;
-    }
-
-    // Entries filtered to exclude equipment (it's already in inventory)
-    const rawBg = DndData.backgrounds.find(b => b.name === name);
-    const flavorEntries = (rawBg?.entries || []).filter(e =>
-      !(typeof e === 'object' && e.name && /equipment/i.test(e.name))
+    // Look up flavor text from the fluff file (matched by name + source)
+    const bgNameMatch = name.match(/^(.+?)\s+—\s+(.+)$/);
+    const bgBaseName = bgNameMatch ? bgNameMatch[1] : name;
+    const rawBg = DndData.backgrounds.find(b => b.name === name) ||
+      (bgNameMatch ? DndData.backgrounds.find(b => b.name === bgBaseName && b._src === bgNameMatch[2]) : null);
+    const fluff = (DndData.backgroundFluff || []).find(f =>
+      f.name === bgBaseName && f.source === rawBg?.source
     );
-    const flavorHtml = typeof entriesToHtml === 'function'
-      ? entriesToHtml(flavorEntries)
-      : (info.description || '').replace(/\n/g, '<br>');
+    const flavorHtml = (fluff?.entries || [])
+      .map(e => typeof e === 'string' ? `<p>${e}</p>` : '')
+      .join('');
 
-    // Character tab: ability increases + flavor text
-    const box = this.$('bg-info-box');
-    const textEl = this.$('bg-traits-text');
+    // Chronicle tab: flavor text only
+    const box = this.$('bg-flavor-box');
+    const textEl = this.$('bg-flavor-text');
+    const titleEl = this.$('bg-flavor-title');
     if (box && textEl) {
       box.style.display = 'block';
-      const titleEl = box.querySelector('.box-title');
-      if (titleEl) titleEl.textContent = name;
-      let html = '';
-      html += `<p class="bg-ability-line">${abilityHtml}</p>`;
-      html += flavorHtml;
-      textEl.innerHTML = html;
-    }
-
-    // Features tab: same filtered content in full
-    const fullEl = this.$('full-bg-features');
-    const fullBgBox = this.$('full-bg-box');
-    if (fullBgBox) {
-      const ft = fullBgBox.querySelector('.box-title');
-      if (ft) ft.textContent = name;
-    }
-    if (fullEl) {
-      fullEl.innerHTML = `<div class="feature-entry"><div class="feature-entry-text">${flavorHtml}</div></div>`;
+      if (titleEl) titleEl.textContent = `Background - ${name}`;
+      textEl.innerHTML = flavorHtml;
     }
 
     this.recalcAll();
@@ -1251,23 +1412,53 @@ window.Sheet = {
     }
   },
 
-  addFeat(name) {
-    // Resolve canonical (properly cased) name from the data if possible
-    const info = typeof getFeatInfo === 'function' ? getFeatInfo(name) : null;
-    const canonical = info?.name || name;
+  // Helper: extract feat name from string or object
+  _featName(f) { return typeof f === 'string' ? f : f.name; },
+
+  addFeat(nameOrObj) {
+    const isObj = typeof nameOrObj === 'object';
+    const rawName = isObj ? nameOrObj.name : nameOrObj;
+    const info = typeof getFeatInfo === 'function' ? getFeatInfo(rawName) : null;
+    const canonical = info?.name || rawName;
     const feats = this.lv('feats', []);
     // De-duplicate case-insensitively
-    if (feats.some(f => f.toLowerCase() === canonical.toLowerCase())) return;
-    feats.push(canonical);
+    if (feats.some(f => this._featName(f).toLowerCase() === canonical.toLowerCase())) return;
+    if (isObj) {
+      feats.push({ ...nameOrObj, name: canonical });
+    } else {
+      feats.push(canonical);
+    }
     this.sv('feats', feats);
     this.renderFeats();
+    // Auto-add any limited resources from this feat
+    if (typeof ClassResources !== 'undefined') {
+      const level = parseInt(this.lv('charLevel', 1)) || 1;
+      const featRes = ClassResources.getFeatResources(canonical, level);
+      if (featRes.length) {
+        const resources = this.lv('resources', []);
+        let added = false;
+        featRes.forEach(r => {
+          if (!resources.some(x => x.name === r.name)) {
+            resources.push(r);
+            added = true;
+          }
+        });
+        if (added) { this.sv('resources', resources); this.renderResources(); }
+      }
+    }
+    // Auto-add feat spells to charSpells
+    if (isObj && nameOrObj.chosenSpells?.length) {
+      this._syncFeatSpells();
+    }
   },
 
   addFeatByName(name) { this.addFeat(name); },
 
-  removeFeat(name) {
-    const feats = this.lv('feats', []).filter(f => f !== name);
+  removeFeat(nameOrObj) {
+    const targetName = typeof nameOrObj === 'string' ? nameOrObj : nameOrObj.name;
+    const feats = this.lv('feats', []).filter(f => this._featName(f) !== targetName);
     this.sv('feats', feats);
+    this._syncFeatSpells();
     this.renderFeats();
   },
 
@@ -1281,11 +1472,34 @@ window.Sheet = {
     if (fullList) fullList.innerHTML = '';
 
     const feats = this.lv('feats', []);
-    feats.forEach(name => {
+    feats.forEach((entry, idx) => {
+      const name = this._featName(entry);
+      const featObj = typeof entry === 'object' ? entry : null;
       const info = typeof getFeatInfo === 'function' ? getFeatInfo(name) : null;
       const desc = info?.description || '';
+      const spellConfig = ClassResources?.FEAT_SPELL_CHOICES?.[name];
       const card = document.createElement('div');
       card.className = 'feat-card';
+
+      // Build spell choices display
+      let spellsHtml = '';
+      if (spellConfig) {
+        const autoSpells = spellConfig.autoSpells || [];
+        const chosenSpells = featObj?.chosenSpells || [];
+        const spellClass = featObj?.spellClass || '';
+        const tags = [];
+        if (spellClass) tags.push(`<span class="feat-spell-tag feat-spell-class">${spellClass}</span>`);
+        autoSpells.forEach(s => tags.push(`<span class="feat-spell-tag feat-spell-auto" title="Always prepared">${s}</span>`));
+        chosenSpells.forEach(s => tags.push(`<span class="feat-spell-tag">${s}</span>`));
+        const needsPick = !chosenSpells.length;
+        spellsHtml = `<div class="feat-spell-choices">
+          <span class="feat-spell-label">Spells:</span>
+          ${tags.join('')}
+          ${needsPick ? '<span class="feat-spell-needed">Choose spells</span>' : ''}
+          <button class="feat-spell-edit-btn" title="Edit spell choices">${needsPick ? 'Pick' : 'Edit'}</button>
+        </div>`;
+      }
+
       card.innerHTML = `
         <div class="feat-card-header">
           <div class="feat-card-meta">
@@ -1297,6 +1511,7 @@ window.Sheet = {
             <button class="feat-card-del" title="Remove">✕</button>
           </div>
         </div>
+        ${spellsHtml}
         ${desc ? `<div class="feat-card-body" style="display:none"><div class="feat-card-desc">${desc}</div></div>` : ''}`;
       if (desc) {
         const toggle = card.querySelector('.feat-card-toggle');
@@ -1308,21 +1523,226 @@ window.Sheet = {
           toggle.classList.toggle('open', !open);
         });
       }
-      card.querySelector('.feat-card-del').addEventListener('click', () => this.removeFeat(name));
+      card.querySelector('.feat-card-del').addEventListener('click', () => this.removeFeat(entry));
+
+      // Spell edit button
+      const editBtn = card.querySelector('.feat-spell-edit-btn');
+      if (editBtn && spellConfig) {
+        editBtn.addEventListener('click', () => {
+          this._openFeatSpellEditor(idx, name, featObj, spellConfig, card);
+        });
+      }
+
       container.appendChild(card);
 
       if (fullList && info) {
-        const entry = document.createElement('div');
-        entry.className = 'feature-entry';
-        entry.innerHTML = `
+        const entry2 = document.createElement('div');
+        entry2.className = 'feature-entry';
+        entry2.innerHTML = `
           <div class="feature-entry-header">
             <span class="feature-entry-name">${info.name}</span>
             <span class="feature-entry-level">${info.category}</span>
           </div>
           <div class="feature-entry-text">${info.description || ''}</div>`;
-        fullList.appendChild(entry);
+        fullList.appendChild(entry2);
       }
     });
+  },
+
+  // ---- FEAT SPELL SYNC ----
+  // Keeps charSpells in sync with feat-sourced spells
+  _syncFeatSpells() {
+    const feats = this.lv('feats', []);
+    const charSpells = this.lv('charSpells', []) || [];
+    // Remove all feat-sourced spells
+    const nonFeat = charSpells.filter(s => !s.featSource);
+    // Re-add from current feat objects
+    feats.forEach(f => {
+      if (typeof f === 'string') return;
+      const config = ClassResources?.FEAT_SPELL_CHOICES?.[f.name];
+      if (!config) return;
+      const allSpells = [...(config.autoSpells || []), ...(f.chosenSpells || [])];
+      allSpells.forEach(spellName => {
+        const spellData = DndData?.spells?.find(s => s.name.toLowerCase() === spellName.toLowerCase());
+        if (spellData && !nonFeat.some(s => s.name.toLowerCase() === spellName.toLowerCase())) {
+          nonFeat.push({
+            name: spellData.name,
+            level: spellData.level,
+            prepared: true,
+            featSource: f.name,
+          });
+        }
+      });
+    });
+    this.sv('charSpells', nonFeat);
+    this.restoreSpells();
+  },
+
+  // ---- FEAT SPELL EDITOR ----
+  _openFeatSpellEditor(featIdx, featName, featObj, spellConfig, cardEl) {
+    // Remove any existing editor
+    cardEl.querySelector('.feat-spell-editor')?.remove();
+
+    const editor = document.createElement('div');
+    editor.className = 'feat-spell-editor';
+
+    const chosenSpells = [...(featObj?.chosenSpells || [])];
+    const chosenClass = featObj?.spellClass || '';
+
+    // Build the picker content
+    const buildPickers = (selectedClass) => {
+      editor.innerHTML = '';
+
+      // Class picker for Magic Initiate etc.
+      if (spellConfig.requireClassPick) {
+        const classRow = document.createElement('div');
+        classRow.className = 'feat-spell-class-row';
+        classRow.innerHTML = `<label class="feat-spell-label">Class:</label>`;
+        const select = document.createElement('select');
+        select.className = 'feat-spell-class-select';
+        select.innerHTML = `<option value="">Choose class...</option>` +
+          spellConfig.classOptions.map(c =>
+            `<option value="${c}" ${c === selectedClass ? 'selected' : ''}>${c}</option>`
+          ).join('');
+        select.addEventListener('change', () => {
+          chosenSpells.length = 0;
+          buildPickers(select.value);
+        });
+        classRow.appendChild(select);
+        editor.appendChild(classRow);
+      }
+
+      // Auto-spells display
+      if (spellConfig.autoSpells?.length) {
+        const autoDiv = document.createElement('div');
+        autoDiv.className = 'feat-spell-auto-row';
+        autoDiv.innerHTML = `<span class="feat-spell-label">Always prepared:</span> ${
+          spellConfig.autoSpells.map(s => `<span class="feat-spell-tag feat-spell-auto">${s}</span>`).join('')
+        }`;
+        editor.appendChild(autoDiv);
+      }
+
+      // Spell pickers for each pick definition
+      spellConfig.picks.forEach((pickDef, pickIdx) => {
+        const pool = ClassResources.getFeatSpellPool(pickDef, selectedClass);
+        const section = document.createElement('div');
+        section.className = 'feat-spell-pick-section';
+
+        const label = document.createElement('div');
+        label.className = 'feat-spell-pick-label';
+        label.textContent = pickDef.label || `Choose ${pickDef.count} spell(s)`;
+        section.appendChild(label);
+
+        // Figure out which spells in chosenSpells belong to this pick
+        // For simplicity: spells are stored flat, picks are filled in order
+        const prevCount = spellConfig.picks.slice(0, pickIdx).reduce((s, p) => s + p.count, 0);
+        const mySpells = chosenSpells.slice(prevCount, prevCount + pickDef.count);
+
+        // Show selected spell tags
+        const tagsDiv = document.createElement('div');
+        tagsDiv.className = 'feat-spell-selected-tags';
+        mySpells.forEach((spellName, i) => {
+          const tag = document.createElement('span');
+          tag.className = 'feat-spell-tag';
+          tag.innerHTML = `${spellName} <button class="feat-spell-tag-remove" title="Remove">&times;</button>`;
+          tag.querySelector('.feat-spell-tag-remove').addEventListener('click', () => {
+            chosenSpells.splice(prevCount + i, 1);
+            buildPickers(selectedClass);
+          });
+          tagsDiv.appendChild(tag);
+        });
+        section.appendChild(tagsDiv);
+
+        // Search input if we still need more picks
+        if (mySpells.length < pickDef.count && pool.length) {
+          const searchWrap = document.createElement('div');
+          searchWrap.className = 'feat-spell-search-wrap';
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.className = 'feat-spell-search';
+          input.placeholder = `Search ${pickDef.label || 'spells'}...`;
+          const dropdown = document.createElement('div');
+          dropdown.className = 'feat-spell-dropdown';
+
+          const renderDropdown = (filter) => {
+            const query = (filter || '').toLowerCase();
+            const filtered = pool.filter(s =>
+              s.name.toLowerCase().includes(query) &&
+              !chosenSpells.some(c => c.toLowerCase() === s.name.toLowerCase())
+            ).slice(0, 30);
+            dropdown.innerHTML = '';
+            if (!filtered.length) {
+              dropdown.innerHTML = '<div class="feat-spell-dd-empty">No matches</div>';
+              return;
+            }
+            filtered.forEach(spell => {
+              const item = document.createElement('div');
+              item.className = 'feat-spell-dd-item';
+              item.innerHTML = `<span class="feat-spell-dd-name">${spell.name}</span>
+                <span class="feat-spell-dd-meta">${spell._schoolName} · ${spell._src || ''}</span>`;
+              item.addEventListener('click', () => {
+                // Insert at correct position
+                chosenSpells.splice(prevCount + mySpells.length, 0, spell.name);
+                buildPickers(selectedClass);
+              });
+              dropdown.appendChild(item);
+            });
+          };
+
+          input.addEventListener('input', () => {
+            dropdown.style.display = 'block';
+            renderDropdown(input.value);
+          });
+          input.addEventListener('focus', () => {
+            dropdown.style.display = 'block';
+            renderDropdown(input.value);
+          });
+          // Close dropdown on outside click
+          document.addEventListener('click', (e) => {
+            if (!searchWrap.contains(e.target)) dropdown.style.display = 'none';
+          }, { once: false });
+
+          searchWrap.appendChild(input);
+          searchWrap.appendChild(dropdown);
+          section.appendChild(searchWrap);
+        }
+
+        editor.appendChild(section);
+      });
+
+      // Save / Cancel buttons
+      const actions = document.createElement('div');
+      actions.className = 'feat-spell-editor-actions';
+      const saveBtn = document.createElement('button');
+      saveBtn.className = 'btn btn-sm feat-spell-save-btn';
+      saveBtn.textContent = 'Save';
+      saveBtn.addEventListener('click', () => {
+        const feats = this.lv('feats', []);
+        const newObj = {
+          name: featName,
+          chosenSpells: [...chosenSpells],
+          ...(selectedClass && { spellClass: selectedClass }),
+        };
+        feats[featIdx] = newObj;
+        this.sv('feats', feats);
+        this._syncFeatSpells();
+        this.renderFeats();
+      });
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'btn btn-sm';
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.addEventListener('click', () => editor.remove());
+      actions.appendChild(saveBtn);
+      actions.appendChild(cancelBtn);
+      editor.appendChild(actions);
+    };
+
+    buildPickers(chosenClass);
+
+    // Insert editor after the spell choices row
+    const spellRow = cardEl.querySelector('.feat-spell-choices');
+    if (spellRow) spellRow.after(editor);
+    else cardEl.appendChild(editor);
   },
 
   // ---- POPULATE DATALISTS ----
@@ -1421,6 +1841,48 @@ window.Sheet = {
     items[idx]?.scrollIntoView({ block: 'nearest' });
   },
 
+  // ---- SPELL HELPERS ----
+  _isConcentration(spell) {
+    return spell.duration && spell.duration[0] && spell.duration[0].concentration;
+  },
+
+  _isRitual(spell) {
+    return !!(spell.meta && spell.meta.ritual);
+  },
+
+  _getActionType(spell) {
+    const ct = (spell._castTime || '').toLowerCase();
+    if (ct.includes('bonus')) return 'bonus';
+    if (ct.includes('reaction')) return 'reaction';
+    if (ct.includes('action') || ct === '1 action') return 'action';
+    return 'other';
+  },
+
+  _actionColorClass(spell) {
+    const type = this._getActionType(spell);
+    if (type === 'action') return 'spell-action-action';
+    if (type === 'bonus') return 'spell-action-bonus';
+    if (type === 'reaction') return 'spell-action-reaction';
+    return '';
+  },
+
+  _extractDice(spell) {
+    // Extract dice expressions from spell entries text
+    if (!spell.entries) return [];
+    const text = typeof entriesToText === 'function' ? entriesToText(spell.entries) : spell.entries.map(e => typeof e === 'string' ? e : '').join(' ');
+    const dicePattern = /(\d+d\d+(?:\s*\+\s*\d+)?)/gi;
+    const matches = [...new Set(text.match(dicePattern) || [])];
+    return matches.slice(0, 3); // max 3 dice expressions
+  },
+
+  _updatePreparedCount() {
+    const el = this.$('spellPreparedCount');
+    if (!el) return;
+    const spells = this.lv('charSpells', []);
+    const count = spells.filter(s => s.prepared || s.racial).length;
+    el.textContent = count;
+  },
+
   addSpellToSheet(spell) {
     const level = spell.level;
     const spells = this.lv('charSpells', []);
@@ -1428,6 +1890,7 @@ window.Sheet = {
     spells.push({ name: spell.name, level, prepared: false });
     this.sv('charSpells', spells);
     this.renderSpellCard(spell, level);
+    this._updatePreparedCount();
   },
 
   renderSpellCard(spell, level) {
@@ -1436,16 +1899,76 @@ window.Sheet = {
     const saved = this.lv('charSpells', []).find(s => s.name.toLowerCase() === spell.name.toLowerCase());
     const isRacial = saved?.racial || false;
     const isPrepared = isRacial || saved?.prepared;
+    const isConc = this._isConcentration(spell);
+    const isRitual = this._isRitual(spell);
+    const actionType = this._getActionType(spell);
+    const actionClass = this._actionColorClass(spell);
+    const diceExprs = this._extractDice(spell);
+
+    // Check if this spell is currently being concentrated on
+    const concSpell = this.lv('combat_concSpell', '');
+    const isConcentrating = this.lv('combat_concentrating', false);
+    const isActiveConc = isConc && isConcentrating && concSpell.toLowerCase() === spell.name.toLowerCase();
+
     const card = document.createElement('div');
-    card.className = 'spell-card' + (isRacial ? ' spell-racial' : '');
+    card.className = 'spell-card' + (isRacial ? ' spell-racial' : '') + (isActiveConc ? ' spell-concentrating' : '');
     card.dataset.spellName = spell.name;
+    card.dataset.actionType = actionType;
+    card.dataset.isConcentration = isConc ? '1' : '';
+    card.dataset.isRitual = isRitual ? '1' : '';
+    card.dataset.isPrepared = isPrepared ? '1' : '';
+
+    // Build badges
+    let badges = '';
+    if (isConc) badges += `<span class="spell-badge spell-badge-conc" title="Concentration">C</span>`;
+    if (isRitual) badges += `<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>`;
+    if (isRacial) badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
+
+    // Dice roll buttons
+    let diceHtml = '';
+    if (diceExprs.length > 0) {
+      diceHtml = `<span class="spell-card-dice">${diceExprs.map(d => `<button class="spell-dice-btn" data-dice="${d}" title="Roll ${d}">${d}</button>`).join('')}</span>`;
+    }
+
+    // Tooltip content
+    const tooltipParts = [];
+    if (spell._rangeStr) tooltipParts.push(`Range: ${spell._rangeStr}`);
+    if (spell._componentsStr) tooltipParts.push(`Components: ${spell._componentsStr}`);
+    if (spell._durationStr) tooltipParts.push(`Duration: ${spell._durationStr}`);
+    const tooltipText = tooltipParts.join(' | ');
+
     card.innerHTML = `
       <input type="checkbox" title="Prepared" ${isPrepared ? 'checked' : ''} ${isRacial ? 'disabled' : ''}>
-      <span class="spell-card-name spell-card-name-clickable">${spell.name}${isRacial ? ' <span class="spell-racial-badge" title="Racial spell — always prepared">✦</span>' : ''}</span>
-      <span class="spell-card-meta">${spell._schoolName || ''} | ${spell._castTime || ''}</span>
-      ${isRacial ? '' : '<button class="del-btn" title="Remove">✕</button>'}`;
+      <span class="spell-card-name spell-card-name-clickable" title="${tooltipText}">${spell.name}<span class="spell-card-school">${spell._schoolName || ''}</span></span>
+      <span class="spell-card-badges">${badges}</span>
+      <span class="spell-card-meta"><span class="spell-cast-time ${actionClass}">${spell._castTime || ''}</span></span>
+      ${diceHtml || '<span class="spell-card-dice"></span>'}
+      <span></span>
+      ${isRacial ? '<span></span>' : '<button class="del-btn" title="Remove spell">✕</button>'}`;
+
+    // Concentration click — set this spell as concentration target
+    if (isConc && !isRacial) {
+      const concBadge = card.querySelector('.spell-badge-conc');
+      if (concBadge) {
+        concBadge.style.cursor = 'pointer';
+        concBadge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this._setConcentration(spell.name);
+        });
+      }
+    }
 
     card.querySelector('.spell-card-name-clickable').addEventListener('click', () => this._showSpellDetail(spell));
+
+    // Dice buttons
+    card.querySelectorAll('.spell-dice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const expr = btn.dataset.dice.replace(/\s/g, '');
+        const result = Dice.rollExpression(expr);
+        Dice.showResult(`${spell.name} (${expr})`, result);
+      });
+    });
 
     if (!isRacial) {
       card.querySelector('input[type="checkbox"]').addEventListener('change', function () {
@@ -1453,11 +1976,14 @@ window.Sheet = {
         const s = spells.find(s => s.name === spell.name);
         if (s) s.prepared = this.checked;
         CharStore.sv('charSpells', spells);
+        card.dataset.isPrepared = this.checked ? '1' : '';
+        if (typeof Sheet !== 'undefined') Sheet._updatePreparedCount();
       });
       card.querySelector('.del-btn').addEventListener('click', () => {
         const spells = this.lv('charSpells', []).filter(s => s.name !== spell.name);
         this.sv('charSpells', spells);
         card.remove();
+        this._updatePreparedCount();
       });
     }
 
@@ -1471,6 +1997,150 @@ window.Sheet = {
         || { name: s.name, level: s.level, _schoolName: s.racial ? 'Racial' : '', _castTime: '' };
       this.renderSpellCard(spell, s.level);
     });
+    this._updatePreparedCount();
+    this._refreshConcentrationHighlight();
+  },
+
+  // ---- CONCENTRATION ADVANTAGE DETECTION ----
+  // Checks feats, class features, and character options for sources of advantage
+  // on Constitution saving throws to maintain concentration.
+  _concSaveMode() {
+    // Known feats that grant advantage on concentration saves
+    const CONC_ADV_FEATS = ['war caster'];
+    const featNames = (this.lv('feats', []) || []).map(f => this._featName(f).toLowerCase());
+    if (featNames.some(f => CONC_ADV_FEATS.some(k => f.includes(k)))) return 'advantage';
+
+    // Check character options (supernatural gifts, dark gifts, etc.)
+    const charOpts = (this.lv('charOptions', []) || []).map(o => (typeof o === 'string' ? o : o.name || '').toLowerCase());
+    if (charOpts.some(o => CONC_ADV_FEATS.some(k => o.includes(k)))) return 'advantage';
+
+    return undefined;
+  },
+
+  // ---- CONCENTRATION TRACKER (Spell Tab) ----
+  _initSpellConcentration() {
+    const cb = this.$('spell-conc-active');
+    const spellInput = this.$('spell-conc-spell');
+    const dropBtn = this.$('spell-conc-drop');
+    const checkBtn = this.$('spell-conc-check');
+    const bar = this.$('spell-conc-bar');
+
+    if (!cb || !spellInput) return;
+
+    // Restore state
+    cb.checked = this.lv('combat_concentrating', false);
+    spellInput.value = this.lv('combat_concSpell', '');
+    if (cb.checked) bar?.classList.add('active');
+
+    cb.addEventListener('change', () => {
+      this.sv('combat_concentrating', cb.checked);
+      bar?.classList.toggle('active', cb.checked);
+      this._refreshConcentrationHighlight();
+      // Sync combat tab
+      const combatCb = this.$('conc-active');
+      if (combatCb) combatCb.checked = cb.checked;
+    });
+
+    spellInput.addEventListener('input', () => {
+      this.sv('combat_concSpell', spellInput.value);
+      this._refreshConcentrationHighlight();
+      // Sync combat tab
+      const combatInput = this.$('conc-spell');
+      if (combatInput) combatInput.value = spellInput.value;
+    });
+
+    checkBtn?.addEventListener('click', () => {
+      const conScore = parseInt(this.$('con')?.value) || 10;
+      const conMod = Math.floor((conScore - 10) / 2);
+      const profBonus = this.getProfBonus(this.getLevel());
+      const isProf = this.lv('saveProf_con', false);
+      const totalMod = conMod + (isProf ? profBonus : 0);
+      const mode = this._concSaveMode();
+      const result = Dice.rollD20(totalMod, mode);
+      const label = mode === 'advantage' ? 'Concentration (Con Save — Adv: War Caster)' : 'Concentration Check (Con Save)';
+      Dice.showResult(label, result);
+    });
+
+    dropBtn?.addEventListener('click', () => {
+      cb.checked = false;
+      spellInput.value = '';
+      this.sv('combat_concentrating', false);
+      this.sv('combat_concSpell', '');
+      bar?.classList.remove('active');
+      this._refreshConcentrationHighlight();
+      // Sync combat tab
+      const combatCb = this.$('conc-active');
+      const combatInput = this.$('conc-spell');
+      if (combatCb) combatCb.checked = false;
+      if (combatInput) combatInput.value = '';
+    });
+  },
+
+  _setConcentration(spellName) {
+    const cb = this.$('spell-conc-active');
+    const spellInput = this.$('spell-conc-spell');
+    const bar = this.$('spell-conc-bar');
+    if (cb) { cb.checked = true; this.sv('combat_concentrating', true); }
+    if (spellInput) { spellInput.value = spellName; this.sv('combat_concSpell', spellName); }
+    if (bar) bar.classList.add('active');
+    this._refreshConcentrationHighlight();
+    // Sync combat tab
+    const combatCb = this.$('conc-active');
+    const combatInput = this.$('conc-spell');
+    if (combatCb) combatCb.checked = true;
+    if (combatInput) combatInput.value = spellName;
+  },
+
+  _refreshConcentrationHighlight() {
+    const concSpell = this.lv('combat_concSpell', '').toLowerCase();
+    const isConc = this.lv('combat_concentrating', false);
+    this.qsa('.spell-card').forEach(card => {
+      const name = (card.dataset.spellName || '').toLowerCase();
+      const isMatch = isConc && concSpell && name === concSpell && card.dataset.isConcentration === '1';
+      card.classList.toggle('spell-concentrating', isMatch);
+    });
+  },
+
+  // ---- SPELL FILTERS ----
+  _initSpellFilters() {
+    const filterBtns = this.qsa('.spell-filter-btn');
+    filterBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        filterBtns.forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._applySpellFilter(btn.dataset.filter);
+      });
+    });
+  },
+
+  _applySpellFilter(filter) {
+    this.qsa('.spell-card').forEach(card => {
+      let show = true;
+      if (filter === 'prepared') show = card.dataset.isPrepared === '1';
+      else if (filter === 'action') show = card.dataset.actionType === 'action';
+      else if (filter === 'bonus') show = card.dataset.actionType === 'bonus';
+      else if (filter === 'reaction') show = card.dataset.actionType === 'reaction';
+      else if (filter === 'concentration') show = card.dataset.isConcentration === '1';
+      else if (filter === 'ritual') show = card.dataset.isRitual === '1';
+      card.style.display = show ? '' : 'none';
+    });
+
+    // Hide empty level sections
+    this.qsa('.spell-level-section').forEach(section => {
+      const visibleCards = section.querySelectorAll('.spell-card:not([style*="display: none"])');
+      section.style.display = (filter === 'all' || visibleCards.length > 0) ? '' : 'none';
+    });
+  },
+
+  // ---- SPELL ATTACK ROLL ----
+  _initSpellAttackRoll() {
+    const atkEl = this.$('spellAttackBonus');
+    if (!atkEl) return;
+    atkEl.style.cursor = 'pointer';
+    atkEl.addEventListener('click', () => {
+      const mod = parseInt(atkEl.textContent) || 0;
+      this._conditionRollD20('Spell Attack', mod, 'attack');
+    });
   },
 
   _showSpellDetail(spell) {
@@ -1481,29 +2151,51 @@ window.Sheet = {
       ? entriesToHtml(spell.entries)
       : (spell.entries ? spell.entries.map(e => typeof e === 'string' ? `<p>${e}</p>` : `<p><strong>${e.name}:</strong> ${(e.entries || []).join(' ')}</p>`).join('') : '<p>No description available.</p>');
 
+    const isConc = this._isConcentration(spell);
+    const isRitual = this._isRitual(spell);
+    const actionClass = this._actionColorClass(spell);
+    const diceExprs = this._extractDice(spell);
+
+    // Build detail tags
+    let tagsHtml = `<span class="spell-detail-tag">${spell._levelStr || (spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`)}</span>`;
+    tagsHtml += `<span class="spell-detail-tag">${spell._schoolName || ''}</span>`;
+    if (isConc) tagsHtml += `<span class="spell-detail-tag spell-tag-conc">Concentration</span>`;
+    if (isRitual) tagsHtml += `<span class="spell-detail-tag spell-tag-ritual">Ritual</span>`;
+    if (spell._src) tagsHtml += `<span class="spell-detail-tag">${spell._src}</span>`;
+
+    // Dice roll section
+    let diceSection = '';
+    if (diceExprs.length > 0) {
+      diceSection = `<div class="spell-detail-dice">${diceExprs.map(d => `<button class="spell-detail-dice-btn" data-dice="${d}">Roll ${d}</button>`).join('')}</div>`;
+    }
+
+    // Concentration action button
+    let concBtn = '';
+    if (isConc && spell.level > 0) {
+      concBtn = `<button class="btn btn-sm spell-detail-conc-btn" id="spell-detail-concentrate">Concentrate on this spell</button>`;
+    }
+
     const modal = document.createElement('div');
     modal.id = 'spell-detail-modal';
     modal.className = 'levelup-backdrop';
     modal.style.display = 'flex';
     modal.innerHTML = `
-      <div class="levelup-modal" style="max-width:540px">
+      <div class="levelup-modal spell-detail-modal">
         <div class="levelup-header">
           <h2 class="levelup-title">${spell.name}</h2>
           <button class="levelup-close" id="spell-detail-close">&times;</button>
         </div>
         <div class="levelup-body" style="font-size:0.88rem">
-          <div class="spell-detail-tags">
-            <span class="spell-detail-tag">${spell._levelStr || (spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`)}</span>
-            <span class="spell-detail-tag">${spell._schoolName || ''}</span>
-            ${spell._src ? `<span class="spell-detail-tag">${spell._src}</span>` : ''}
-          </div>
+          <div class="spell-detail-tags">${tagsHtml}</div>
           <div class="spell-detail-stats">
-            ${spell._castTime ? `<div><strong>Casting Time:</strong> ${spell._castTime}</div>` : ''}
+            ${spell._castTime ? `<div><strong>Casting Time:</strong> <span class="${actionClass}">${spell._castTime}</span></div>` : ''}
             ${spell._rangeStr ? `<div><strong>Range:</strong> ${spell._rangeStr}</div>` : ''}
             ${spell._componentsStr ? `<div><strong>Components:</strong> ${spell._componentsStr}</div>` : ''}
-            ${spell._durationStr ? `<div><strong>Duration:</strong> ${spell._durationStr}</div>` : ''}
+            ${spell._durationStr ? `<div><strong>Duration:</strong> ${spell._durationStr}${isConc ? ' <span class="spell-tag-conc" style="font-size:0.75rem;padding:1px 5px;border-radius:3px">Concentration</span>' : ''}</div>` : ''}
           </div>
+          ${diceSection}
           <div class="spell-detail-body">${bodyHtml}</div>
+          ${concBtn}
         </div>
         <div class="levelup-footer">
           <button class="btn levelup-btn-confirm" id="spell-detail-ok">Close</button>
@@ -1515,6 +2207,24 @@ window.Sheet = {
     modal.querySelector('#spell-detail-close').addEventListener('click', close);
     modal.querySelector('#spell-detail-ok').addEventListener('click', close);
     modal.addEventListener('click', e => { if (e.target === modal) close(); });
+
+    // Dice buttons in modal
+    modal.querySelectorAll('.spell-detail-dice-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const expr = btn.dataset.dice.replace(/\s/g, '');
+        const result = Dice.rollExpression(expr);
+        Dice.showResult(`${spell.name} (${expr})`, result);
+      });
+    });
+
+    // Concentrate button
+    const concBtnEl = modal.querySelector('#spell-detail-concentrate');
+    if (concBtnEl) {
+      concBtnEl.addEventListener('click', () => {
+        this._setConcentration(spell.name);
+        close();
+      });
+    }
   },
 
   // ---- SPELL SLOTS ----
@@ -1559,6 +2269,10 @@ window.Sheet = {
     }
   },
 
+  _spellTableHeader() {
+    return `<div class="spell-table-header"><span></span><span>Name</span><span>Badges</span><span>Cast Time</span><span>Dice</span><span></span><span></span></div>`;
+  },
+
   buildSpellLevelSections() {
     const mount = this.$('spell-levels-mount');
     if (!mount) return;
@@ -1569,8 +2283,19 @@ window.Sheet = {
       section.id = `spell-section-${lvl}`;
       section.innerHTML = `
         <h3 class="spell-level-heading">${['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'][lvl]} Level</h3>
+        ${this._spellTableHeader()}
         <div class="spell-cards" id="spell-cards-${lvl}"></div>`;
       mount.appendChild(section);
+    }
+
+    // Also add header to cantrips section
+    const cantripSection = this.$('spell-section-0');
+    if (cantripSection) {
+      const cards = cantripSection.querySelector('.spell-cards');
+      const existingHeader = cantripSection.querySelector('.spell-table-header');
+      if (!existingHeader && cards) {
+        cards.insertAdjacentHTML('beforebegin', this._spellTableHeader());
+      }
     }
   },
 
@@ -1704,48 +2429,154 @@ window.Sheet = {
   // Strict fallback for items not found in 5etools data (containerCapacity is the primary check)
   _CONTAINER_NAMES: /^(backpacks?|bags? of holding|chests?|sacks?|haversacks?|portable holes?|heward's handy haversacks?|pouche?s?)$/i,
 
+  // Items that have containerCapacity in the data but are liquid/consumable vessels — NOT gear bags
+  _LIQUID_CONTAINERS: {
+    'waterskin': 4,
+    'flask':     1,
+    'vial':      1,
+    'jug':       1,
+    'pitcher':   1,
+    'pot':       1,
+    'tankard':   1,
+    'bottle':    1,
+  },
+
+  _isLiquidContainer(name) {
+    return Object.prototype.hasOwnProperty.call(this._LIQUID_CONTAINERS, (name || '').toLowerCase().trim());
+  },
+
   addItemToInventory(item) {
     const inv = this.lv('inventory', []);
-    const isContainer = !!(item.containerCapacity || this._CONTAINER_NAMES.test(item.name || ''));
-    if (!isContainer) {
+    // Volume-only containerCapacity (liquid vessels) should NOT become folder containers
+    const hasVolumeOnlyCapacity = item.containerCapacity
+      && !item.containerCapacity.weight
+      && !item.containerCapacity.item
+      && item.containerCapacity.volume;
+    const isContainer = !!(
+      (!hasVolumeOnlyCapacity && item.containerCapacity) ||
+      this._CONTAINER_NAMES.test(item.name || '')
+    );
+    const isLiquid = this._isLiquidContainer(item.name);
+    if (!isContainer && !isLiquid) {
       const existing = inv.find(i => i.name === item.name && !i.isContainer);
       if (existing) { existing.qty++; this.sv('inventory', inv); this.renderInventory(); return; }
     }
     const containerKey = isContainer
       ? (Date.now().toString(36) + Math.random().toString(36).slice(2))
       : undefined;
+    const maxPints = isLiquid ? this._LIQUID_CONTAINERS[item.name.toLowerCase().trim()] : 0;
+    const PINT_LBS = 1;
+    const fullWeight = item.weight || 0;
+    const emptyWeight = isLiquid ? Math.max(0, fullWeight - maxPints * PINT_LBS) : 0;
+
     inv.push({
       name: item.name, type: item._type,
+      typeCode: (item.type || '').split('|')[0],
       damage: item._dmgStr || '', mastery: (item.mastery || []).map(m => m.split('|')[0]).join(', '),
-      properties: item._propStr || '', weight: item.weight || 0,
+      properties: item._propStr || '', weight: fullWeight,
       value: item._valueStr || '', ac: item.ac || 0,
       rarity: item.rarity || 'none', category: item._category, qty: 1,
       reqAttune: item._reqAttune || false, attuned: false,
       description: typeof entriesToHtml === 'function' ? entriesToHtml(item.entries) : '',
       isContainer, containerOpen: true, containerId: null,
+      itemId: Date.now().toString(36) + Math.random().toString(36).slice(2),
       ...(isContainer && { containerKey, containerCapacity: item.containerCapacity || null, capacityStr: item.capacity || null }),
+      ...(isLiquid && { pints: maxPints, emptyWeight, liquidKey: Date.now().toString(36) + Math.random().toString(36).slice(2) }),
     });
     this.sv('inventory', inv);
     this.renderInventory();
+
+    // Auto-detect magic item charges and offer to track as a resource
+    if (item._isMagic || (item.rarity && item.rarity !== 'none')) {
+      if (typeof ClassResources !== 'undefined') {
+        const charges = ClassResources.detectItemCharges(item);
+        if (charges) {
+          const resources = this.lv('resources', []);
+          const resName = `${item.name} Charges`;
+          if (!resources.some(r => r.name === resName)) {
+            if (confirm(`"${item.name}" has ${charges.max} charges (recharges ${charges.refresh === 'dawn' ? 'at dawn' : 'on ' + charges.refresh.toUpperCase()}). Track as a resource?`)) {
+              resources.push({
+                name: resName,
+                max: charges.max,
+                used: 0,
+                refresh: charges.refresh,
+                ...(charges.rechargeRoll && { rechargeRoll: charges.rechargeRoll }),
+              });
+              this.sv('resources', resources);
+              this.renderResources();
+            }
+          }
+        }
+      }
+    }
   },
 
-  removeFromInventory(name) {
-    const inv = this.lv('inventory', []).filter(i => i.name !== name);
+  removeFromInventory(itemId) {
+    const inv = this.lv('inventory', []).filter(i => i.itemId !== itemId);
     this.sv('inventory', inv);
     this.renderInventory();
   },
 
   removeContainerFromInventory(containerKey) {
-    const inv = this.lv('inventory', [])
-      .filter(i => i.containerKey !== containerKey)
-      .map(i => i.containerId === containerKey ? { ...i, containerId: null } : i);
-    this.sv('inventory', inv);
+    const inv = this.lv('inventory', []);
+    const contained = inv.filter(i => i.containerId === containerKey);
+
+    if (contained.length > 0) {
+      // Show confirmation popup
+      this._showBagDeletePopup(containerKey, contained.length);
+      return;
+    }
+
+    const newInv = inv.filter(i => i.containerKey !== containerKey);
+    this.sv('inventory', newInv);
     this.renderInventory();
   },
 
-  _saveInvQty(name, qty) {
+  _showBagDeletePopup(containerKey, itemCount) {
+    const existing = document.getElementById('bag-delete-popup');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'bag-delete-popup';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:var(--white);border-radius:var(--radius);padding:20px 24px;max-width:320px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.25);font-family:var(--font-body);';
+    modal.innerHTML = `
+      <div style="font-weight:700;font-size:1rem;color:var(--ink);margin-bottom:8px;">Delete bag?</div>
+      <div style="font-size:0.85rem;color:var(--ink-light);margin-bottom:18px;">This bag contains <strong>${itemCount} item${itemCount !== 1 ? 's' : ''}</strong>. What would you like to do?</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="bag-del-all" style="background:#c0392b;color:#fff;border:none;border-radius:var(--radius);padding:8px 14px;cursor:pointer;font-size:0.85rem;font-family:var(--font-body);font-weight:600;">Delete bag and all items</button>
+        <button id="bag-del-only" style="background:var(--parchment-dk);color:var(--ink);border:1px solid var(--border);border-radius:var(--radius);padding:8px 14px;cursor:pointer;font-size:0.85rem;font-family:var(--font-body);">Delete bag only — move items to inventory</button>
+        <button id="bag-del-cancel" style="background:none;color:var(--ink-faint);border:none;border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.82rem;font-family:var(--font-body);">Cancel</button>
+      </div>`;
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+    document.getElementById('bag-del-cancel').addEventListener('click', () => overlay.remove());
+
+    document.getElementById('bag-del-all').addEventListener('click', () => {
+      const inv = this.lv('inventory', []).filter(i => i.containerKey !== containerKey && i.containerId !== containerKey);
+      this.sv('inventory', inv);
+      this.renderInventory();
+      overlay.remove();
+    });
+
+    document.getElementById('bag-del-only').addEventListener('click', () => {
+      const inv = this.lv('inventory', [])
+        .filter(i => i.containerKey !== containerKey)
+        .map(i => i.containerId === containerKey ? { ...i, containerId: null } : i);
+      this.sv('inventory', inv);
+      this.renderInventory();
+      overlay.remove();
+    });
+  },
+
+  _saveInvQty(itemId, qty) {
     const inv = this.lv('inventory', []);
-    const it = inv.find(i => i.name === name);
+    const it = inv.find(i => i.itemId === itemId);
     if (!it) return;
     // If inside a container, validate capacity before saving
     if (it.containerId) {
@@ -1754,18 +2585,18 @@ window.Sheet = {
         const maxWeight = this._containerMaxWeight(container);
         if (maxWeight != null) {
           const otherWeight = inv
-            .filter(i => i.containerId === container.containerKey && i.name !== name)
+            .filter(i => i.containerId === container.containerKey && i.itemId !== itemId)
             .reduce((sum, i) => sum + (i.weight || 0) * (i.qty || 1), 0);
           if (otherWeight + (it.weight || 0) * qty > maxWeight) {
             const maxQty = Math.max(1, Math.floor((maxWeight - otherWeight) / (it.weight || 1)));
-            this._showInvWarning(`${container.name} can only fit ${maxQty}× ${name} (${maxWeight} lb. limit).`);
+            this._showInvWarning(`${container.name} can only fit ${maxQty}× ${it.name} (${maxWeight} lb. limit).`);
             it.qty = maxQty;
             this.sv('inventory', inv);
             this.renderInventory();
             return;
           }
         }
-        const maxCount = this._containerMaxItemCount(container, name);
+        const maxCount = this._containerMaxItemCount(container, it.name);
         if (maxCount != null && qty > maxCount) {
           this._showInvWarning(`${container.name} can only hold ${maxCount} ${this._containerAcceptedLabel(container)}.`);
           it.qty = maxCount;
@@ -1777,6 +2608,91 @@ window.Sheet = {
     }
     it.qty = qty;
     this.sv('inventory', inv);
+    this.renderInventory();
+  },
+
+  _showSplitPopup(item) {
+    const existing = document.getElementById('inv-split-popup');
+    if (existing) existing.remove();
+
+    const total = item.qty;
+    const half  = Math.floor(total / 2);
+
+    const overlay = document.createElement('div');
+    overlay.id = 'inv-split-popup';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.45);display:flex;align-items:center;justify-content:center;padding:16px;';
+
+    overlay.innerHTML = `
+      <div style="background:var(--parchment);border:2px solid var(--border);border-radius:8px;box-shadow:0 8px 40px rgba(0,0,0,0.35);width:100%;max-width:340px;font-family:var(--font-body);">
+        <div style="padding:14px 18px 10px;border-bottom:1px solid var(--border);background:var(--parchment-dk,var(--parchment));border-radius:6px 6px 0 0;display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-family:var(--font-title);font-size:1rem;font-weight:700;color:var(--ink);">Split ${item.name}</span>
+          <button id="inv-split-close" style="background:none;border:none;cursor:pointer;font-size:1rem;color:var(--ink-light);padding:2px 6px;border-radius:3px;">✕</button>
+        </div>
+        <div style="padding:18px 20px 14px;display:flex;flex-direction:column;gap:14px;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:10px;font-size:1.1rem;font-weight:700;color:var(--ink);">
+            <span id="inv-split-a" style="min-width:32px;text-align:right;">${half}</span>
+            <span style="color:var(--ink-faint);font-size:0.9rem;">⇄</span>
+            <span id="inv-split-b" style="min-width:32px;text-align:left;">${total - half}</span>
+          </div>
+          <input id="inv-split-slider" type="range" min="1" max="${total - 1}" value="${half}"
+            style="width:100%;accent-color:var(--gold-dark);cursor:pointer;">
+          ${item.weight ? `<div id="inv-split-weight" style="text-align:center;font-size:0.72rem;color:var(--ink-faint);">${(item.weight * half).toFixed(2).replace(/\.?0+$/,'')} lb. &nbsp;⇄&nbsp; ${(item.weight * (total - half)).toFixed(2).replace(/\.?0+$/,'')} lb.</div>` : ''}
+        </div>
+        <div style="padding:10px 18px 14px;border-top:1px solid var(--border);background:var(--parchment-dk,var(--parchment));border-radius:0 0 6px 6px;display:flex;gap:8px;justify-content:flex-end;">
+          <button id="inv-split-cancel" style="background:var(--parchment-dk);border:1px solid var(--border);border-radius:var(--radius);padding:6px 14px;cursor:pointer;font-size:0.82rem;font-family:var(--font-body);color:var(--ink);">Cancel</button>
+          <button id="inv-split-confirm" style="background:var(--gold-dark,#7a5c1e);color:#fff;border:none;border-radius:var(--radius);padding:6px 16px;cursor:pointer;font-size:0.85rem;font-family:var(--font-body);font-weight:600;">Split</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(overlay);
+
+    const slider  = overlay.querySelector('#inv-split-slider');
+    const aEl     = overlay.querySelector('#inv-split-a');
+    const bEl     = overlay.querySelector('#inv-split-b');
+    const wEl     = overlay.querySelector('#inv-split-weight');
+
+    slider.addEventListener('input', () => {
+      const a = parseInt(slider.value);
+      const b = total - a;
+      aEl.textContent = a;
+      bEl.textContent = b;
+      if (wEl && item.weight) {
+        const fmt = n => parseFloat(n.toFixed(2)).toString();
+        wEl.innerHTML = `${fmt(item.weight * a)} lb. &nbsp;⇄&nbsp; ${fmt(item.weight * b)} lb.`;
+      }
+    });
+
+    const close = () => overlay.remove();
+    overlay.querySelector('#inv-split-close').addEventListener('click', close);
+    overlay.querySelector('#inv-split-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+
+    overlay.querySelector('#inv-split-confirm').addEventListener('click', () => {
+      this._splitInvItem(item, parseInt(slider.value));
+      close();
+    });
+  },
+
+  _splitInvItem(item, splitQty) {
+    const inv = this.lv('inventory', []);
+    const it  = inv.find(i => i.itemId === item.itemId);
+    if (!it || splitQty < 1 || splitQty >= it.qty) return;
+    it.qty -= splitQty;
+    inv.push({ ...it, qty: splitQty, itemId: Date.now().toString(36) + Math.random().toString(36).slice(2) });
+    this.sv('inventory', inv);
+    this.renderInventory();
+  },
+
+  _mergeInvItem(item) {
+    const inv = this.lv('inventory', []);
+    const loc = item.containerId ?? null;
+    const dupes = inv.filter(i => i.name === item.name && (i.containerId ?? null) === loc && i.itemId !== item.itemId && !i.isContainer);
+    if (!dupes.length) { this._showInvWarning(`No other ${item.name} stacks to merge.`); return; }
+    const target = inv.find(i => i.itemId === item.itemId);
+    target.qty += dupes.reduce((sum, i) => sum + (i.qty || 1), 0);
+    const dupeIds = new Set(dupes.map(i => i.itemId));
+    this.sv('inventory', inv.filter(i => !dupeIds.has(i.itemId)));
+    this.renderInventory();
   },
 
   // Returns true if the container accepts the named item.
@@ -1873,49 +2789,114 @@ window.Sheet = {
     if (item.value) detail += (detail ? ' | ' : '') + item.value;
     if (item.rarity && item.rarity !== 'none') detail += (detail ? ' | ' : '') + item.rarity;
 
+    const isLiquid = this._isLiquidContainer(item.name);
     const totalWeight = item.weight ? item.weight * (item.qty || 1) : 0;
-    const totalWStr = totalWeight ? `${Number.isInteger(totalWeight) ? totalWeight : totalWeight.toFixed(2)} lb.` : '';
+    const totalWStr = (!isLiquid && totalWeight) ? `${Number.isInteger(totalWeight) ? totalWeight : totalWeight.toFixed(2)} lb.` : '';
 
     const card = document.createElement('div');
     card.className = 'inv-card';
     if (draggable) { card.draggable = true; card.dataset.item = item.name; }
-    card.innerHTML = `
-      <button class="inv-del-btn" title="Remove">✕</button>
-      <div class="inv-card-info">
-        <div class="inv-card-name">${item.name}</div>
-        ${detail ? `<div class="inv-card-detail">${detail}</div>` : ''}
-      </div>
-      <div class="inv-card-qty">
-        <div class="qty-wrap">
-          <div class="qty-controls">
-            <button class="qty-btn qty-minus" tabindex="-1">−</button>
-            <input type="number" value="${item.qty}" min="1" max="999" data-item="${item.name}">
-            <button class="qty-btn qty-plus" tabindex="-1">+</button>
-          </div>
-          ${totalWStr ? `<div class="inv-card-total-weight">${totalWStr}</div>` : ''}
+
+    if (isLiquid) {
+      // Liquid containers: no qty controls, only pint tracker
+      card.innerHTML = `
+        <button class="inv-del-btn" title="Remove">✕</button>
+        <div class="inv-card-info">
+          <div class="inv-card-name">${item.name}</div>
+          ${detail ? `<div class="inv-card-detail">${detail}</div>` : ''}
         </div>
-      </div>`;
+        <div class="inv-card-qty">
+          <div class="inv-pints-row"></div>
+        </div>`;
 
-    const input = card.querySelector('input');
-    const updateTotalWeight = (qty) => {
-      const tw = card.querySelector('.inv-card-total-weight');
-      if (!tw || !item.weight) return;
-      const t = item.weight * qty;
-      tw.textContent = `${Number.isInteger(t) ? t : t.toFixed(2)} lb.`;
-    };
-    const applyQty = (qty) => {
-      qty = Math.max(1, qty);
-      input.value = qty;
-      updateTotalWeight(qty);
-      this._saveInvQty(item.name, qty);
-    };
-    input.addEventListener('change', e => applyQty(parseInt(e.target.value) || 1));
-    card.querySelector('.qty-minus').addEventListener('click', () => applyQty((parseInt(input.value) || 1) - 1));
-    card.querySelector('.qty-plus').addEventListener('click',  () => applyQty((parseInt(input.value) || 1) + 1));
-    card.querySelector('.inv-del-btn').addEventListener('click', () => this.removeFromInventory(item.name));
+      const maxPints   = this._LIQUID_CONTAINERS[item.name.toLowerCase().trim()];
+      const curPints   = item.pints ?? maxPints;
+      const PINT_LBS   = 1;
+      const emptyWeight = item.emptyWeight ?? Math.max(0, (item.weight || 0) - maxPints * PINT_LBS);
 
-    // Tooltip: show item description on hover
-    card.addEventListener('mouseenter', e => {
+      const pintsRow = card.querySelector('.inv-pints-row');
+      pintsRow.innerHTML = `
+        <button class="qty-btn inv-pints-minus" tabindex="-1">−</button>
+        <span class="inv-pints-val${curPints === 0 ? ' inv-pints-empty' : ''}">
+          <span class="inv-pints-cur">${curPints}</span><span class="inv-pints-max">/${maxPints} pt</span>
+        </span>
+        <button class="qty-btn inv-pints-plus" tabindex="-1">+</button>`;
+
+      const valEl = pintsRow.querySelector('.inv-pints-val');
+      const curEl = pintsRow.querySelector('.inv-pints-cur');
+
+      const savePints = (v) => {
+        v = Math.max(0, Math.min(maxPints, v));
+        curEl.textContent = v;
+        valEl.classList.toggle('inv-pints-empty', v === 0);
+        const newWeight = emptyWeight + v * PINT_LBS;
+        const inv2 = this.lv('inventory', []);
+        const it2  = item.liquidKey
+          ? inv2.find(i => i.liquidKey === item.liquidKey)
+          : inv2.find(i => i.name === item.name);
+        if (it2) { it2.pints = v; it2.weight = newWeight; this.sv('inventory', inv2); }
+        const detailEl = card.querySelector('.inv-card-detail');
+        if (detailEl) detailEl.textContent = detailEl.textContent.replace(/[\d.]+\s*lb\./, `${newWeight} lb.`);
+        this.renderInventory();
+      };
+
+      pintsRow.querySelector('.inv-pints-minus').addEventListener('click', () => savePints(parseInt(curEl.textContent || 0) - 1));
+      pintsRow.querySelector('.inv-pints-plus').addEventListener('click',  () => savePints(parseInt(curEl.textContent || 0) + 1));
+
+      // Delete by liquidKey so each waterskin is independent
+      card.querySelector('.inv-del-btn').addEventListener('click', () => {
+        if (item.liquidKey) {
+          const inv2 = this.lv('inventory', []).filter(i => i.liquidKey !== item.liquidKey);
+          this.sv('inventory', inv2); this.renderInventory();
+        } else {
+          this.removeFromInventory(item.itemId);
+        }
+      });
+    } else {
+      // Normal items: qty controls
+      card.innerHTML = `
+        <button class="inv-del-btn" title="Remove">✕</button>
+        <button class="inv-merge-btn" title="Merge stacks">⊕</button>
+        ${item.qty > 1 ? '<button class="inv-split-btn" title="Split stack">⇄</button>' : ''}
+        <div class="inv-card-info">
+          <div class="inv-card-name">${item.name}</div>
+          ${detail ? `<div class="inv-card-detail">${detail}</div>` : ''}
+        </div>
+        <div class="inv-card-qty">
+          <div class="qty-wrap">
+            <div class="qty-controls">
+              <button class="qty-btn qty-minus" tabindex="-1">−</button>
+              <input type="number" value="${item.qty}" min="1" max="999" data-item="${item.name}">
+              <button class="qty-btn qty-plus" tabindex="-1">+</button>
+            </div>
+            ${totalWStr ? `<div class="inv-card-total-weight">${totalWStr}</div>` : ''}
+          </div>
+        </div>`;
+
+      const input = card.querySelector('input');
+      const applyQty = (qty) => {
+        qty = Math.min(999, Math.max(1, qty));
+        input.value = qty;
+        const tw = card.querySelector('.inv-card-total-weight');
+        if (tw && item.weight) { const t = item.weight * qty; tw.textContent = `${Number.isInteger(t) ? t : t.toFixed(2)} lb.`; }
+        this._saveInvQty(item.itemId, qty);
+      };
+      input.addEventListener('change', e => applyQty(parseInt(e.target.value) || 1));
+      card.querySelector('.qty-minus').addEventListener('click', () => applyQty((parseInt(input.value) || 1) - 1));
+      card.querySelector('.qty-plus').addEventListener('click',  () => applyQty((parseInt(input.value) || 1) + 1));
+      card.querySelector('.inv-del-btn').addEventListener('click', () => this.removeFromInventory(item.itemId));
+      card.querySelector('.inv-split-btn')?.addEventListener('click', e => { e.stopPropagation(); this._showSplitPopup(item); });
+      card.querySelector('.inv-merge-btn').addEventListener('click', e => { e.stopPropagation(); this._mergeInvItem(item); });
+    }
+
+    // Set flag on qty mousedown so the re-render triggered by the click doesn't
+    // immediately show the tooltip on the freshly built card's mouseenter.
+    // The flag is cleared lazily on the next mousemove over the card body,
+    // which also re-shows the tooltip so it comes back as soon as the cursor moves.
+    card.querySelector('.qty-controls')?.addEventListener('mousedown', () => { this._invQtyActive = true; });
+
+    const _qtySelectors = '.qty-btn, .qty-controls input, .inv-split-btn, .inv-merge-btn';
+    const _showTooltip = (e) => {
       const found = this._findDndItem(item.name);
       const descHtml = (found?.entries && typeof entriesToHtml === 'function')
         ? entriesToHtml(found.entries)
@@ -1926,8 +2907,20 @@ window.Sheet = {
       const type = item.type || (found ? found._type || '' : '');
       const meta = [src + page, type].filter(Boolean).join(' · ');
       this._showInvTooltip(item.name, meta, descHtml, e);
+    };
+
+    // Tooltip: show item description on hover (suppress over qty controls)
+    card.addEventListener('mouseenter', e => {
+      if (this._invQtyActive || e.target.closest(_qtySelectors)) return;
+      _showTooltip(e);
     });
-    card.addEventListener('mousemove',  e => this._positionInvTooltip(e));
+    card.addEventListener('mousemove', e => {
+      if (e.target.closest(_qtySelectors)) { this._hideInvTooltip(); return; }
+      if (this._invQtyActive) this._invQtyActive = false;
+      const tip = document.getElementById('inv-tooltip');
+      if (!tip || tip.style.display === 'none') { _showTooltip(e); return; }
+      this._positionInvTooltip(e);
+    });
     card.addEventListener('mouseleave', () => this._hideInvTooltip());
 
     return card;
@@ -2001,10 +2994,13 @@ window.Sheet = {
     const inv = this.lv('inventory', []);
     const allItems = (typeof DndData !== 'undefined' ? DndData.allItems : null) || [];
     let migrated = false;
+    // Backfill itemId for items added before this field existed
+    inv.forEach(item => { if (!item.itemId) { item.itemId = Date.now().toString(36) + Math.random().toString(36).slice(2); migrated = true; } });
     inv.forEach(item => {
       if (!item.isContainer && !item.containerId) {
         const found = allItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
-        if (found?.containerCapacity || found?.capacity || this._CONTAINER_NAMES.test(item.name || '')) {
+        const hasVolumeOnly = found?.containerCapacity && !found.containerCapacity.weight && !found.containerCapacity.item && found.containerCapacity.volume;
+        if (!hasVolumeOnly && (found?.containerCapacity || found?.capacity || this._CONTAINER_NAMES.test(item.name || ''))) {
           item.isContainer = true;
           item.containerOpen = item.containerOpen ?? true;
           item.containerKey = item.containerKey || (Date.now().toString(36) + Math.random().toString(36).slice(2));
@@ -2014,6 +3010,27 @@ window.Sheet = {
           migrated = true;
         }
       }
+    });
+    // Heal liquid container state — use DndData as ground truth when available,
+    // and enforce the invariant: weight = emptyWeight + pints * PINT_LBS
+    const PINT_LBS = 1;
+    inv.forEach(item => {
+      if (!this._isLiquidContainer(item.name)) return;
+      const maxPints = this._LIQUID_CONTAINERS[item.name.toLowerCase().trim()];
+      item.pints = item.pints ?? maxPints;
+      const found = allItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
+      if (found?.weight != null) {
+        // Data is available — recompute emptyWeight from the known full weight
+        const correctEmpty = Math.max(0, found.weight - maxPints * PINT_LBS);
+        if (item.emptyWeight !== correctEmpty) { item.emptyWeight = correctEmpty; migrated = true; }
+      } else if (item.emptyWeight == null) {
+        // No data — fall back to inferring from current stored weight
+        item.emptyWeight = Math.max(0, (item.weight || 0) - item.pints * PINT_LBS);
+        migrated = true;
+      }
+      // Enforce: weight must always equal emptyWeight + pints (single source of truth)
+      const expected = (item.emptyWeight || 0) + item.pints * PINT_LBS;
+      if (item.weight !== expected) { item.weight = expected; migrated = true; }
     });
     if (migrated) this.sv('inventory', inv);
 
@@ -2031,6 +3048,14 @@ window.Sheet = {
     inv.filter(i => !['weapon','armor','gear'].includes(i.category) && !i.isContainer).forEach(item => gearEl?.appendChild(this._makeInvCard(item)));
 
     if (!gearEl) { this.refreshAttackList(); this.renderMagicItems(); return; }
+
+    // Make the whole gear section an eject zone — dropping anywhere outside a bag moves the item to loose inventory
+    gearEl.addEventListener('dragover', e => { e.preventDefault(); });
+    gearEl.addEventListener('drop', e => {
+      // Only act if not dropped on a container (containers stop propagation)
+      const name = e.dataTransfer.getData('text/plain');
+      if (name) this._moveToContainer(name, null);
+    });
 
     const containers = inv.filter(i => i.isContainer);
     const loose = inv.filter(i => i.category === 'gear' && !i.isContainer && !i.containerId);
@@ -2087,10 +3112,10 @@ window.Sheet = {
       });
 
       // Also accept drops on the header when closed
-      header.addEventListener('dragover',  e => { e.preventDefault(); setDragOver(true); });
+      header.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); });
       header.addEventListener('dragleave', () => setDragOver(false));
       header.addEventListener('drop', e => {
-        e.preventDefault(); setDragOver(false);
+        e.preventDefault(); e.stopPropagation(); setDragOver(false);
         const name = e.dataTransfer.getData('text/plain');
         if (name && name !== container.name) this._moveToContainer(name, cKey);
       });
@@ -2098,7 +3123,7 @@ window.Sheet = {
       // Render contained items
       contained.forEach(item => {
         const card = this._makeInvCard(item, true);
-        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); });
+        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
         card.addEventListener('dragend',   () => card.classList.remove('dragging'));
         itemsEl.appendChild(card);
       });
@@ -2119,18 +3144,17 @@ window.Sheet = {
       const grid = document.createElement('div');
       grid.className = 'inv-gear-grid';
 
-      // The grid itself is an eject zone (drop items here to take out of container)
-      grid.addEventListener('dragover',  e => { e.preventDefault(); grid.classList.add('drag-over'); });
+      grid.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); grid.classList.add('drag-over'); });
       grid.addEventListener('dragleave', e => { if (!grid.contains(e.relatedTarget)) grid.classList.remove('drag-over'); });
       grid.addEventListener('drop', e => {
-        e.preventDefault(); grid.classList.remove('drag-over');
+        e.preventDefault(); e.stopPropagation(); grid.classList.remove('drag-over');
         const name = e.dataTransfer.getData('text/plain');
         if (name) this._moveToContainer(name, null);
       });
 
       loose.forEach(item => {
         const card = this._makeInvCard(item, true);
-        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); });
+        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
         card.addEventListener('dragend',   () => card.classList.remove('dragging'));
         grid.appendChild(card);
       });
@@ -2144,9 +3168,33 @@ window.Sheet = {
       gearEl.appendChild(hint);
     }
 
+    // ---- Always-present eject zone (visible only while dragging from a container) ----
+    if (containers.length) {
+      const ejectZone = document.createElement('div');
+      ejectZone.className = 'inv-eject-zone';
+      ejectZone.textContent = 'Drop here to remove from bag';
+      ejectZone.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); ejectZone.classList.add('active'); });
+      ejectZone.addEventListener('dragleave', e => { if (!ejectZone.contains(e.relatedTarget)) ejectZone.classList.remove('active'); });
+      ejectZone.addEventListener('drop', e => {
+        e.preventDefault(); e.stopPropagation(); ejectZone.classList.remove('active');
+        const name = e.dataTransfer.getData('text/plain');
+        if (name) this._moveToContainer(name, null);
+      });
+      gearEl.appendChild(ejectZone);
+
+      // Show/hide eject zone based on whether a drag from inside a container is active
+      const showEject = () => ejectZone.classList.add('visible');
+      const hideEject = () => { ejectZone.classList.remove('visible', 'active'); };
+      gearEl.querySelectorAll('.inv-container-items .inv-card').forEach(card => {
+        card.addEventListener('dragstart', showEject);
+        card.addEventListener('dragend',   hideEject);
+      });
+    }
+
     this.refreshAttackList();
     this.renderMagicItems();
     this.renderCarryCapacity();
+    this.renderEquippedGear();
   },
 
   // ---- WEIGHT TRACKING & CARRYING CAPACITY ----
@@ -2274,7 +3322,7 @@ window.Sheet = {
             ${rarity ? `<span class="feat-card-cat">${rarity}</span>` : ''}
           </div>
           <div class="feat-card-actions">
-            ${reqAttune ? `<label class="attune-check-label" title="${attuneTxt}"><input type="checkbox" class="attune-cb" ${item.attuned ? 'checked' : ''}> <span>Attuned</span></label>` : ''}
+            ${reqAttune ? `<label class="attune-check-label" title="Attunement can only be changed during a Long Rest. Open a Long Rest to attune or un-attune this item."><span class="attune-cb-display${item.attuned ? ' attuned' : ''}" aria-label="${item.attuned ? 'Attuned' : 'Not attuned'}"></span> <span class="attune-cb-text">${item.attuned ? 'Attuned' : 'Attune'}</span></label>` : ''}
             ${bodyContent ? `<button class="feat-card-toggle" title="Show details">▶</button>` : ''}
             <button class="feat-card-del" title="Remove">✕</button>
           </div>
@@ -2292,13 +3340,22 @@ window.Sheet = {
       }
 
       if (reqAttune) {
-        card.querySelector('.attune-cb').addEventListener('change', e => {
-          const inv = this.lv('inventory', []);
-          const it = inv.find(i => i.name === item.name);
-          if (it) it.attuned = e.target.checked;
-          this.sv('inventory', inv);
-          this.renderMagicItems();
-        });
+        const attuneLbl = card.querySelector('.attune-check-label');
+        if (attuneLbl) {
+          attuneLbl.style.cursor = 'not-allowed';
+          attuneLbl.addEventListener('click', e => {
+            e.preventDefault();
+            // Show tooltip nudge
+            let tip = attuneLbl.querySelector('.attune-tip');
+            if (!tip) {
+              tip = document.createElement('div');
+              tip.className = 'attune-tip';
+              tip.textContent = 'Use Long Rest to attune/un-attune items.';
+              attuneLbl.appendChild(tip);
+              setTimeout(() => tip.remove(), 2800);
+            }
+          });
+        }
       }
 
       card.querySelector('.feat-card-del').addEventListener('click', () => this.removeFromInventory(item.name));
@@ -2343,6 +3400,9 @@ window.Sheet = {
         dl.appendChild(opt);
       }
     });
+    const delOpt = document.createElement('option');
+    delOpt.value = '✕ Delete this entry';
+    dl.appendChild(delOpt);
   },
 
   // ---- LIMITED RESOURCES ----
@@ -2350,7 +3410,7 @@ window.Sheet = {
     this.$('btn-add-resource')?.addEventListener('click', () => {
       const name = this.$('res-name')?.value.trim();
       const max = Math.max(1, parseInt(this.$('res-max')?.value) || 1);
-      const refresh = this.$('res-refresh')?.value || 'lr';
+      const refresh = this.$('res-refresh')?.value || 'lr'; // refresh type still stored for rest-modal logic
       if (!name) return;
       const resources = this.lv('resources', []);
       resources.push({ name, max, used: 0, refresh });
@@ -2369,7 +3429,7 @@ window.Sheet = {
     if (!list) return;
     list.innerHTML = '';
     const resources = this.lv('resources', []);
-    const LABELS = { lr: 'LR', sr: 'SR', dawn: 'Dawn', manual: '—' };
+    const LABELS = { lr: 'LR', sr: 'SR', dawn: 'DN', manual: 'MR' };
     if (!resources.length) {
       list.innerHTML = '<div style="color:var(--ink-faint);font-size:0.75rem;padding:4px 0 2px">No resources yet — add class features, spells, or items with limited uses.</div>';
       return;
@@ -2380,12 +3440,15 @@ window.Sheet = {
       const pipsHtml = Array.from({ length: Math.min(res.max, 20) }, (_, i) =>
         `<span class="resource-pip${i < res.used ? ' used' : ''}" data-pip="${i}"></span>`
       ).join('');
+      const manualRefreshBtn = res.refresh === 'manual'
+        ? `<button class="resource-reset resource-manual-refresh" title="Manually refresh this resource">↺</button>`
+        : '';
       row.innerHTML = `
         <span class="resource-name">${res.name}</span>
         <div class="resource-pips">${pipsHtml}</div>
         <span class="resource-count">${res.used}/${res.max}</span>
-        <span class="resource-refresh-badge ${res.refresh}">${LABELS[res.refresh] || res.refresh}</span>
-        <button class="resource-reset" title="Reset uses">↺</button>
+        <span class="resource-refresh-badge ${res.refresh}" title="Refreshes on: ${res.refresh === 'lr' ? 'Long Rest' : res.refresh === 'sr' ? 'Short Rest' : res.refresh === 'dawn' ? 'Dawn' : 'Manual Refresh'}">${LABELS[res.refresh] || res.refresh}</span>
+        ${manualRefreshBtn}
         <button class="resource-del" title="Remove">✕</button>`;
       row.querySelectorAll('.resource-pip').forEach((pip, i) => {
         pip.addEventListener('click', () => {
@@ -2396,12 +3459,15 @@ window.Sheet = {
           this.renderResources();
         });
       });
-      row.querySelector('.resource-reset').addEventListener('click', () => {
-        const r = this.lv('resources', []);
-        r[idx].used = 0;
-        this.sv('resources', r);
-        this.renderResources();
-      });
+      const manualBtn = row.querySelector('.resource-manual-refresh');
+      if (manualBtn) {
+        manualBtn.addEventListener('click', () => {
+          const r = this.lv('resources', []);
+          r[idx].used = 0;
+          this.sv('resources', r);
+          this.renderResources();
+        });
+      }
       row.querySelector('.resource-del').addEventListener('click', () => {
         const r = this.lv('resources', []).filter((_, i) => i !== idx);
         this.sv('resources', r);
@@ -2439,6 +3505,47 @@ window.Sheet = {
 
   // ---- SHEET BUTTONS ----
   initSheetButtons() {
+    // Clamp speed to 0–999 on manual input
+    const speedInput = this.$('speed');
+    if (speedInput) {
+      speedInput.addEventListener('change', () => {
+        const v = parseInt(speedInput.value);
+        if (isNaN(v) || v < 0) speedInput.value = 0;
+        else if (v > 999) speedInput.value = 999;
+        else speedInput.value = v;
+        speedInput.dispatchEvent(new Event('input'));
+      });
+    }
+
+    // Clamp coins to 0+ on manual input; default blank to 0
+    ['cp', 'sp', 'ep', 'gp', 'pp'].forEach(id => {
+      const el = this.$(id);
+      if (!el) return;
+      el.addEventListener('change', () => {
+        const v = parseInt(el.value);
+        el.value = (isNaN(v) || v < 0) ? 0 : v;
+        el.dispatchEvent(new Event('input'));
+      });
+      el.addEventListener('blur', () => {
+        if (el.value === '') el.value = 0;
+      });
+    });
+
+    // Clamp armorClass to 0–99 on manual input
+    const acInput = this.$('armorClass');
+    if (acInput) {
+      acInput.addEventListener('change', () => {
+        const v = parseInt(acInput.value);
+        if (isNaN(v) || v < 0) acInput.value = 0;
+        else if (v > 99) acInput.value = 99;
+        else acInput.value = v;
+        acInput.dispatchEvent(new Event('input'));
+      });
+    }
+
+    // Cover buttons
+    this._initCoverButtons();
+
     // HP current +/- buttons (handled separately — full-height buttons)
     const hpInput = this.$('hpCurrent');
     this.qs('.hp-btn-minus')?.addEventListener('click', () => {
@@ -2457,23 +3564,1324 @@ window.Sheet = {
   },
 
   // ---- DICE ROLLER ----
+  _diceMode: 'normal',    // 'normal', 'advantage', 'disadvantage'
+  _diceExpression: [],     // Array of { count, sides, mode }
+
   initDiceRoller() {
+    const roller = this.$('dice-roller');
     const toggle = this.$('dice-toggle');
     const panel = this.$('dice-panel');
-    if (toggle && panel) {
-      toggle.addEventListener('click', () => {
-        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    const rollBtn = this.$('dice-roll-btn');
+    const clearBtn = this.$('dice-clear-btn');
+    if (!roller || !toggle || !panel) return;
+
+    // Start with idle pulse
+    toggle.classList.add('idle-pulse');
+
+    // Toggle panel open/close
+    toggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      roller.classList.toggle('open');
+      if (roller.classList.contains('open')) {
+        toggle.classList.remove('idle-pulse');
+      }
+    });
+
+    // Close panel on outside click
+    document.addEventListener('click', (e) => {
+      if (!roller.contains(e.target)) {
+        roller.classList.remove('open');
+        if (!toggle.classList.contains('idle-pulse')) {
+          toggle.classList.add('idle-pulse');
+        }
+      }
+    });
+
+    // Spinner +/- buttons for mod
+    panel.querySelectorAll('.dice-opt-minus, .dice-opt-plus').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = this.$(btn.dataset.target);
+        if (!input) return;
+        const delta = btn.classList.contains('dice-opt-minus') ? -1 : 1;
+        input.value = (parseInt(input.value) || 0) + delta;
+        this._renderFormulaBar();
       });
+    });
+
+    // Also update formula bar when mod is typed manually
+    const modInput = this.$('diceMod');
+    if (modInput) {
+      modInput.addEventListener('input', () => this._renderFormulaBar());
     }
 
+    // Advantage / disadvantage mode buttons
+    panel.querySelectorAll('.dice-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.mode;
+        if (this._diceMode === mode && mode !== 'normal') {
+          this._diceMode = 'normal';
+        } else {
+          this._diceMode = mode;
+        }
+        panel.querySelectorAll('.dice-mode-btn').forEach(b => b.classList.remove('active'));
+        panel.querySelector(`.dice-mode-btn[data-mode="${this._diceMode}"]`)?.classList.add('active');
+      });
+    });
+    panel.querySelector('.dice-mode-btn[data-mode="normal"]')?.classList.add('active');
+
+    // Dice buttons — add group to expression
+    // Dice buttons — each click adds 1 die (merges if same type)
     this.qsa('.dice-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const sides = parseInt(btn.dataset.sides);
-        const count = Math.max(1, parseInt(this.$('diceCount')?.value) || 1);
+        const mode = (sides === 20) ? this._diceMode : 'normal';
+
+        const existing = this._diceExpression.find(g => g.sides === sides && g.mode === mode);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          this._diceExpression.push({ count: 1, sides, mode });
+        }
+        this._renderFormulaBar();
+      });
+    });
+
+    // Roll button
+    if (rollBtn) {
+      rollBtn.addEventListener('click', () => {
         const mod = parseInt(this.$('diceMod')?.value) || 0;
-        const result = Dice.rollExpression(`${count}d${sides}${mod >= 0 ? '+' + mod : mod}`);
-        Dice.showResult(`${count}d${sides}${mod ? (mod > 0 ? '+' : '') + mod : ''}`, result);
+        if (!this._diceExpression.length && !mod) return;
+
+        // If expression is empty but there's a mod, just show the mod
+        if (!this._diceExpression.length) {
+          const result = { total: mod, modifier: mod, compound: true, groups: [], used: null };
+          Dice.showResult(`Modifier`, result);
+          this._updateDiceResult(result);
+          return;
+        }
+
+        const result = Dice.rollCompound(this._diceExpression, mod);
+
+        // Build label from expression
+        const label = this._buildExpressionLabel();
+        Dice.showResult(label, result);
+        this._updateDiceResult(result);
+      });
+    }
+
+    // Clear button
+    if (clearBtn) {
+      clearBtn.addEventListener('click', () => {
+        this._diceExpression = [];
+        const modInput = this.$('diceMod');
+        if (modInput) modInput.value = 0;
+        this._renderFormulaBar();
+        const resultEl = this.$('dice-result');
+        if (resultEl) {
+          resultEl.innerHTML = 'Build an expression, then roll';
+          resultEl.classList.remove('has-roll');
+        }
+      });
+    }
+
+    // Initial render
+    this._renderFormulaBar();
+  },
+
+  _buildExpressionLabel() {
+    const parts = this._diceExpression.map(g => {
+      let s = `${g.count}d${g.sides}`;
+      if (g.mode === 'advantage') s += ' (Adv)';
+      else if (g.mode === 'disadvantage') s += ' (Dis)';
+      return s;
+    });
+    const mod = parseInt(this.$('diceMod')?.value) || 0;
+    if (mod) parts.push(mod > 0 ? `+${mod}` : `${mod}`);
+    return parts.join(' + ');
+  },
+
+  _renderFormulaBar() {
+    const bar = this.$('dice-formula-bar');
+    const chips = this.$('dice-formula-chips');
+    const rollBtn = this.$('dice-roll-btn');
+    if (!bar || !chips) return;
+
+    chips.innerHTML = '';
+    const mod = parseInt(this.$('diceMod')?.value) || 0;
+    const hasContent = this._diceExpression.length > 0 || mod !== 0;
+
+    bar.classList.toggle('empty', !hasContent);
+    if (rollBtn) rollBtn.disabled = !hasContent;
+
+    this._diceExpression.forEach((g, i) => {
+      if (i > 0) {
+        const plus = document.createElement('span');
+        plus.className = 'dice-chip-plus';
+        plus.textContent = '+';
+        chips.appendChild(plus);
+      }
+
+      const chip = document.createElement('span');
+      let label = `${g.count}d${g.sides}`;
+      if (g.mode === 'advantage') {
+        label += ' Adv';
+        chip.className = 'dice-chip chip-adv';
+      } else if (g.mode === 'disadvantage') {
+        label += ' Dis';
+        chip.className = 'dice-chip chip-dis';
+      } else {
+        chip.className = 'dice-chip';
+      }
+
+      const text = document.createTextNode(label);
+      chip.appendChild(text);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'dice-chip-remove';
+      removeBtn.textContent = '\u00D7';
+      removeBtn.title = 'Remove';
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this._diceExpression.splice(i, 1);
+        this._renderFormulaBar();
+      });
+      chip.appendChild(removeBtn);
+      chips.appendChild(chip);
+    });
+
+    // Show modifier chip if non-zero
+    if (mod !== 0) {
+      if (this._diceExpression.length > 0) {
+        const plus = document.createElement('span');
+        plus.className = 'dice-chip-plus';
+        plus.textContent = mod > 0 ? '+' : '';
+        chips.appendChild(plus);
+      }
+      const modChip = document.createElement('span');
+      modChip.className = 'dice-chip chip-mod';
+      modChip.textContent = mod > 0 ? `+${mod}` : `${mod}`;
+      chips.appendChild(modChip);
+    }
+  },
+
+  _updateDiceResult(result) {
+    const resultEl = this.$('dice-result');
+    const badge = this.$('dice-toggle-result');
+
+    if (resultEl) {
+      const breakdown = Dice._buildBreakdown(result);
+      resultEl.innerHTML = `<span class="dice-result-detail">${breakdown}</span><span class="dice-result-total">${result.total}</span>`;
+      resultEl.classList.add('has-roll');
+    }
+
+    if (badge) {
+      badge.textContent = result.total;
+      badge.className = 'dice-toggle-result visible';
+      if (result.used === 20) badge.classList.add('crit');
+      else if (result.used === 1) badge.classList.add('fumble');
+      badge.style.animation = 'none';
+      badge.offsetHeight;
+      badge.style.animation = '';
+    }
+  },
+
+  // ---- EQUIPPED GEAR ----
+  // Slot definitions inspired by BG3 / classic MMO slot systems
+  // "hands" section has special mutual-exclusion rules, "gear" section is 1:1
+  // Two-column layout: left column = left side of body, right column = right side
+  // Ordered top-to-bottom per column to mirror a character's body
+  EQUIP_LEFT: [
+    { key: 'head',      label: 'Head',        icon: '👑' },
+    { key: 'cloak',     label: 'Cloak',       icon: '🧣' },
+    { key: 'armor',     label: 'Armor',       icon: '🛡️' },
+    { key: 'gloves',    label: 'Gloves',      icon: '🧤' },
+    { key: 'rightHand', label: 'R. Hand',     icon: '🫱' },
+  ],
+  EQUIP_RIGHT: [
+    { key: 'necklace',  label: 'Neck',        icon: '📿' },
+    { key: 'ring1',     label: 'Ring',        icon: '💍' },
+    { key: 'ring2',     label: 'Ring',        icon: '💍' },
+    { key: 'boots',     label: 'Boots',       icon: '👢' },
+    { key: 'leftHand',  label: 'L. Hand',     icon: '🫲' },
+  ],
+  // Combined for iteration
+  get EQUIPMENT_SLOTS() {
+    return [...this.EQUIP_LEFT, ...this.EQUIP_RIGHT];
+  },
+
+  // Standard conditions sourced from ConditionRules
+  get CONDITIONS() { return ConditionRules.CONDITION_LIST; },
+
+  /* ---- COMBAT ECONOMY (Action / Bonus Action / Reaction / Movement) ---- */
+  initCombatEconomy() {
+    this.renderCombatEconomy();
+  },
+
+  renderCombatEconomy() {
+    const el = this.$('combat-economy-content');
+    if (!el) return;
+    const state = this.lv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
+    const speed = parseInt(this.$('speed')?.value) || 30;
+
+    el.innerHTML = '';
+
+    const items = [
+      { key: 'action',   label: 'Action',        icon: '\u2694' },
+      { key: 'bonus',    label: 'Bonus Action',   icon: '\u26A1' },
+      { key: 'reaction', label: 'Reaction',       icon: '\u21A9' },
+      { key: 'movement', label: `Movement (${speed} ft)`, icon: '\u{1F9B6}' },
+    ];
+
+    const grid = document.createElement('div');
+    grid.className = 'ce-grid';
+
+    items.forEach(it => {
+      const cell = document.createElement('button');
+      cell.className = 'ce-cell' + (state[it.key] ? ' used' : '');
+      cell.innerHTML = `<span class="ce-icon">${it.icon}</span><span class="ce-label">${it.label}</span>`;
+      cell.addEventListener('click', () => {
+        const s = this.lv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
+        s[it.key] = !s[it.key];
+        this.sv('combatEconomy', s);
+        cell.classList.toggle('used');
+      });
+      grid.appendChild(cell);
+    });
+
+    el.appendChild(grid);
+
+    // Reset button
+    const resetRow = document.createElement('div');
+    resetRow.className = 'ce-reset-row';
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'ce-reset-btn';
+    resetBtn.textContent = 'New Turn';
+    resetBtn.addEventListener('click', () => {
+      this.sv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
+      this.renderCombatEconomy();
+    });
+    resetRow.appendChild(resetBtn);
+    el.appendChild(resetRow);
+  },
+
+  initEquippedGear() {
+    this.renderEquippedGear();
+  },
+
+  // ---- Main render ----
+  renderEquippedGear() {
+    const slotsEl = this.$('equipped-slots');
+    if (!slotsEl) return;
+    const inv      = this.lv('inventory', []);
+    const equipped = this.lv('equippedGear', {});
+    const active   = this.lv('equippedGearActive', {});
+    const versatileMode = this.lv('versatileMode', {}); // { slotKey: '2h' | '1h' }
+
+    // Resolve items
+    const slotItems = {};
+    this.EQUIPMENT_SLOTS.forEach(s => {
+      slotItems[s.key] = equipped[s.key] ? inv.find(i => i.itemId === equipped[s.key]) : null;
+    });
+
+    // ---- Hand-slot blocking rules ----
+    const blockedSlots = new Set();
+    const rhItem = slotItems.rightHand;
+    const lhItem = slotItems.leftHand;
+    const rhActive = !!active.rightHand;
+    const lhActive = !!active.leftHand;
+
+    // Rule: if right-hand has a two-handed weapon (or versatile in 2h mode) → block left hand
+    const rhIs2H = rhItem && (this._isTwoHanded(rhItem) ||
+      (this._isVersatile(rhItem) && (versatileMode.rightHand || '1h') === '2h'));
+    if (rhIs2H && rhActive) blockedSlots.add('leftHand');
+
+    // Symmetric: if left-hand has a two-handed weapon → block right hand
+    const lhIs2H = lhItem && (this._isTwoHanded(lhItem) ||
+      (this._isVersatile(lhItem) && (versatileMode.leftHand || '1h') === '2h'));
+    if (lhIs2H && lhActive) blockedSlots.add('rightHand');
+
+    slotsEl.innerHTML = '';
+
+    // Proficiency check helpers
+    const armorProf = this.lv('classArmorProf', []).map(p => p.toLowerCase());
+    const hasArmorProf = (item) => {
+      if (!item) return true;
+      const tc = (item.typeCode || '').toUpperCase();
+      if (tc === 'LA') return armorProf.some(p => p.includes('light'));
+      if (tc === 'MA') return armorProf.some(p => p.includes('medium'));
+      if (tc === 'HA') return armorProf.some(p => p.includes('heavy'));
+      if (tc === 'S' || this._isShieldItem(item)) return armorProf.some(p => p.includes('shield'));
+      return true;
+    };
+
+    // Helper: build a single slot row
+    const buildSlotRow = (slot) => {
+      const item     = slotItems[slot.key];
+      const isActive = !!active[slot.key];
+      const isEmpty  = !item;
+      const isBlocked = blockedSlots.has(slot.key);
+      const isHand   = slot.key === 'rightHand' || slot.key === 'leftHand';
+      const isVersatile = item && this._isVersatile(item) && isHand;
+      const vMode = versatileMode[slot.key] || '1h';
+      const isProficient = hasArmorProf(item);
+
+      const row = document.createElement('div');
+      row.className = 'equip-slot-row' + (isActive ? ' equip-slot-active' : '');
+
+      // Checkbox
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'equip-active-cb' + (isBlocked && !isActive ? ' equip-cb-blocked' : '');
+      cb.dataset.slot = slot.key;
+      cb.dataset.blocked = isBlocked ? '1' : '0';
+      cb.checked = isActive;
+      cb.disabled = isEmpty;
+      if (isBlocked && !isActive) {
+        const blockingItem = slot.key === 'leftHand' ? rhItem : lhItem;
+        const blockingHand = slot.key === 'leftHand' ? 'right hand' : 'left hand';
+        cb.dataset.tooltip = blockingItem
+          ? `Blocked — ${blockingItem.name} equipped in ${blockingHand} requires both hands`
+          : 'Blocked — other hand requires both hands';
+      }
+      row.appendChild(cb);
+
+      // Label
+      const label = document.createElement('span');
+      label.className = 'equip-slot-label';
+      label.textContent = `${slot.icon} ${slot.label}`;
+      row.appendChild(label);
+
+      if (item) {
+        let detail = '';
+        if (item.damage) {
+          if (isVersatile && vMode === '2h' && item.damage.includes('versatile')) {
+            const m = item.damage.match(/\(([^)]+)\s*versatile\)/);
+            detail += m ? m[1] : item.damage;
+          } else {
+            detail += item.damage.replace(/\s*\([^)]*versatile\)/, '');
+          }
+        }
+        if (item.ac) detail += (detail ? ' · ' : '') + `AC ${item.ac}`;
+        if (item.rarity && item.rarity !== 'none') detail += (detail ? ' · ' : '') + item.rarity;
+
+        const info = document.createElement('div');
+        info.className = 'equip-slot-item';
+        info.innerHTML = `<span class="equip-slot-name">${item.name}</span>${detail ? `<span class="equip-slot-detail">${detail}</span>` : ''}`;
+        row.appendChild(info);
+
+        if (item && isActive && !isProficient) {
+          const warn = document.createElement('span');
+          warn.className = 'equip-noprof-warn';
+          const isShield = this._isShieldItem(item);
+          warn.textContent = '⚠';
+          warn.dataset.tooltip = isShield
+            ? 'No shield training — AC bonus not applied'
+            : 'No armor training — Disadvantage on Str/Dex checks and cannot cast spells';
+          row.appendChild(warn);
+        }
+
+        if (isVersatile) {
+          const vBtn = document.createElement('button');
+          vBtn.className = 'equip-versatile-btn' + (vMode === '2h' ? ' v-two-hand' : '');
+          vBtn.title = vMode === '2h' ? 'Using two hands — click for one hand' : 'Using one hand — click for two hands';
+          vBtn.textContent = vMode === '2h' ? '2H' : '1H';
+          vBtn.dataset.slot = slot.key;
+          row.appendChild(vBtn);
+        }
+
+        if (isHand && this._isShieldItem(item)) {
+          const emblemKey = 'emblem_' + slot.key;
+          const emblId    = equipped[emblemKey];
+          const emblItem  = emblId ? inv.find(i => i.itemId === emblId) : null;
+          const emBtn = document.createElement('button');
+          emBtn.className = 'equip-versatile-btn equip-emblem-btn' + (emblItem ? ' v-two-hand' : '');
+          emBtn.dataset.slot = emblemKey;
+          emBtn.title = emblItem ? `Emblem: ${emblItem.name}` : 'Attach emblem';
+          emBtn.textContent = 'EM';
+          row.appendChild(emBtn);
+        }
+
+        const swapBtn = document.createElement('button');
+        swapBtn.className = 'equip-swap-btn';
+        swapBtn.dataset.slot = slot.key;
+        swapBtn.title = 'Swap item';
+        swapBtn.textContent = '⇄';
+        row.appendChild(swapBtn);
+
+        const del = document.createElement('button');
+        del.className = 'equip-unequip-btn';
+        del.dataset.slot = slot.key;
+        del.title = 'Remove from slot';
+        del.textContent = '✕';
+        row.appendChild(del);
+      } else {
+        const emptyBtn = document.createElement('button');
+        emptyBtn.className = 'equip-empty-btn';
+        emptyBtn.dataset.slot = slot.key;
+        emptyBtn.textContent = '— empty —';
+        row.appendChild(emptyBtn);
+      }
+      return row;
+    };
+
+    // Build two-column layout
+    const grid = document.createElement('div');
+    grid.className = 'equip-grid';
+
+    const colL = document.createElement('div');
+    colL.className = 'equip-col';
+    this.EQUIP_LEFT.forEach(slot => colL.appendChild(buildSlotRow(slot)));
+
+    const colR = document.createElement('div');
+    colR.className = 'equip-col';
+    this.EQUIP_RIGHT.forEach(slot => colR.appendChild(buildSlotRow(slot)));
+
+    grid.appendChild(colL);
+    grid.appendChild(colR);
+    slotsEl.appendChild(grid);
+
+    // ---- Event handlers ----
+
+    // Checkbox — enforce hand rules when activating
+    slotsEl.querySelectorAll('.equip-active-cb').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked && cb.dataset.blocked === '1') { cb.checked = false; return; }
+        const slotKey = cb.dataset.slot;
+        const g = this.lv('equippedGear', {});
+        const a = this.lv('equippedGearActive', {});
+        if (cb.checked) {
+          a[slotKey] = true;
+          // Activating a hand slot → deactivate the other hand if conflict
+          if (slotKey === 'rightHand' || slotKey === 'leftHand') {
+            const item = g[slotKey] ? inv.find(i => i.itemId === g[slotKey]) : null;
+            const vm   = this.lv('versatileMode', {});
+            const is2H = item && (this._isTwoHanded(item) ||
+              (this._isVersatile(item) && (vm[slotKey] || '1h') === '2h'));
+            if (is2H) {
+              const other = slotKey === 'rightHand' ? 'leftHand' : 'rightHand';
+              delete a[other]; // deactivate only, keep the item in slot
+            }
+          }
+        } else {
+          delete a[slotKey];
+        }
+        this.sv('equippedGearActive', a);
+        this.renderEquippedGear();
+      });
+    });
+
+    // Emblem button — opens popup filtered to emblems, with a "Remove" option at top
+    slotsEl.querySelectorAll('.equip-emblem-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const emblemKey = btn.dataset.slot;
+        document.querySelector('.equip-swap-popup')?.remove();
+        const emblems   = this._getEquipOptions(emblemKey, inv);
+        const currentId = equipped[emblemKey];
+
+        const popup = document.createElement('div');
+        popup.className = 'equip-swap-popup';
+
+        // Remove option (if one is attached)
+        if (currentId) {
+          const removeRow = document.createElement('div');
+          removeRow.className = 'equip-swap-option';
+          removeRow.innerHTML = `<span class="equip-swap-opt-name" style="color:var(--red)">✕ Remove emblem</span>`;
+          removeRow.addEventListener('click', () => {
+            popup.remove();
+            const g = this.lv('equippedGear', {});
+            delete g[emblemKey];
+            this.sv('equippedGear', g);
+            this.renderEquippedGear();
+          });
+          popup.appendChild(removeRow);
+        }
+
+        emblems.forEach(opt => {
+          const isCurrent = opt.itemId === currentId;
+          const optRow = document.createElement('div');
+          optRow.className = 'equip-swap-option' + (isCurrent ? ' equip-swap-current' : '');
+          optRow.innerHTML = `<span class="equip-swap-opt-name">${isCurrent ? '✓ ' : ''}${opt.name}</span>`;
+          if (!isCurrent) {
+            optRow.addEventListener('click', () => {
+              popup.remove();
+              const g = this.lv('equippedGear', {});
+              g[emblemKey] = opt.itemId;
+              this.sv('equippedGear', g);
+              this.renderEquippedGear();
+            });
+          }
+          popup.appendChild(optRow);
+        });
+
+        if (!emblems.length && !currentId) {
+          popup.innerHTML = `<div class="equip-swap-empty">No emblems in inventory</div>`;
+        }
+
+        btn.after(popup);
+        if (popup.getBoundingClientRect().bottom > window.innerHeight) popup.style.bottom = '100%';
+        const close = (ev) => {
+          if (!popup.contains(ev.target) && ev.target !== btn) {
+            popup.remove(); document.removeEventListener('click', close, true);
+          }
+        };
+        setTimeout(() => document.addEventListener('click', close, true), 0);
+      });
+    });
+
+    // Versatile toggle
+    slotsEl.querySelectorAll('.equip-versatile-btn:not(.equip-emblem-btn)').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const vm = this.lv('versatileMode', {});
+        const slotKey = btn.dataset.slot;
+        vm[slotKey] = vm[slotKey] === '2h' ? '1h' : '2h';
+        this.sv('versatileMode', vm);
+        // If switching to 2h and other hand is active, deactivate the other hand
+        if (vm[slotKey] === '2h') {
+          const other = slotKey === 'rightHand' ? 'leftHand' : 'rightHand';
+          const a = this.lv('equippedGearActive', {});
+          if (a[other]) { delete a[other]; this.sv('equippedGearActive', a); }
+        }
+        this._syncVersatileToAttacks(slotKey, vm[slotKey]);
+        this.renderEquippedGear();
+      });
+    });
+
+    // Popup opener — shared by swap & empty buttons
+    const openEquipPopup = (anchor, slotKey) => {
+      document.querySelector('.equip-swap-popup')?.remove();
+      const currentId = equipped[slotKey];
+      const options = this._getEquipOptions(slotKey, inv);
+
+      const popup = document.createElement('div');
+      popup.className = 'equip-swap-popup';
+
+      options.forEach(opt => {
+        const isCurrent = opt.itemId === currentId;
+        const optRow = document.createElement('div');
+        optRow.className = 'equip-swap-option' + (isCurrent ? ' equip-swap-current' : '');
+        let detail = '';
+        if (opt.damage) detail += opt.damage;
+        if (opt.properties) detail += (detail ? ' · ' : '') + opt.properties;
+        if (opt.ac) detail += (detail ? ' · ' : '') + `AC ${opt.ac}`;
+        optRow.innerHTML = `
+          <span class="equip-swap-opt-name">${isCurrent ? '✓ ' : ''}${opt.name}</span>
+          ${detail ? `<span class="equip-swap-opt-detail">${detail}</span>` : ''}`;
+        if (!isCurrent) {
+          optRow.addEventListener('click', () => {
+            popup.remove();
+            this._equipItemToSlot(slotKey, opt.itemId);
+          });
+        }
+        popup.appendChild(optRow);
+      });
+
+      if (!options.length) {
+        popup.innerHTML = `<div class="equip-swap-empty">No items available in inventory</div>`;
+      }
+      anchor.after(popup);
+      if (popup.getBoundingClientRect().bottom > window.innerHeight) popup.style.bottom = '100%';
+
+      const close = (ev) => {
+        if (!popup.contains(ev.target) && ev.target !== anchor) {
+          popup.remove(); document.removeEventListener('click', close, true);
+        }
+      };
+      setTimeout(() => document.addEventListener('click', close, true), 0);
+    };
+
+    slotsEl.querySelectorAll('.equip-swap-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); openEquipPopup(btn, btn.dataset.slot); });
+    });
+    slotsEl.querySelectorAll('.equip-empty-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => { e.stopPropagation(); openEquipPopup(btn, btn.dataset.slot); });
+    });
+
+    // Remove button
+    slotsEl.querySelectorAll('.equip-unequip-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const g = this.lv('equippedGear', {});
+        const a = this.lv('equippedGearActive', {});
+        delete g[btn.dataset.slot]; delete a[btn.dataset.slot];
+        this.sv('equippedGear', g); this.sv('equippedGearActive', a);
+        this.renderEquippedGear();
+      });
+    });
+
+    this._updateEquippedACSummary();
+    this._renderConditions();
+  },
+
+  // Equip an item to a slot — applies two-handed rules
+  _equipItemToSlot(slotKey, itemId) {
+    const inv = this.lv('inventory', []);
+    const g   = this.lv('equippedGear', {});
+    const a   = this.lv('equippedGearActive', {});
+    const chosenItem = inv.find(i => i.itemId === itemId);
+
+    // Two-handed weapon in either hand → deactivate the other hand (keep item in slot)
+    if ((slotKey === 'rightHand' || slotKey === 'leftHand') && chosenItem && this._isTwoHanded(chosenItem)) {
+      const other = slotKey === 'rightHand' ? 'leftHand' : 'rightHand';
+      delete a[other];
+    }
+
+    g[slotKey] = itemId;
+    this.sv('equippedGear', g);
+    this.sv('equippedGearActive', a);
+    this.renderEquippedGear();
+  },
+
+  // ---- Slot filtering: what items can go in each slot ----
+  _getEquipOptions(slot, inv) {
+    // Emblem sub-slots (shield attachment)
+    if (slot === 'emblem_rightHand' || slot === 'emblem_leftHand') return inv.filter(i => this._isEmblemItem(i));
+    // Hand slots: weapons, shields, and held spellcasting focuses (not amulets — those are worn)
+    if (slot === 'rightHand') return inv.filter(i => i.category === 'weapon' || this._isShieldItem(i) || this._isHeldFocus(i));
+    if (slot === 'leftHand')  return inv.filter(i => i.category === 'weapon' || this._isShieldItem(i) || this._isHeldFocus(i));
+    // Body armor (no shields)
+    if (slot === 'armor')  return inv.filter(i => i.category === 'armor' && !this._isShieldItem(i) && !this._isEmblemItem(i) && (i.typeCode || '').toUpperCase() !== 'SCF');
+    // Wearable accessory slots — match by type label or wondrous items
+    if (slot === 'head')     return inv.filter(i => this._matchesWearSlot(i, 'head'));
+    if (slot === 'cloak')    return inv.filter(i => this._matchesWearSlot(i, 'cloak'));
+    if (slot === 'boots')    return inv.filter(i => this._matchesWearSlot(i, 'boots'));
+    if (slot === 'necklace') return inv.filter(i => this._matchesWearSlot(i, 'necklace'));
+    if (slot === 'ring1' || slot === 'ring2') return inv.filter(i => this._matchesWearSlot(i, 'ring'));
+    if (slot === 'gloves') return inv.filter(i => this._matchesWearSlot(i, 'gloves'));
+    return inv;
+  },
+
+  // Check if an inventory item fits a wearable slot
+  _matchesWearSlot(item, slot) {
+    const name = (item.name || '').toLowerCase();
+    const type = (item.type || '').toLowerCase();
+    const tc   = (item.typeCode || '').toUpperCase();
+    if (slot === 'ring')     return tc === 'RG' || type === 'ring';
+    // Neck: amulet (worn holy symbol), necklace-type items only — not held focuses
+    if (slot === 'necklace') return /amulet|necklace|pendant|periapt|medallion|brooch/i.test(name) || /amulet|necklace/i.test(type);
+    if (slot === 'cloak')    return /cloak|cape|mantle/i.test(name);
+    if (slot === 'head')     return /helm|hat\b|crown|circlet|headband|cap\b|hood\b|mask\b|goggles/i.test(name);
+    if (slot === 'boots')    return /boot|shoe|slipper|sandal|greaves/i.test(name);
+    if (slot === 'gloves')   return /glove|gauntlet|bracers?|vambrace/i.test(name);
+    return false;
+  },
+
+  // Returns 'disadvantage' if wearing armor without proficiency, otherwise undefined
+  _armorDisadvantageMode() {
+    const inv      = this.lv('inventory', []);
+    const equipped = this.lv('equippedGear', {});
+    const active   = this.lv('equippedGearActive', {});
+    const armorId  = equipped.armor;
+    if (!armorId || !active.armor) return undefined;
+    const armor = inv.find(i => i.itemId === armorId);
+    if (!armor) return undefined;
+    const tc = (armor.typeCode || '').toUpperCase();
+    if (tc !== 'LA' && tc !== 'MA' && tc !== 'HA') return undefined;
+    const armorProf = this.lv('classArmorProf', []).map(p => p.toLowerCase());
+    if (tc === 'LA' && armorProf.some(p => p.includes('light'))) return undefined;
+    if (tc === 'MA' && armorProf.some(p => p.includes('medium'))) return undefined;
+    if (tc === 'HA' && armorProf.some(p => p.includes('heavy'))) return undefined;
+    return 'disadvantage';
+  },
+
+  _isShieldItem(item) {
+    return /shield/i.test(item.name || '') || /shield/i.test(item.type || '');
+  },
+
+  // Spellcasting focuses that must be held in hand (arcane, druidic, reliquary)
+  // Amulets worn → Neck slot. Emblems go on shields → emblem sub-slot only.
+  _isHeldFocus(item) {
+    const tc   = (item.typeCode || '').toUpperCase();
+    const name = (item.name || '').toLowerCase();
+    if (tc !== 'SCF') return false;
+    if (/amulet/i.test(name)) return false;  // worn, goes in Neck
+    if (this._isEmblemItem(item)) return false; // on shield, not hand directly
+    return true;
+  },
+
+  _isEmblemItem(item) {
+    return /emblem/i.test(item.name || '');
+  },
+
+  _isTwoHanded(item) {
+    return /two.?hand/i.test(item.properties || '');
+  },
+
+  _isVersatile(item) {
+    return /versatile/i.test(item.properties || '') || /versatile/i.test(item.damage || '');
+  },
+
+  // When versatile toggle changes, update matching attack table rows
+  _syncVersatileToAttacks(slotKey, mode) {
+    const equipped = this.lv('equippedGear', {});
+    const itemId = equipped[slotKey];
+    if (!itemId) return;
+    const inv = this.lv('inventory', []);
+    const item = inv.find(i => i.itemId === itemId);
+    if (!item || !item.damage || !this._isVersatile(item)) return;
+
+    // Extract 1H and 2H dice from damage string like "1d8 slashing (1d10 versatile)"
+    const versMatch = item.damage.match(/\(([^)]+)\s*versatile\)/i);
+    if (!versMatch) return;
+    const twoDice = versMatch[1].trim();                          // e.g. "1d10"
+    const oneDice = item.damage.replace(/\s*\([^)]*versatile\)/i, '').match(/(\d+d\d+)/)?.[1]; // e.g. "1d8"
+    if (!oneDice) return;
+
+    const newDice = mode === '2h' ? twoDice : oneDice;
+    const weaponName = (item.name || '').toLowerCase().trim();
+
+    // Update attack rows in DOM and storage that match this weapon name
+    let changed = false;
+    this.qsa('#attacks-body tr').forEach(tr => {
+      const nameInput = tr.querySelector('.atk-name');
+      if (!nameInput || nameInput.value.toLowerCase().trim() !== weaponName) return;
+      const diceEdit = tr.querySelector('.atk-dice-edit');
+      if (diceEdit) {
+        diceEdit.value = newDice;
+        if (tr._refreshRow) tr._refreshRow();
+      }
+      changed = true;
+    });
+    if (changed) this.saveAttacks();
+  },
+
+  _updateEquippedACSummary() {
+    const inv      = this.lv('inventory', []);
+    const equipped = this.lv('equippedGear', {});
+    const active   = this.lv('equippedGearActive', {});
+
+    const armor  = (equipped.armor && active.armor) ? inv.find(i => i.itemId === equipped.armor) : null;
+    // Shield can be in either hand
+    let shield = null;
+    ['rightHand','leftHand'].forEach(h => {
+      if (equipped[h] && active[h]) {
+        const it = inv.find(i => i.itemId === equipped[h]);
+        if (it && this._isShieldItem(it)) shield = it;
+      }
+    });
+    const dexMod = this.getModFromScore(this.getAbilityScore('dex'));
+    let ac;
+    if (armor) {
+      const type = (armor.type || '').toLowerCase();
+      const baseAC = armor.ac || 10;
+      if (type.includes('heavy')) ac = baseAC;
+      else if (type.includes('medium')) ac = baseAC + Math.min(dexMod, 2);
+      else ac = baseAC + dexMod;
+    } else {
+      // Check for Unarmored Defense when no armor is equipped
+      const className = (this.lv('charClass', '')).toLowerCase();
+      if (className === 'barbarian') {
+        const conMod = this.getModFromScore(this.getAbilityScore('con'));
+        ac = 10 + dexMod + conMod;
+      } else if (className === 'monk') {
+        const wisMod = this.getModFromScore(this.getAbilityScore('wis'));
+        ac = 10 + dexMod + wisMod;
+      } else {
+        ac = 10 + dexMod;
+      }
+    }
+    const shieldProf = this.lv('classArmorProf', []).some(p => p.toLowerCase().includes('shield'));
+    if (shield && shieldProf) ac += (shield.ac || 2);
+
+    // Store base AC before cover
+    this._baseAC = ac;
+    this._applyCoverToAC();
+  },
+
+  /* ---- COVER SYSTEM ---- */
+  _initCoverButtons() {
+    const btns = document.querySelectorAll('.cover-btn');
+    const saved = this.lv('coverLevel', '0');
+    btns.forEach(btn => {
+      if (btn.dataset.cover === saved) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        const val = btn.dataset.cover;
+        const current = this.lv('coverLevel', '0');
+        // Toggle: clicking active cover resets to none
+        const newVal = (val === current && val !== '0') ? '0' : val;
+        this.sv('coverLevel', newVal);
+        btns.forEach(b => b.classList.toggle('active', b.dataset.cover === newVal));
+        this.recalcAll();
       });
     });
   },
+
+  _applyCoverToAC() {
+    const acInput = this.$('armorClass');
+    if (!acInput) return;
+    const base = this._baseAC != null ? this._baseAC : (parseInt(this.lv('armorClass', 10)) || 10);
+    const cover = this.lv('coverLevel', '0');
+    let ac = base;
+    if (cover === '2') ac = base + 2;
+    else if (cover === '5') ac = base + 5;
+    else if (cover === 'total') ac = base; // Total cover: can't be targeted, AC unchanged
+    acInput.value = ac;
+    this.sv('armorClass', ac);
+  },
+
+  _getCoverBonus() {
+    const cover = this.lv('coverLevel', '0');
+    if (cover === '2') return 2;
+    if (cover === '5') return 5;
+    return 0;
+  },
+
+  /* ---- CONDITION EFFECTS: glow on affected roll buttons ---- */
+  applyConditionEffects() {
+    // Clear all condition glow classes, tooltips, and event listeners
+    document.querySelectorAll('.cond-fail-glow, .cond-dis-glow, .cond-pen-glow, .cond-adv-glow').forEach(el => {
+      el.classList.remove('cond-fail-glow', 'cond-dis-glow', 'cond-pen-glow', 'cond-adv-glow');
+      el.removeAttribute('data-cond-tip');
+      el.removeAttribute('title');
+      // Remove old hover listeners by replacing with clone
+      if (el._condEnter) {
+        el.removeEventListener('mouseenter', el._condEnter);
+        el.removeEventListener('mouseleave', el._condLeave);
+        delete el._condEnter;
+        delete el._condLeave;
+      }
+    });
+    this._hideConditionTooltip();
+
+    const active = this.lv('conditions', []);
+    const exhaustionLevel = this.lv('combat_exhaustion', 0);
+    if (!active.length && exhaustionLevel === 0) return;
+
+    const fx = ConditionRules.getStatEffects(active, exhaustionLevel);
+
+    // Speed glow
+    if (fx.speed) {
+      const speedEl = this.$('speed');
+      if (speedEl) {
+        let label;
+        if (fx.speed.type === 'zero') label = 'Speed 0: ' + fx.speed.sources.join(', ');
+        else if (fx.speed.type === 'halved') label = 'Speed halved: ' + fx.speed.sources.join(', ');
+        else label = 'Speed reduced: ' + fx.speed.sources.join(', ');
+        this._applyCondGlow(speedEl, 'dis', label);
+      }
+    }
+
+    // AC glow — enemies have advantage on attacks against you
+    if (fx.attacksAgainst) {
+      const acEl = this.$('armorClass');
+      if (acEl) {
+        const label = 'Attacks against you have Adv: ' + fx.attacksAgainst.sources.join(', ');
+        this._applyCondGlow(acEl, 'dis', label);
+      }
+    }
+
+    // Cover glow — total cover = adv glow on AC, cover bonus = adv glow on Dex save
+    const coverLvl = this.lv('coverLevel', '0');
+    if (coverLvl === 'total') {
+      const acEl = this.$('armorClass');
+      if (acEl && !acEl.classList.contains('cond-dis-glow') && !acEl.classList.contains('cond-fail-glow')) {
+        this._applyCondGlow(acEl, 'adv', 'Total Cover — can\'t be targeted directly');
+      }
+    }
+    if (coverLvl === '2' || coverLvl === '5') {
+      const dexSaveEl = this.$('save-dex');
+      if (dexSaveEl && !dexSaveEl.classList.contains('cond-fail-glow') && !dexSaveEl.classList.contains('cond-dis-glow')) {
+        this._applyCondGlow(dexSaveEl, 'adv', `Cover (+${coverLvl} to Dex saves)`);
+      }
+    }
+
+    // Attack roll glow
+    if (fx.attackRolls) {
+      const isFail = fx.attackRolls.type === 'auto-fail';
+      const isDis = fx.attackRolls.type === 'disadvantage';
+      const label = (isFail ? 'Auto-fail: ' : isDis ? 'Disadv: ' : 'Adv: ') + fx.attackRolls.sources.join(', ');
+      const cls = isFail ? 'fail' : isDis ? 'dis' : 'adv';
+      this.qsa('.atk-bonus-btn').forEach(btn => this._applyCondGlow(btn, cls, label));
+      const spAtkEl = this.$('spellAttackBonus');
+      if (spAtkEl) this._applyCondGlow(spAtkEl, cls, label);
+    }
+
+    // Save glow
+    this.ABILITIES.forEach(ab => {
+      if (fx.saves[ab]) {
+        const el = this.$(`save-${ab}`);
+        if (el) {
+          const isAutoFail = fx.saves[ab].type === 'auto-fail';
+          const label = (isAutoFail ? 'Auto-fail: ' : 'Disadv: ') + fx.saves[ab].sources.join(', ');
+          this._applyCondGlow(el, isAutoFail ? 'fail' : 'dis', label);
+        }
+      }
+    });
+
+    // Ability check glow
+    if (fx.abilityChecks) {
+      const label = 'Disadv: ' + fx.abilityChecks.sources.join(', ');
+      this.qsa('.stat-val-btn').forEach(btn => {
+        if (btn.id && btn.id.startsWith('skill-')) this._applyCondGlow(btn, 'dis', label);
+      });
+      const initEl = this.$('initiative');
+      if (initEl) this._applyCondGlow(initEl, 'dis', label);
+    }
+
+    // Exhaustion — yellow penalty glow on all d20 test buttons
+    if (exhaustionLevel > 0) {
+      const penalty = 2 * exhaustionLevel;
+      const label = `Exhaustion ${exhaustionLevel}: −${penalty} to d20 rolls`;
+      // Apply penalty glow to initiative, saves, skills, attacks (only if not already glowing)
+      const penTargets = [];
+      const initEl = this.$('initiative');
+      if (initEl && !initEl.classList.contains('cond-fail-glow') && !initEl.classList.contains('cond-dis-glow'))
+        penTargets.push(initEl);
+      this.ABILITIES.forEach(ab => {
+        const el = this.$(`save-${ab}`);
+        if (el && !el.classList.contains('cond-fail-glow') && !el.classList.contains('cond-dis-glow'))
+          penTargets.push(el);
+      });
+      this.qsa('.stat-val-btn').forEach(btn => {
+        if (btn.id && btn.id.startsWith('skill-') && !btn.classList.contains('cond-fail-glow') && !btn.classList.contains('cond-dis-glow'))
+          penTargets.push(btn);
+      });
+      this.qsa('.atk-bonus-btn').forEach(btn => {
+        if (!btn.classList.contains('cond-fail-glow') && !btn.classList.contains('cond-dis-glow'))
+          penTargets.push(btn);
+      });
+      penTargets.forEach(el => this._applyCondGlow(el, 'pen', label));
+    }
+  },
+
+  _applyCondGlow(el, type, tipText) {
+    // type: 'fail' (red), 'dis' (orange), 'pen' (yellow), 'adv' (green)
+    const glowClasses = { fail: 'cond-fail-glow', dis: 'cond-dis-glow', pen: 'cond-pen-glow', adv: 'cond-adv-glow' };
+    el.classList.add(glowClasses[type] || 'cond-dis-glow');
+    el.dataset.condTip = tipText;
+    // Rich tooltip on hover (same style as condition tooltips)
+    const enter = (e) => {
+      this._hideConditionTooltip();
+      const tip = document.createElement('div');
+      tip.className = 'condition-tooltip';
+      tip.id = 'condition-tooltip-active';
+      const kwMap = { fail: 'cond-kw-bad', dis: 'cond-kw-bad', pen: 'cond-kw-mech', adv: 'cond-kw-good' };
+      const wordMap = { fail: 'Auto-Fail', dis: 'Disadvantage', pen: 'Penalty', adv: 'Advantage' };
+      const kwClass = kwMap[type] || 'cond-kw-bad';
+      const modeWord = wordMap[type] || 'Disadvantage';
+      tip.innerHTML = `<span class="${kwClass}">${modeWord}</span> — ${tipText}`;
+      document.body.appendChild(tip);
+      const rect = e.target.getBoundingClientRect();
+      let top = rect.bottom + 6;
+      let left = rect.left;
+      requestAnimationFrame(() => {
+        const tr = tip.getBoundingClientRect();
+        if (top + tr.height > window.innerHeight - 8) top = rect.top - tr.height - 6;
+        if (left + tr.width > window.innerWidth - 8) left = window.innerWidth - tr.width - 8;
+        if (left < 8) left = 8;
+        tip.style.top = top + 'px';
+        tip.style.left = left + 'px';
+        tip.classList.add('show');
+      });
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+    };
+    const leave = () => this._hideConditionTooltip();
+    el._condEnter = enter;
+    el._condLeave = leave;
+    el.addEventListener('mouseenter', enter);
+    el.addEventListener('mouseleave', leave);
+  },
+
+  /* ---- CONDITION-AWARE D20 ROLLING ---- */
+  _getConditionRollMode(rollType, abilityKey) {
+    const active = this.lv('conditions', []);
+    const exhaustionLevel = this.lv('combat_exhaustion', 0);
+
+    // Collect extra sources from armor etc.
+    const extraDis = [];
+    const extraAdv = [];
+    if (rollType === 'save' || rollType === 'check') {
+      const armorMode = this._armorDisadvantageMode();
+      if (armorMode === 'disadvantage' && (abilityKey === 'str' || abilityKey === 'dex'))
+        extraDis.push('No armor training');
+    }
+    if (rollType === 'attack') {
+      const armorMode = this._armorDisadvantageMode();
+      if (armorMode === 'disadvantage') extraDis.push('No armor training');
+    }
+
+    return ConditionRules.resolveRollMode({
+      rollType, abilityKey, activeConditions: active,
+      exhaustionLevel, extraAdvSources: extraAdv, extraDisSources: extraDis,
+    });
+  },
+
+  _conditionRollD20(label, modifier, rollType, abilityKey, callback) {
+    const { mode, disSources, advSources, penalty } = this._getConditionRollMode(rollType, abilityKey);
+    const adjMod = modifier - penalty;
+
+    // Check if any condition has a rollPrompt (needs DM confirmation)
+    const active = this.lv('conditions', []);
+    const promptConditions = active
+      .filter(c => ConditionRules.CONDITIONS[c]?.rollPrompt)
+      .filter(c => {
+        // Only show prompt if this condition actually affects this roll type
+        const fx = ConditionRules.CONDITIONS[c].effects;
+        if (rollType === 'attack' && (fx.attackRolls === 'disadvantage' || fx.attackRolls === 'auto-fail')) return true;
+        if (rollType === 'check' && fx.abilityChecks === 'disadvantage') return true;
+        if (rollType === 'save') {
+          if (abilityKey === 'str' && fx.strSaves) return true;
+          if (abilityKey === 'dex' && fx.dexSaves) return true;
+        }
+        return false;
+      });
+
+    if (promptConditions.length > 0 && mode === 'disadvantage') {
+      // Show DM confirmation popup
+      const promptText = promptConditions.map(c => ConditionRules.CONDITIONS[c].rollPrompt).join('\n\n');
+      this._showConditionRollPopup(label, adjMod, promptText, mode, callback);
+      return;
+    }
+
+    // No prompt needed — roll directly
+    const result = Dice.rollD20(adjMod, mode);
+    const modeLabel = mode === 'disadvantage' ? ` (Disadv: ${disSources.join(', ')})` :
+                      mode === 'advantage' ? ` (Adv: ${advSources.join(', ')})` : '';
+    const penaltyLabel = penalty > 0 ? ` [−${penalty} Exhaustion]` : '';
+    Dice.showResult(label + modeLabel + penaltyLabel, result);
+    if (callback) callback(result);
+  },
+
+  _showConditionRollPopup(label, modifier, promptText, _mode, callback) {
+    document.querySelector('.condition-roll-popup-backdrop')?.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'condition-roll-popup-backdrop';
+
+    const popup = document.createElement('div');
+    popup.className = 'condition-roll-popup';
+    popup.innerHTML = `
+      <div class="condition-roll-popup-title">${label}</div>
+      <div class="condition-roll-popup-text">${promptText.replace(/\n/g, '<br>')}</div>
+      <div class="condition-roll-popup-actions">
+        <button class="btn condition-roll-btn-normal">Roll Normally</button>
+        <button class="btn btn-primary condition-roll-btn-dis">Roll with Disadvantage</button>
+      </div>`;
+
+    backdrop.appendChild(popup);
+    document.body.appendChild(backdrop);
+    requestAnimationFrame(() => backdrop.classList.add('show'));
+
+    const doRoll = (rollMode) => {
+      backdrop.classList.remove('show');
+      setTimeout(() => backdrop.remove(), 200);
+      const result = Dice.rollD20(modifier, rollMode);
+      const modeLabel = rollMode === 'disadvantage' ? ' (Disadv)' : '';
+      Dice.showResult(label + modeLabel, result);
+      if (callback) callback(result);
+    };
+
+    popup.querySelector('.condition-roll-btn-normal').addEventListener('click', () => doRoll(undefined));
+    popup.querySelector('.condition-roll-btn-dis').addEventListener('click', () => doRoll('disadvantage'));
+    // Close on backdrop click
+    backdrop.addEventListener('click', (e) => {
+      if (e.target === backdrop) { backdrop.classList.remove('show'); setTimeout(() => backdrop.remove(), 200); }
+    });
+  },
+
+  _renderConditions() {
+    const el = this.$('conditions-grid');
+    if (!el) return;
+    const active = this.lv('conditions', []);
+    const custom = this.lv('customConditions', []);
+
+    el.innerHTML = '';
+
+    // Standard conditions — 2-column table, always visible, click to toggle
+    ConditionRules.CONDITION_LIST.forEach(cName => {
+      const rule = ConditionRules.CONDITIONS[cName];
+      const isActive = active.includes(cName);
+      const cell = document.createElement('div');
+      cell.className = 'cond-cell' + (isActive ? ' active' : '');
+      cell.textContent = cName;
+      cell.dataset.condition = cName;
+
+      // Click to toggle
+      cell.addEventListener('click', () => {
+        const conds = this.lv('conditions', []);
+        const idx = conds.indexOf(cName);
+        if (idx >= 0) {
+          // Turning off — only remove this one (implied ones stay, must be toggled individually)
+          conds.splice(idx, 1);
+        } else {
+          // Turning on — also activate implied conditions
+          conds.push(cName);
+          ConditionRules.getImplied(cName).forEach(imp => {
+            if (!conds.includes(imp)) conds.push(imp);
+          });
+        }
+        this.sv('conditions', conds);
+        this._renderConditions();
+        this.applyConditionEffects();
+        if (typeof Combat !== 'undefined' && Combat._buildConditions) Combat._buildConditions();
+      });
+
+      // Tooltip on hover
+      if (rule) {
+        cell.addEventListener('mouseenter', (e) => this._showConditionTooltip(cName, rule.description, e));
+        cell.addEventListener('mouseleave', () => this._hideConditionTooltip());
+      }
+
+      el.appendChild(cell);
+    });
+
+    // Custom conditions
+    custom.forEach(c => {
+      const cell = document.createElement('div');
+      cell.className = 'cond-cell cond-custom' + (c.active ? ' active' : '');
+      cell.innerHTML = `<span>${c.name}</span><button class="cond-custom-del" title="Delete">&times;</button>`;
+      cell.addEventListener('click', (e) => {
+        if (e.target.classList.contains('cond-custom-del')) return;
+        const customs = this.lv('customConditions', []);
+        const ci = customs.findIndex(x => x.name === c.name);
+        if (ci >= 0) { customs[ci].active = !customs[ci].active; this.sv('customConditions', customs); }
+        cell.classList.toggle('active');
+        this.applyConditionEffects();
+      });
+      cell.querySelector('.cond-custom-del').addEventListener('click', (e) => {
+        e.stopPropagation();
+        const customs = this.lv('customConditions', []);
+        const ci = customs.findIndex(x => x.name === c.name);
+        if (ci >= 0) { customs.splice(ci, 1); this.sv('customConditions', customs); }
+        this._renderConditions();
+        this.applyConditionEffects();
+      });
+      el.appendChild(cell);
+    });
+
+    // Add custom button (always last)
+    const addCell = document.createElement('div');
+    addCell.className = 'cond-cell cond-add';
+    addCell.textContent = '+ Custom';
+    addCell.addEventListener('click', () => {
+      addCell.innerHTML = '<input type="text" class="cond-add-input" placeholder="Name..." autofocus>';
+      const inp = addCell.querySelector('input');
+      inp.addEventListener('click', e => e.stopPropagation());
+      inp.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && inp.value.trim()) {
+          const name = inp.value.trim();
+          const customs = this.lv('customConditions', []);
+          if (!customs.some(x => x.name === name)) {
+            customs.push({ name, active: true });
+            this.sv('customConditions', customs);
+          }
+          this._renderConditions();
+          this.applyConditionEffects();
+        }
+        if (e.key === 'Escape') this._renderConditions();
+      });
+      inp.addEventListener('blur', () => this._renderConditions());
+      inp.focus();
+    });
+    el.appendChild(addCell);
+
+    // ---- Exhaustion tracker ----
+    const exhDiv = document.createElement('div');
+    exhDiv.className = 'cond-exhaustion';
+
+    const exhLabel = document.createElement('span');
+    exhLabel.className = 'cond-exh-label';
+    exhLabel.textContent = 'Exhaustion';
+    exhDiv.appendChild(exhLabel);
+
+    const exhPips = document.createElement('div');
+    exhPips.className = 'cond-exh-pips';
+    const currentLevel = this.lv('combat_exhaustion', 0);
+
+    const EXHAUSTION_EFFECTS = [
+      '', // 0 — no effect
+      'Level 1: −2 to D20 Tests. Speed reduced by 5 ft.',
+      'Level 2: −4 to D20 Tests. Speed reduced by 10 ft.',
+      'Level 3: −6 to D20 Tests. Speed reduced by 15 ft.',
+      'Level 4: −8 to D20 Tests. Speed reduced by 20 ft.',
+      'Level 5: −10 to D20 Tests. Speed reduced by 25 ft.',
+      'Level 6: You die.',
+    ];
+
+    for (let i = 1; i <= 6; i++) {
+      const pip = document.createElement('button');
+      pip.className = 'cond-exh-pip' + (i <= currentLevel ? ' active' : '');
+      pip.textContent = i;
+
+      pip.addEventListener('click', () => {
+        const cur = this.lv('combat_exhaustion', 0);
+        const newLevel = cur === i ? i - 1 : i;
+        this.sv('combat_exhaustion', newLevel);
+        // Toggle Exhausted condition automatically
+        const conds = this.lv('conditions', []);
+        if (newLevel > 0 && !conds.includes('Exhausted')) {
+          conds.push('Exhausted');
+          this.sv('conditions', conds);
+        } else if (newLevel === 0 && conds.includes('Exhausted')) {
+          conds.splice(conds.indexOf('Exhausted'), 1);
+          this.sv('conditions', conds);
+        }
+        this._renderConditions();
+        this.applyConditionEffects();
+        if (typeof Combat !== 'undefined') {
+          Combat._buildConditions();
+          Combat._buildExhaustion();
+        }
+      });
+
+      // Tooltip on hover for current effect
+      pip.addEventListener('mouseenter', (e) => {
+        this._showConditionTooltip('Exhaustion', EXHAUSTION_EFFECTS[i], e);
+      });
+      pip.addEventListener('mouseleave', () => this._hideConditionTooltip());
+
+      exhPips.appendChild(pip);
+    }
+
+    exhDiv.appendChild(exhPips);
+    el.appendChild(exhDiv);
+  },
+
+  _highlightConditionText(text) {
+    let html = text.replace(/\n/g, '<br>');
+    // Negative keywords (red)
+    html = html.replace(/\b(Disadvantage|automatically fails?|can't|cannot|Auto-fail)\b/gi,
+      '<span class="cond-kw-bad">$1</span>');
+    // Positive keywords (green)
+    html = html.replace(/\b(Advantage|Resistance)\b/g,
+      '<span class="cond-kw-good">$1</span>');
+    // Mechanical keywords (gold)
+    html = html.replace(/\b(Speed|Attack rolls?|saving throws?|ability checks?|Actions?|Bonus Actions?|Reactions?|Critical Hit|Incapacitated|Prone|D20 Tests?|Exhaustion level|Long Rest)\b/gi,
+      '<span class="cond-kw-mech">$1</span>');
+    // Numeric/dice values (cyan)
+    html = html.replace(/\b(\d+ feet|\d+ times|factor of ten|within 5 feet)\b/gi,
+      '<span class="cond-kw-num">$1</span>');
+    return html;
+  },
+
+  _showConditionTooltip(name, text, event) {
+    this._hideConditionTooltip();
+    const tip = document.createElement('div');
+    tip.className = 'condition-tooltip';
+    tip.id = 'condition-tooltip-active';
+    tip.innerHTML = `<strong>${name}</strong><br>${this._highlightConditionText(text)}`;
+    document.body.appendChild(tip);
+
+    const rect = event.target.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left;
+
+    // Viewport clamp
+    requestAnimationFrame(() => {
+      const tipRect = tip.getBoundingClientRect();
+      if (top + tipRect.height > window.innerHeight - 8) top = rect.top - tipRect.height - 6;
+      if (left + tipRect.width > window.innerWidth - 8) left = window.innerWidth - tipRect.width - 8;
+      if (left < 8) left = 8;
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+      tip.classList.add('show');
+    });
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+  },
+
+  _hideConditionTooltip() {
+    document.getElementById('condition-tooltip-active')?.remove();
+  },
+
 };
