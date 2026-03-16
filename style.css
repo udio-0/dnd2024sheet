@@ -360,8 +360,8 @@ body {
   height: 30px;
 }
 .info-field select {
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23c9ad6a'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
@@ -513,7 +513,7 @@ body {
   box-sizing: border-box;
 }
 .insp-row input[type="checkbox"] {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -578,7 +578,7 @@ body {
 }
 
 .stat-row input[type="checkbox"] {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   width: 20px; height: 20px;
   border: 1.5px solid var(--border);
   border-radius: 50%;
@@ -603,6 +603,7 @@ body {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  -webkit-user-select: none;
   user-select: none;
   transition: background 0.12s, border-color 0.12s;
   background-size: 70%; background-repeat: no-repeat; background-position: center;
@@ -792,7 +793,7 @@ body {
   font-size: 0.55rem;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  color: var(--red);
+  color: var(--ink);
   font-weight: 700;
   margin-top: 6px;
   height: 15px;
@@ -804,14 +805,23 @@ body {
   left: 50%;
   transform: translate(-50%, 50%);
   margin-top: 0;
-  background: var(--red);
-  border: 2px solid var(--red);
-  padding: 1px 10px 2px;
+  background: var(--ac-bg);
+  border: 2px solid var(--combat-border);
+  color: var(--combat-border);
+  padding: 0px 10px 2px;
   border-radius: 20px;
   white-space: nowrap;
   z-index: 1;
   line-height: 1.2;
 }
+/* Death saves button needs higher specificity to override the above */
+.combat-box > .combat-label.ds-roll-label {
+  background: var(--combat-border);
+  border-color: var(--combat-border);
+  color: var(--gold-light);
+}
+/* Dark themes: static labels use light ink so text is readable on the dark --ac-bg */
+[data-theme="dark"] .combat-box > .combat-label:not(.ds-roll-label) { color: var(--ink); }
 
 /* ---- HIT POINTS (inside combat-box) ---- */
 .hp-box { display: flex; flex-direction: column; align-items: center; gap: 5px; justify-content: space-between; flex: 1; }
@@ -1165,8 +1175,8 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   background: var(--parchment);
   color: var(--ink);
   font-family: var(--font-body);
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238B7240' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
@@ -2134,7 +2144,7 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 
 .slot-cb {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   width: 18px; height: 18px;
   border: 1.5px solid rgba(201,173,106,0.5);
   border-radius: 50%;
@@ -2180,7 +2190,7 @@ textarea::placeholder { color: var(--ink-faint); }
   white-space: nowrap;
 }
 .spell-conc-toggle input[type="checkbox"] {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   width: 16px; height: 16px;
   border: 1.5px solid var(--border);
   border-radius: 50%;
@@ -2591,8 +2601,8 @@ textarea::placeholder { color: var(--ink-faint); }
   width: 32px;
   text-align: center;
   padding: 0;
-  appearance: textfield;
   -moz-appearance: textfield;
+  appearance: textfield;
 }
 .spell-prepared-max::-webkit-inner-spin-button,
 .spell-prepared-max::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
@@ -2723,7 +2733,7 @@ textarea::placeholder { color: var(--ink-faint); }
 
 /* Prepared checkbox — circular, matches stat-row style */
 .spell-card input[type="checkbox"] {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   width: 18px; height: 18px;
   border: 1.5px solid var(--border);
   border-radius: 50%;
@@ -3122,6 +3132,7 @@ textarea::placeholder { color: var(--ink-faint); }
   display: flex; align-items: center; gap: 6px;
   padding: 5px 8px;
   cursor: pointer;
+  -webkit-user-select: none;
   user-select: none;
   border-radius: var(--radius);
   background: var(--white);
@@ -3237,7 +3248,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .attune-req { color: var(--ink-faint); font-style: italic; }
 .no-items-msg { font-size: 0.78rem; color: var(--ink-faint); font-style: italic; padding: 4px 0; }
 .feat-card.magic-attuned { border-color: var(--gold); }
-.attune-check-label { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--ink-faint); cursor: not-allowed; white-space: nowrap; position: relative; user-select: none; }
+.attune-check-label { display: flex; align-items: center; gap: 4px; font-size: 0.7rem; color: var(--ink-faint); cursor: not-allowed; white-space: nowrap; position: relative; -webkit-user-select: none; user-select: none; }
 .attune-cb-display {
   width: 14px; height: 14px;
   border-radius: 50%;
@@ -3727,7 +3738,7 @@ textarea::placeholder { color: var(--ink-faint); }
 
 /* ---- Notes Responsive (mobile) ---- */
 @media (max-width: 768px) {
-  .notes-body { flex-direction: column; height: auto; min-height: auto; }
+  .notes-body { flex-direction: column; height: auto; min-height: 0; }
   .notes-sidebar { width: 100%; max-width: none; border-right: none; border-bottom: 2px solid var(--border); max-height: none; }
   .notes-editor { display: none; }
   .notes-body.note-open .notes-sidebar { display: none; }
@@ -4204,8 +4215,8 @@ textarea::placeholder { color: var(--ink-faint); }
 .theme-swatches { display: flex; flex-direction: column; gap: 6px; }
 
 .theme-swatch {
-  appearance: none;
   -webkit-appearance: none;
+  appearance: none;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4576,6 +4587,7 @@ textarea::placeholder { color: var(--ink-faint); }
   border-radius: var(--radius);
   background: var(--parchment);
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+  -webkit-user-select: none;
   user-select: none;
 }
 .lu-ab-card--raised {
@@ -4720,6 +4732,7 @@ textarea::placeholder { color: var(--ink-faint); }
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
   min-width: 4.5rem;
+  -webkit-user-select: none;
   user-select: none;
 }
 .lu-feat-ab-card:hover { border-color: var(--gold-dark); background: var(--parchment-dk); }
@@ -4937,7 +4950,6 @@ textarea::placeholder { color: var(--ink-faint); }
 
 [data-theme="dark"] .sheet-box { background: var(--white); border-color: var(--border); }
 [data-theme="dark"] .combat-box { background: var(--white); border-color: var(--red); }
-[data-theme="dark"] .combat-label:not(.ds-roll-label) { background: var(--white); }
 [data-theme="dark"] .cover-btn { background: var(--card); border-color: var(--border); color: var(--ink-faint); }
 [data-theme="dark"] .cover-btn:hover:not(.active) { background: rgba(180,150,50,0.1); }
 [data-theme="dark"] .hd-num-input { background: var(--input-bg); color: var(--ink); border-color: var(--border); }
@@ -5252,6 +5264,9 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 .wiz-search:focus, .wiz-search-input:focus { outline: none; border-color: var(--gold); }
 .wiz-search-sm { padding: 6px 10px; font-size: 0.85rem; }
+.wiz-select { width: 100%; padding: 7px 10px; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--ink); font-size: 0.9rem; font-family: var(--font-body); cursor: pointer; }
+.wiz-select:focus { outline: none; border-color: var(--gold); }
+[data-theme="dark"] .wiz-select { background: var(--input-bg); color: var(--ink); border-color: var(--border); }
 
 .wiz-hint { color: var(--ink-faint); font-size: 0.85rem; text-align: center; padding: 12px; }
 .wiz-source { font-size: 0.75rem; color: var(--ink-faint); font-weight: 400; }
@@ -5670,6 +5685,7 @@ textarea::placeholder { color: var(--ink-faint); }
   inset: 0;
   z-index: 10000;
   background: rgba(8, 4, 2, 0.9);
+  -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -6561,7 +6577,7 @@ textarea::placeholder { color: var(--ink-faint); }
 
 /* Active-state checkbox — mirrors .stat-row input[type="checkbox"] */
 .equip-active-cb {
-  appearance: none; -webkit-appearance: none;
+  -webkit-appearance: none; appearance: none;
   width: 18px; height: 18px;
   border: 1.5px solid var(--border);
   border-radius: 50%;
@@ -6779,6 +6795,7 @@ textarea::placeholder { color: var(--ink-faint); }
   cursor: pointer;
   text-align: center;
   transition: all 0.2s ease;
+  -webkit-user-select: none;
   user-select: none;
   position: relative;
   letter-spacing: 0.2px;
@@ -7155,6 +7172,54 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 
 /* =============================================
+   INITIAL VISIBILITY — replaces inline display:none
+   ============================================= */
+#btn-save-char,
+#btn-export-pdf,
+#view-home,
+#view-wizard,
+#view-sheet,
+#folder-status,
+#empty-state,
+#species-info-box,
+#class-features-box,
+#bg-flavor-box,
+#item-search-results,
+#magic-item-search-results,
+#notes-import-file { display: none; }
+
+/* These override their class-level display:flex defaults */
+#levelup-backdrop,
+#rest-modal-backdrop { display: none; }
+
+/* Portrait image */
+#portrait-img {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 4px;
+}
+#portrait-clear-btn { display: none; margin-top: 4px; width: 100%; }
+#portrait-upload-btn { margin-top: 6px; width: 100%; }
+
+/* Layout adjustments */
+#resources-box { margin-bottom: 8px; }
+#inv-search-bar { margin: 6px 0; }
+#magic-search-bar { margin-top: 6px; }
+#equipmentNotes { margin-top: 6px; width: 100%; }
+
+/* Notes legend tag colours */
+.notes-legend-item[data-type="npc"]      { --tag-color: #8e44ad; }
+.notes-legend-item[data-type="location"] { --tag-color: #27ae60; }
+.notes-legend-item[data-type="quest"]    { --tag-color: #c0392b; }
+.notes-legend-item[data-type="item"]     { --tag-color: #d4a017; }
+.notes-legend-item[data-type="faction"]  { --tag-color: #7f8c8d; }
+.notes-legend-item[data-type="lore"]     { --tag-color: #8B4513; }
+.notes-legend-item[data-type="event"]    { --tag-color: #2980b9; }
+.notes-legend-item[data-type="session"]  { --tag-color: #e67e22; }
+
+/* =============================================
    PRINT / PDF EXPORT — A4 Portrait
    ============================================= */
 @media print {
@@ -7276,7 +7341,7 @@ textarea::placeholder { color: var(--ink-faint); }
   /* --- Show all tab panels except combat --- */
   .tab-panel {
     display: block !important;
-    min-height: auto !important;
+    min-height: 0 !important;
     height: auto !important;
     padding: 0 4px !important;
     overflow: visible !important;
@@ -7533,8 +7598,9 @@ textarea::placeholder { color: var(--ink-faint); }
     width: 100% !important;
   }
   /* Hide empty portrait, show if image is present */
-  .chronicle-portrait-box:has(#portrait-img[style*="display:none"]),
-  .chronicle-portrait-box:has(#portrait-img[src=""]) {
+  .chronicle-portrait-box:has(#portrait-img:not([src])),
+  .chronicle-portrait-box:has(#portrait-img[src=""]),
+  .chronicle-portrait-box:has(#portrait-img[style*="display:none"]) {
     display: none !important;
   }
   .chronicle-portrait {

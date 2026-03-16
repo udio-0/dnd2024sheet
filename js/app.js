@@ -77,60 +77,60 @@ document.addEventListener('change', e => {
     // ===== DARK THEMES =====
     // 4 swatch colors: bg, accent (--red / block borders), gold (highlights), ink (text)
     // topbar-bg = darker shade of bg hue (derived, not a 5th color)
-    dungeon: { dark: true, label: 'Dungeon', bg: '#1E1E2E', accent: '#8B3A3A',
+    dungeon: { dark: true, label: 'Dungeon', bg: '#262626', accent: '#6d5858',
       vars: {
-        '--red':'#8B3A3A', '--red-accent':'#B34848',
-        '--gold':'#D4B872', '--gold-light':'#F0DCA0', '--gold-dark':'#A08850',
-        '--parchment':'#1E1E2E', '--parchment-dk':'#181826',
-        '--ink':'#E8E0D0', '--ink-light':'#C0B090', '--ink-faint':'#806858',
-        '--white':'#2A2A40', '--border':'#3A3858',
-        '--body-bg':'#0E0E1C', '--topbar-bg':'#16162A', '--tab-bar-bg':'#101020',
-        '--combat-border':'#8B3A3A', '--input-bg':'#262638',
-        '--ac-bg':'#2A2A40', '--ac-hover':'#323250',
+        '--red':'#6d5858', '--red-accent':'#8d6e6e',
+        '--gold':'#b9ac8d', '--gold-light':'#e0d4b1', '--gold-dark':'#7c7a74',
+        '--parchment':'#262626', '--parchment-dk':'#1f1f1f',
+        '--ink':'#dddcdb', '--ink-light':'#a8a8a8', '--ink-faint':'#6c6c6c',
+        '--white':'#353535', '--border':'#484848',
+        '--body-bg':'#141416', '--topbar-bg':'#1f1f21', '--tab-bar-bg':'#171719',
+        '--combat-border':'#6d5858', '--input-bg':'#2f2f2f',
+        '--ac-bg':'#353535', '--ac-hover':'#424242',
       }},
-    abyss: { dark: true, label: 'Abyss', bg: '#181410', accent: '#A06828',
+    abyss: { dark: true, label: 'Abyss', bg: '#1e1e1e', accent: '#826646',
       vars: {
-        '--red':'#A06828', '--red-accent':'#C88030',
-        '--gold':'#D4A03C', '--gold-light':'#F0C868', '--gold-dark':'#9A7020',
-        '--parchment':'#1C1812', '--parchment-dk':'#14100A',
-        '--ink':'#EDE4D4', '--ink-light':'#C4B494', '--ink-faint':'#7A6A50',
-        '--white':'#242018', '--border':'#3C3428',
-        '--body-bg':'#0E0C08', '--topbar-bg':'#121008', '--tab-bar-bg':'#0C0A06',
-        '--combat-border':'#A06828', '--input-bg':'#221E14',
-        '--ac-bg':'#242018', '--ac-hover':'#302A1E',
+        '--red':'#826646', '--red-accent':'#a37e55',
+        '--gold':'#b09560', '--gold-light':'#d7be81', '--gold-dark':'#7e673c',
+        '--parchment':'#272727', '--parchment-dk':'#1c1c1c',
+        '--ink':'#e4e1dd', '--ink-light':'#acacac', '--ink-faint':'#656565',
+        '--white':'#292929', '--border':'#424242',
+        '--body-bg':'#171717', '--topbar-bg':'#1a1917', '--tab-bar-bg':'#131313',
+        '--combat-border':'#826646', '--input-bg':'#272727',
+        '--ac-bg':'#292929', '--ac-hover':'#353535',
       }},
-    crimson: { dark: true, label: 'Crimson', bg: '#1C1214', accent: '#A82828',
+    crimson: { dark: true, label: 'Crimson', bg: '#222222', accent: '#894747',
       vars: {
-        '--red':'#A82828', '--red-accent':'#C83838',
-        '--gold':'#D4A050', '--gold-light':'#F0C880', '--gold-dark':'#A07830',
-        '--parchment':'#1E1416', '--parchment-dk':'#161012',
-        '--ink':'#F0E4DA', '--ink-light':'#C8B098', '--ink-faint':'#886860',
-        '--white':'#2A1C1E', '--border':'#482830',
-        '--body-bg':'#0C0608', '--topbar-bg':'#140A0C', '--tab-bar-bg':'#100808',
-        '--combat-border':'#A82828', '--input-bg':'#241618',
-        '--ac-bg':'#2A1C1E', '--ac-hover':'#342428',
+        '--red':'#894747', '--red-accent':'#a25e5e',
+        '--gold':'#b39971', '--gold-light':'#dbc295', '--gold-dark':'#816f4f',
+        '--parchment':'#282828', '--parchment-dk':'#1e1e1e',
+        '--ink':'#e8e5e2', '--ink-light':'#b0b0b0', '--ink-faint':'#747474',
+        '--white':'#2f2f2f', '--border':'#454545',
+        '--body-bg':'#151515', '--topbar-bg':'#1b1b1b', '--tab-bar-bg':'#181818',
+        '--combat-border':'#894747', '--input-bg':'#282828',
+        '--ac-bg':'#2f2f2f', '--ac-hover':'#393939',
       }},
-    emerald: { dark: true, label: 'Emerald', bg: '#121C16', accent: '#28784A',
+    emerald: { dark: true, label: 'Emerald', bg: '#242424', accent: '#40604e',
       vars: {
-        '--red':'#28784A', '--red-accent':'#349860',
-        '--gold':'#C8B468', '--gold-light':'#E0D090', '--gold-dark':'#948440',
-        '--parchment':'#141E18', '--parchment-dk':'#0E1610',
-        '--ink':'#E0ECD8', '--ink-light':'#A8C8A0', '--ink-faint':'#5C8058',
-        '--white':'#1A2A1E', '--border':'#2A4030',
-        '--body-bg':'#080E0A', '--topbar-bg':'#0C140E', '--tab-bar-bg':'#0A100C',
-        '--combat-border':'#28784A', '--input-bg':'#182418',
-        '--ac-bg':'#1A2A1E', '--ac-hover':'#223424',
+        '--red':'#40604e', '--red-accent':'#527a64',
+        '--gold':'#a9a287', '--gold-light':'#cbc3a5', '--gold-dark':'#747060',
+        '--parchment':'#282828', '--parchment-dk':'#1c1c1c',
+        '--ink':'#e2e3e1', '--ink-light':'#b4b4b4', '--ink-faint':'#6c6c6c',
+        '--white':'#2b2b2b', '--border':'#414141',
+        '--body-bg':'#161616', '--topbar-bg':'#1c1c1c', '--tab-bar-bg':'#181818',
+        '--combat-border':'#40604e', '--input-bg':'#292929',
+        '--ac-bg':'#2b2b2b', '--ac-hover':'#353535',
       }},
-    midnight: { dark: true, label: 'Midnight', bg: '#10142A', accent: '#3848B0',
+    midnight: { dark: true, label: 'Midnight', bg: '#28292c', accent: '#5b628d',
       vars: {
-        '--red':'#3848B0', '--red-accent':'#4C60D0',
-        '--gold':'#C8B880', '--gold-light':'#E0D4A8', '--gold-dark':'#988850',
-        '--parchment':'#121628', '--parchment-dk':'#0C1020',
-        '--ink':'#E0E0F0', '--ink-light':'#A8A8D0', '--ink-faint':'#606890',
-        '--white':'#181C38', '--border':'#283058',
-        '--body-bg':'#060818', '--topbar-bg':'#0A0E20', '--tab-bar-bg':'#080C1A',
-        '--combat-border':'#3848B0', '--input-bg':'#161A30',
-        '--ac-bg':'#181C38', '--ac-hover':'#202848',
+        '--red':'#5b628d', '--red-accent':'#6e78ae',
+        '--gold':'#ada99b', '--gold-light':'#cecaba', '--gold-dark':'#757473',
+        '--parchment':'#2b2b2b', '--parchment-dk':'#212226',
+        '--ink':'#e7e7e9', '--ink-light':'#bcbcbc', '--ink-faint':'#787878',
+        '--white':'#333435', '--border':'#4b4c4f',
+        '--body-bg':'#1b1b1d', '--topbar-bg':'#212329', '--tab-bar-bg':'#1b1d23',
+        '--combat-border':'#5b628d', '--input-bg':'#313131',
+        '--ac-bg':'#333435', '--ac-hover':'#3f3f41',
       }},
   };
 
@@ -528,9 +528,9 @@ document.addEventListener('change', e => {
     Router.register('sheet/:id', (params) => {
       Router.showView('view-sheet');
       const pdfBtn = document.getElementById('btn-export-pdf');
-      if (pdfBtn) pdfBtn.style.display = '';
+      if (pdfBtn) pdfBtn.style.display = 'inline-block';
       const saveBtn = document.getElementById('btn-save-char');
-      if (saveBtn) saveBtn.style.display = '';
+      if (saveBtn) saveBtn.style.display = 'inline-flex';
       Sheet.teardown();
       Sheet.init(params.id);
 

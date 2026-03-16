@@ -208,8 +208,28 @@ window.Wizard = {
         const chosen = (d._weaponMasteryChoices || []).length;
         if (chosen < info.weaponMasteryCount) return `Please choose ${info.weaponMasteryCount} weapons for Weapon Mastery (${chosen}/${info.weaponMasteryCount} selected).`;
       }
+      if (info?.toolProfChoices?.length) {
+        const totalNeeded = info.toolProfChoices.reduce((s, g) => s + g.count, 0);
+        const chosen = (d._classToolChoices || []).filter(Boolean).length;
+        if (chosen < totalNeeded) {
+          const hasUnpickedCategory = info.toolProfChoices.some(g => g.type === 'artisanOrInstrument')
+            && (d._classToolCategories || []).filter(Boolean).length < totalNeeded;
+          if (hasUnpickedCategory) return `Please choose between Artisan's Tools or Musical Instrument.`;
+          return `Please choose ${totalNeeded} tool proficienc${totalNeeded === 1 ? 'y' : 'ies'} (${chosen}/${totalNeeded} selected).`;
+        }
+      }
     }
     if (step === 'equipment') {
+      const classInfo = d.charClass ? getClassInfo(d.charClass) : null;
+      const equip = classInfo?.startingEquipment;
+      if (equip?.defaultData?.length) {
+        for (let i = 0; i < equip.defaultData.length; i++) {
+          const row = equip.defaultData[i];
+          const keys = Object.keys(row).filter(k => k !== '_');
+          if (row._ || !keys.length) continue;
+          if (!d[`_equipChoice_${i}`]) return 'Please choose a starting equipment option (A or B) before continuing.';
+        }
+      }
       const spent = (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) / 100, 0);
       const available = d.gp || 0;
       if (spent > available) return `Not enough gold — you've spent ${spent.toFixed(2).replace(/\.00$/, '')} gp but only have ${available} gp available.`;
@@ -392,7 +412,13 @@ window.Wizard = {
         const qtyMatch = baseName.match(/^(.*?)\s*\((\d+)\)\s*$/);
         if (qtyMatch) { baseName = capFirst(qtyMatch[1].trim()); qty = parseInt(qtyMatch[2]); } else qty = 1;
       } else if (it.equipmentType) {
-        baseName = EQUIP_TYPE_NAMES[it.equipmentType] || capFirst(it.equipmentType);
+        // Resolve tool/instrument placeholders to the specific chosen tool
+        const toolChoices = d._classToolChoices?.filter(Boolean) || [];
+        if ((it.equipmentType === 'toolArtisan' || it.equipmentType === 'instrumentMusical') && toolChoices.length) {
+          baseName = toolChoices[0];
+        } else {
+          baseName = EQUIP_TYPE_NAMES[it.equipmentType] || capFirst(it.equipmentType);
+        }
         qty = it.quantity || 1;
       } else if (it.special) {
         baseName = capFirst(it.special);
@@ -571,6 +597,57 @@ window.Wizard = {
         if (!d.attacks.some(a => a.name === atk.name)) d.attacks.push({ ...atk });
       }
     });
+
+    // Apply tool proficiency choices from class step
+    if (d._classToolChoices?.length) {
+      const existing = new Set((d.toolProficiencies || []).map(t => t.toLowerCase()));
+      const toAdd = d._classToolChoices.filter(Boolean).filter(t => !existing.has(t.toLowerCase()));
+      if (toAdd.length) d.toolProficiencies = [...(d.toolProficiencies || []), ...toAdd];
+      // Add the chosen tool/instrument to inventory with full item data if available
+      d._classToolChoices.filter(Boolean).forEach(toolName => {
+        const found = (DndData.allItems || []).find(i => i.name.toLowerCase() === toolName.toLowerCase());
+        const invEntry = found ? toInvEntry({ name: found.name, qty: 1 }) : {
+          name: toolName, qty: 1, type: '', damage: '', mastery: '', properties: '',
+          weight: 0, value: '', _valueCp: 0, ac: 0, rarity: 'none', category: 'gear',
+          isContainer: false, containerOpen: false, containerId: null,
+        };
+        d.inventory = [...(d.inventory || []), invEntry];
+      });
+    }
+    // Apply fixed class tool proficiencies (e.g. Rogue's Thieves' Tools)
+    {
+      const classInfo = d.charClass ? getClassInfo(d.charClass) : null;
+      const fixedProfs = classInfo?.fixedToolProf || [];
+      if (fixedProfs.length) {
+        const existing = new Set((d.toolProficiencies || []).map(t => t.toLowerCase()));
+        fixedProfs.forEach(toolName => {
+          if (!existing.has(toolName.toLowerCase())) {
+            d.toolProficiencies = [...(d.toolProficiencies || []), toolName];
+            existing.add(toolName.toLowerCase());
+          }
+        });
+        // Add fixed tool items to inventory if they're physical items in equipment
+        // (they often appear in the class starting equipment by name, so no need to double-add here)
+      }
+    }
+
+    // Apply fixed tool proficiencies from background and mark background as already applied
+    // so the sheet's applyBackgroundSelection doesn't overwrite toolProficiencies on first load
+    if (d._bgInfo) {
+      const existingTools = new Set((d.toolProficiencies || []).map(t => t.toLowerCase()));
+      if (d._bgInfo.toolProf) {
+        for (const [key, val] of Object.entries(d._bgInfo.toolProf)) {
+          if (val !== true) continue;
+          const name = key.split('|')[0];
+          if (!existingTools.has(name.toLowerCase())) {
+            d.toolProficiencies = [...(d.toolProficiencies || []), name];
+            existingTools.add(name.toLowerCase());
+          }
+        }
+      }
+      // Mark the background as applied so the sheet won't overwrite toolProficiencies on init
+      d._appliedBg = d.charBackground;
+    }
 
     // Apply expertise choices from class step
     (d._expertiseChoices || []).forEach(sk => { d['skillExpert_' + sk] = true; });
@@ -1200,6 +1277,15 @@ window.Wizard = {
     const showPreview = (className) => {
       const info = getClassInfo(className);
       if (!info) { preview.innerHTML = '<div class="wiz-hint">Select a class to see details</div>'; skillDiv.innerHTML = ''; return; }
+      // Reset class-specific choices when class changes
+      if (d.charClass !== className) {
+        d._classSkillChoices = [];
+        d._expertiseChoices = [];
+        d._fightingStyle = null;
+        d._weaponMasteryChoices = [];
+        d._classToolChoices = [];
+        d._classToolCategories = [];
+      }
       d.charClass = className;
       d._classInfo = info;
       d.speed = d._speciesInfo?.speed || 30;
@@ -1469,6 +1555,119 @@ window.Wizard = {
 
           skillDiv.appendChild(wmSection);
         }
+      }
+
+      // ---- Tool Proficiency Choices (Monk, Bard, etc.) ----
+      if (info.toolProfChoices?.length) {
+        d._classToolChoices = d._classToolChoices || [];
+        d._classToolCategories = d._classToolCategories || [];
+
+        const ARTISAN_TOOLS = ["Alchemist's Supplies", "Brewer's Supplies", "Calligrapher's Supplies", "Carpenter's Tools", "Cartographer's Tools", "Cobbler's Tools", "Cook's Utensils", "Glassblower's Tools", "Jeweler's Tools", "Leatherworker's Tools", "Mason's Tools", "Painter's Supplies", "Potter's Tools", "Smith's Tools", "Tinker's Tools", "Weaver's Tools", "Woodcarver's Tools"];
+        const INSTRUMENTS = ['Bagpipes', 'Bandore', 'Cittern', 'Drum', 'Dulcimer', 'Flute', 'Horn', 'Lute', 'Lyre', 'Pan Flute', 'Shawm', 'Viol', 'Yarting'];
+
+        const toolSection = document.createElement('div');
+        toolSection.className = 'wiz-tool-prof-section';
+
+        // Build flat list of picks
+        const allPicks = [];
+        let pickIdx = 0;
+        info.toolProfChoices.forEach(group => {
+          for (let i = 0; i < group.count; i++) {
+            allPicks.push({ idx: pickIdx++, type: group.type });
+          }
+        });
+
+        const totalPicks = allPicks.length;
+        const heading = document.createElement('h4');
+        heading.className = 'wiz-subtitle';
+        heading.textContent = totalPicks === 1 ? 'Choose a Tool Proficiency' : `Choose ${totalPicks} Tool Proficiencies`;
+        toolSection.appendChild(heading);
+
+        allPicks.forEach(pick => {
+          const pickWrap = document.createElement('div');
+          pickWrap.style.cssText = 'margin-bottom:12px';
+
+          if (totalPicks > 1) {
+            const lbl = document.createElement('div');
+            lbl.style.cssText = 'font-size:0.82rem;color:var(--ink-faint);margin-bottom:6px';
+            lbl.textContent = `Pick ${pick.idx + 1}`;
+            pickWrap.appendChild(lbl);
+          }
+
+          const savedCategory = d._classToolCategories[pick.idx];
+          const savedItem = d._classToolChoices[pick.idx];
+
+          // For artisanOrInstrument: show two toggle buttons
+          if (pick.type === 'artisanOrInstrument') {
+            const btnRow = document.createElement('div');
+            btnRow.style.cssText = 'display:flex;gap:8px;margin-bottom:8px';
+
+            const btnArtisan = document.createElement('button');
+            btnArtisan.className = 'bg-asi-card' + (savedCategory === 'artisan' ? ' two' : '');
+            btnArtisan.textContent = "Artisan's Tools";
+
+            const btnInstrument = document.createElement('button');
+            btnInstrument.className = 'bg-asi-card' + (savedCategory === 'instrument' ? ' two' : '');
+            btnInstrument.textContent = 'Musical Instrument';
+
+            btnRow.appendChild(btnArtisan);
+            btnRow.appendChild(btnInstrument);
+            pickWrap.appendChild(btnRow);
+
+            const dropWrap = document.createElement('div');
+            const renderDrop = (category) => {
+              const items = category === 'artisan' ? ARTISAN_TOOLS : INSTRUMENTS;
+              const cur = d._classToolChoices[pick.idx];
+              dropWrap.innerHTML = `<select class="wiz-select">
+                <option value="">— Choose a ${category === 'artisan' ? "tool" : "instrument"} —</option>
+                ${items.map(n => `<option value="${n}" ${cur === n ? 'selected' : ''}>${n}</option>`).join('')}
+              </select>`;
+              dropWrap.querySelector('select').addEventListener('change', function () {
+                d._classToolChoices[pick.idx] = this.value || null;
+              });
+            };
+
+            if (savedCategory) renderDrop(savedCategory);
+            pickWrap.appendChild(dropWrap);
+
+            btnArtisan.addEventListener('click', () => {
+              d._classToolCategories[pick.idx] = 'artisan';
+              d._classToolChoices[pick.idx] = null;
+              btnArtisan.classList.add('two');
+              btnInstrument.classList.remove('two');
+              renderDrop('artisan');
+            });
+            btnInstrument.addEventListener('click', () => {
+              d._classToolCategories[pick.idx] = 'instrument';
+              d._classToolChoices[pick.idx] = null;
+              btnInstrument.classList.add('two');
+              btnArtisan.classList.remove('two');
+              renderDrop('instrument');
+            });
+
+          } else {
+            // Single category — just a dropdown
+            const items = pick.type === 'artisan' ? ARTISAN_TOOLS
+                        : pick.type === 'list'    ? (pick.from || [])
+                        :                          INSTRUMENTS;
+            const label = pick.type === 'artisan' ? 'tool'
+                        : pick.type === 'list'    ? 'tool'
+                        :                          'instrument';
+            const sel = document.createElement('select');
+            sel.className = 'wiz-select';
+            sel.innerHTML = `<option value="">— Choose a ${label} —</option>` +
+              items.map(n => `<option value="${n}" ${savedItem === n ? 'selected' : ''}>${n}</option>`).join('');
+            sel.addEventListener('change', function () {
+              d._classToolChoices[pick.idx] = this.value || null;
+              d._classToolCategories[pick.idx] = pick.type;
+            });
+            pickWrap.appendChild(sel);
+          }
+
+          toolSection.appendChild(pickWrap);
+        });
+
+        skillDiv.appendChild(toolSection);
       }
     };
     input.addEventListener('change', () => showPreview(input.value));
@@ -1988,7 +2187,12 @@ window.Wizard = {
         return gp + ' GP';
       }
       if (it.equipmentType) {
-        const typeNames = { weaponMartial: 'any martial weapon', weaponSimple: 'any simple weapon', armorLight: 'any light armor', armorMedium: 'any medium armor' };
+        const typeNames = { weaponMartial: 'any martial weapon', weaponSimple: 'any simple weapon', armorLight: 'any light armor', armorMedium: 'any medium armor', toolArtisan: 'any artisan tool', instrumentMusical: 'any musical instrument', setGaming: 'any gaming set' };
+        // Resolve tool/instrument placeholders to the specific chosen tool if available
+        const toolChoices = d._classToolChoices?.filter(Boolean) || [];
+        if ((it.equipmentType === 'toolArtisan' || it.equipmentType === 'instrumentMusical') && toolChoices.length) {
+          return (it.quantity ? `${it.quantity}× ` : '') + toolChoices[0];
+        }
         const label = typeNames[it.equipmentType] || it.equipmentType.replace(/([A-Z])/g, ' $1').trim().toLowerCase();
         return (it.quantity ? `${it.quantity}× ` : '') + label;
       }

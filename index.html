@@ -70,11 +70,11 @@
             </div>
           </div>
         </div>
-        <button id="btn-save-char" class="save-btn" title="Save character to file" style="display:none">
+        <button id="btn-save-char" class="save-btn" title="Save character to file">
           <span class="save-btn-text">Save</span>
           <span class="save-btn-dot"></span>
         </button>
-        <button id="btn-export-pdf" class="ua-toggle" title="Export character to PDF" style="display:none">
+        <button id="btn-export-pdf" class="ua-toggle" title="Export character to PDF">
           <span>PDF</span>
         </button>
         <div class="roll-log-menu" id="roll-log-menu">
@@ -97,7 +97,7 @@
     <!-- ============================================= -->
     <!-- VIEW: HOME PAGE                               -->
     <!-- ============================================= -->
-    <div id="view-home" class="view-container" style="display:none">
+    <div id="view-home" class="view-container">
       <div class="home-page">
         <div class="home-hero">
           <h1 class="home-title">Your Adventurers</h1>
@@ -108,14 +108,14 @@
             <input type="file" id="import-file-home" accept=".json" hidden>
             <button id="btn-open-folder" class="btn btn-lg btn-folder" title="Open a local folder to load and save characters">Open Folder</button>
           </div>
-          <div id="folder-status" class="folder-status" style="display:none">
+          <div id="folder-status" class="folder-status">
             <span class="folder-status-dot"></span>
             <span id="folder-status-text">Local folder</span>
             <button id="btn-change-folder" class="folder-change-btn" title="Change folder">Change</button>
           </div>
         </div>
         <div id="character-cards" class="character-grid"></div>
-        <div id="empty-state" class="empty-state" style="display:none">
+        <div id="empty-state" class="empty-state">
           <div class="empty-icon">🏰</div>
           <p>No adventurers yet.</p>
           <p id="empty-text">Open a folder with character files or create your first character!</p>
@@ -126,7 +126,7 @@
     <!-- ============================================= -->
     <!-- VIEW: CHARACTER CREATION WIZARD               -->
     <!-- ============================================= -->
-    <div id="view-wizard" class="view-container" style="display:none">
+    <div id="view-wizard" class="view-container">
       <div class="wizard">
         <div class="wizard-progress" id="wizard-progress"></div>
         <div class="wizard-body" id="wizard-body"></div>
@@ -137,7 +137,7 @@
     <!-- ============================================= -->
     <!-- VIEW: CHARACTER SHEET                         -->
     <!-- ============================================= -->
-    <div id="view-sheet" class="view-container" style="display:none">
+    <div id="view-sheet" class="view-container">
 
       <!-- SHEET TABS -->
       <nav class="tabs" id="sheet-tabs">
@@ -199,7 +199,7 @@
               <div class="field-label">Alignment</div>
             </div>
             <div class="info-field info-field-sm">
-              <input type="number" id="charXP" value="0" min="0" data-save="charXP">
+              <input type="number" id="charXP" value="0" min="0" data-save="charXP" title="Experience Points">
               <div class="field-label">XP</div>
             </div>
           </div>
@@ -220,9 +220,9 @@
               <div class="sheet-box"><div class="box-title">Skills</div><div id="skill-list" class="stat-list"></div></div>
               <div class="sheet-box passive-box"><div class="badge" id="passivePerception">10</div><label>Passive Perception</label></div>
             </div>
-            <div class="sheet-box col-left-full"><div class="box-title">Proficiencies &amp; Languages</div><textarea id="profLanguages" rows="4" data-save="profLanguages"></textarea></div>
-            <div class="sheet-box col-left-full" id="species-info-box" style="display:none"><div class="box-title">Specie Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
-            <div class="sheet-box col-left-full" id="class-features-box" style="display:none"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
+            <div class="sheet-box col-left-full"><div class="box-title">Proficiencies &amp; Languages</div><textarea id="profLanguages" rows="4" data-save="profLanguages" title="Proficiencies and Languages"></textarea></div>
+            <div class="sheet-box col-left-full" id="species-info-box"><div class="box-title">Specie Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
+            <div class="sheet-box col-left-full" id="class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
           </div>
 
           <!-- CENTER: Combat stats, HP, Attacks, Personality -->
@@ -299,7 +299,7 @@
             </div>
 
             <!-- Limited Resources — full width -->
-            <div class="sheet-box" id="resources-box" style="margin-bottom:8px">
+            <div class="sheet-box" id="resources-box">
               <div class="box-title">Limited Resources</div>
               <div id="resources-list"></div>
               <div class="resource-add-row">
@@ -328,7 +328,7 @@
     <col class="col-atk-ed">
     <col class="col-atk-actions">
   </colgroup>
-  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">Prof</th><th>Bon</th><th>Dmg</th><th>Type</th><th>Mastery</th><th>Ed.</th><th></th></tr></thead>
+  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">Prof</th><th>Bon</th><th>Dmg</th><th>Type</th><th>Mastery</th><th>Ed.</th><th aria-label="Actions"></th></tr></thead>
   <tbody id="attacks-body"></tbody>
 </table>
               <button id="btn-add-attack" class="btn btn-sm">+ Add Attack</button>
@@ -338,19 +338,19 @@
             <div class="sheet-box">
               <div class="box-title">Inventory</div>
               <div class="currency-bar">
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp"><button class="spin-btn spin-minus">−</button><label>CP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp"><button class="spin-btn spin-minus">−</button><label>SP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep"><button class="spin-btn spin-minus">−</button><label>EP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp"><button class="spin-btn spin-minus">−</button><label>GP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp"><button class="spin-btn spin-minus">−</button><label>PP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp" title="Copper Pieces"><button class="spin-btn spin-minus">−</button><label for="cp">CP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp" title="Silver Pieces"><button class="spin-btn spin-minus">−</button><label for="sp">SP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep" title="Electrum Pieces"><button class="spin-btn spin-minus">−</button><label for="ep">EP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp" title="Gold Pieces"><button class="spin-btn spin-minus">−</button><label for="gp">GP</label></div>
+                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp" title="Platinum Pieces"><button class="spin-btn spin-minus">−</button><label for="pp">PP</label></div>
               </div>
-              <div class="item-search-bar" style="margin:6px 0"><input type="text" id="item-search" placeholder="Search items to add..." class="item-search-input" autocomplete="off"><div id="item-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+              <div class="item-search-bar" id="inv-search-bar"><input type="text" id="item-search" placeholder="Search items to add..." class="item-search-input" autocomplete="off"><div id="item-search-results" class="autocomplete-dropdown"></div></div>
               <div class="inventory-grid">
                 <div class="inv-section"><h3>Weapons</h3><div class="inv-cards" id="inv-weapons"></div></div>
                 <div class="inv-section"><h3>Armor &amp; Shields</h3><div class="inv-cards" id="inv-armor"></div></div>
                 <div class="inv-section"><h3>Gear</h3><div class="inv-cards" id="inv-gear"></div></div>
               </div>
-              <textarea id="equipmentNotes" rows="3" placeholder="Equipment notes..." data-save="equipmentNotes" style="margin-top:6px;width:100%"></textarea>
+              <textarea id="equipmentNotes" rows="3" placeholder="Equipment notes..." data-save="equipmentNotes"></textarea>
             </div>
           </div>
 
@@ -368,7 +368,7 @@
               <div class="box-title">Concentration</div>
               <div class="char-conc-bar" id="char-conc-bar">
                 <label class="spell-conc-toggle" title="Toggle concentration">
-                  <input type="checkbox" id="char-conc-active">
+                  <input type="checkbox" id="char-conc-active" aria-label="Toggle concentration">
                 </label>
                 <input type="text" id="char-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
                 <button class="btn btn-sm spell-conc-save-btn" id="char-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
@@ -405,7 +405,7 @@
             <div class="sheet-box">
               <div class="box-title">Magic Items</div>
               <div id="magic-items-list"></div>
-              <div class="item-search-bar" style="margin-top:6px"><input type="text" id="magic-item-search" placeholder="Search magic items..." class="item-search-input" autocomplete="off"><div id="magic-item-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+              <div class="item-search-bar" id="magic-search-bar"><input type="text" id="magic-item-search" placeholder="Search magic items..." class="item-search-input" autocomplete="off"><div id="magic-item-search-results" class="autocomplete-dropdown"></div></div>
             </div>
 
             <div class="sheet-box" id="carry-capacity-box">
@@ -428,7 +428,7 @@
         <div class="spells-header">
           <div class="spell-info-field"><input type="text" id="spellcastingClass" placeholder="Class" data-save="spellcastingClass" readonly><div class="field-label">Spellcasting Class</div></div>
           <div class="spell-info-field">
-            <select id="spellcastingAbility" data-save="spellcastingAbility"><option value="">-- Ability --</option><option value="int">Intelligence</option><option value="wis">Wisdom</option><option value="cha">Charisma</option></select>
+            <select id="spellcastingAbility" data-save="spellcastingAbility" title="Spellcasting Ability"><option value="">-- Ability --</option><option value="int">Intelligence</option><option value="wis">Wisdom</option><option value="cha">Charisma</option></select>
             <div class="field-label">Spellcasting Ability</div>
           </div>
           <div class="spell-info-field"><div class="badge badge-lg" id="spellSaveDC">8</div><div class="field-label">Spell Save DC</div></div>
@@ -445,7 +445,7 @@
           <button class="btn btn-sm spell-add-btn" id="btn-add-spell">Add Spell</button>
           <div class="spell-conc-bar" id="spell-conc-bar">
             <label class="spell-conc-toggle" title="Toggle concentration">
-              <input type="checkbox" id="spell-conc-active">
+              <input type="checkbox" id="spell-conc-active" aria-label="Toggle concentration">
             </label>
             <input type="text" id="spell-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
             <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
@@ -477,15 +477,15 @@
             <div class="sheet-box chronicle-portrait-box">
               <div class="box-title">Portrait</div>
               <div class="chronicle-portrait" id="chronicle-portrait">
-                <img id="portrait-img" src="" alt="" style="display:none;width:100%;height:100%;object-fit:cover;border-radius:4px">
+                <img id="portrait-img" src="" alt="Character portrait">
                 <div class="portrait-placeholder" id="portrait-placeholder">
                   <div class="portrait-icon">⚔</div>
                   <div class="portrait-hint">Click to upload</div>
                 </div>
               </div>
               <input type="file" id="portrait-file" accept="image/*" hidden>
-              <button class="btn btn-sm" id="portrait-upload-btn" style="margin-top:6px;width:100%">Upload Image</button>
-              <button class="btn btn-sm" id="portrait-clear-btn" style="margin-top:4px;width:100%;display:none">Remove Image</button>
+              <button class="btn btn-sm" id="portrait-upload-btn">Upload Image</button>
+              <button class="btn btn-sm" id="portrait-clear-btn">Remove Image</button>
             </div>
 
             <!-- Appearance -->
@@ -495,25 +495,25 @@
                 <div class="mini-field"><input type="text" id="charAge" data-save="charAge" placeholder="Age"><label>Age</label></div>
                 <div class="mini-field"><input type="text" id="charHeight" data-save="charHeight" placeholder="Height"><label>Height</label></div>
                 <div class="mini-field"><input type="text" id="charWeight" data-save="charWeight" placeholder="Weight"><label>Weight</label></div>
-                <div class="mini-field"><input type="text" id="charEyes" data-save="charEyes"><label>Eyes</label></div>
-                <div class="mini-field"><input type="text" id="charSkin" data-save="charSkin"><label>Skin</label></div>
-                <div class="mini-field"><input type="text" id="charHair" data-save="charHair"><label>Hair</label></div>
+                <div class="mini-field"><input type="text" id="charEyes" data-save="charEyes" placeholder="Eyes"><label for="charEyes">Eyes</label></div>
+                <div class="mini-field"><input type="text" id="charSkin" data-save="charSkin" placeholder="Skin"><label for="charSkin">Skin</label></div>
+                <div class="mini-field"><input type="text" id="charHair" data-save="charHair" placeholder="Hair"><label for="charHair">Hair</label></div>
               </div>
             </div>
 
             <!-- Personality -->
-            <div class="sheet-box"><div class="box-title">Personality Traits</div><textarea id="personalityTraits" rows="3" data-save="personalityTraits"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Personality Traits</div><textarea id="personalityTraits" rows="3" data-save="personalityTraits" title="Personality Traits"></textarea></div>
             <div class="two-col-row">
-              <div class="sheet-box"><div class="box-title">Ideals</div><textarea id="ideals" rows="3" data-save="ideals"></textarea></div>
-              <div class="sheet-box"><div class="box-title">Bonds</div><textarea id="bonds" rows="3" data-save="bonds"></textarea></div>
+              <div class="sheet-box"><div class="box-title">Ideals</div><textarea id="ideals" rows="3" data-save="ideals" title="Ideals"></textarea></div>
+              <div class="sheet-box"><div class="box-title">Bonds</div><textarea id="bonds" rows="3" data-save="bonds" title="Bonds"></textarea></div>
             </div>
-            <div class="sheet-box"><div class="box-title">Flaws</div><textarea id="flaws" rows="3" data-save="flaws"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Flaws</div><textarea id="flaws" rows="3" data-save="flaws" title="Flaws"></textarea></div>
           </div>
 
           <div class="chronicle-right">
-            <div class="sheet-box" id="bg-flavor-box" style="display:none"><div class="box-title" id="bg-flavor-title">Background</div><div class="auto-traits" id="bg-flavor-text"></div></div>
-            <div class="sheet-box"><div class="box-title">Backstory</div><textarea id="backstory" rows="7" data-save="backstory"></textarea></div>
-            <div class="sheet-box"><div class="box-title">Allies &amp; Organizations</div><textarea id="allies" rows="5" data-save="allies"></textarea></div>
+            <div class="sheet-box" id="bg-flavor-box"><div class="box-title" id="bg-flavor-title">Background</div><div class="auto-traits" id="bg-flavor-text"></div></div>
+            <div class="sheet-box"><div class="box-title">Backstory</div><textarea id="backstory" rows="7" data-save="backstory" title="Backstory"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Allies &amp; Organizations</div><textarea id="allies" rows="5" data-save="allies" title="Allies and Organizations"></textarea></div>
           </div>
         </div>
       </div>
@@ -528,7 +528,7 @@
             <div class="sheet-box" id="full-feats-box"><div class="box-title">Feats</div><div id="full-feats-list" class="features-list"></div></div>
             <div class="sheet-box" id="full-charopts-box"><div class="box-title">Other Character Options</div><div id="full-charopts-list" class="features-list"></div></div>
             <div class="sheet-box" id="full-species-box"><div class="box-title">Specie Traits</div><div id="full-species-traits" class="features-list"></div></div>
-            <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures"></textarea></div>
+            <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures" title="Additional Features"></textarea></div>
           </div>
         </div>
       </div>
@@ -545,7 +545,7 @@
                 <button id="notes-btn-new-folder" class="notes-action-btn" title="New Folder">+ Folder</button>
                 <button id="notes-btn-export" class="notes-action-btn notes-io-btn" title="Export Notes">↓ Save</button>
                 <button id="notes-btn-import" class="notes-action-btn notes-io-btn" title="Import Notes">↑ Load</button>
-                <input type="file" id="notes-import-file" accept=".json" style="display:none">
+                <input type="file" id="notes-import-file" accept=".json" aria-label="Import Notes">
               </div>
               <div class="notes-search-wrap">
                 <input type="text" id="notes-search" class="notes-search" placeholder="Search notes...">
@@ -579,14 +579,14 @@
             </div>
             <div class="notes-symbol-legend">
               <span class="notes-legend-title">Link shortcuts:</span>
-              <span class="notes-legend-item" style="--tag-color:#8e44ad"><kbd>@</kbd>NPC</span>
-              <span class="notes-legend-item" style="--tag-color:#27ae60"><kbd>#</kbd>Location</span>
-              <span class="notes-legend-item" style="--tag-color:#c0392b"><kbd>!</kbd>Quest</span>
-              <span class="notes-legend-item" style="--tag-color:#d4a017"><kbd>$</kbd>Item</span>
-              <span class="notes-legend-item" style="--tag-color:#7f8c8d"><kbd>&amp;</kbd>Faction</span>
-              <span class="notes-legend-item" style="--tag-color:#8B4513"><kbd>~</kbd>Lore</span>
-              <span class="notes-legend-item" style="--tag-color:#2980b9"><kbd>^</kbd>Event</span>
-              <span class="notes-legend-item" style="--tag-color:#e67e22"><kbd>%</kbd>Session</span>
+              <span class="notes-legend-item" data-type="npc"><kbd>@</kbd>NPC</span>
+              <span class="notes-legend-item" data-type="location"><kbd>#</kbd>Location</span>
+              <span class="notes-legend-item" data-type="quest"><kbd>!</kbd>Quest</span>
+              <span class="notes-legend-item" data-type="item"><kbd>$</kbd>Item</span>
+              <span class="notes-legend-item" data-type="faction"><kbd>&amp;</kbd>Faction</span>
+              <span class="notes-legend-item" data-type="lore"><kbd>~</kbd>Lore</span>
+              <span class="notes-legend-item" data-type="event"><kbd>^</kbd>Event</span>
+              <span class="notes-legend-item" data-type="session"><kbd>%</kbd>Session</span>
             </div>
             <textarea id="notes-editor-content" class="notes-editor-content" placeholder="Write your note here...&#10;&#10;Link shortcuts:&#10;  @Name → NPC    #Place → Location&#10;  !Quest → Quest    $Item → Item&#10;  &amp;Faction    ~Lore    ^Event    %Session&#10;  [[Any Note]] → generic link" disabled></textarea>
             <div class="notes-link-preview" id="notes-link-preview"></div>
@@ -602,7 +602,7 @@
 
   <!-- Floating dice roller -->
   <div class="dice-roller" id="dice-roller">
-    <button class="dice-toggle" id="dice-toggle">
+    <button class="dice-toggle" id="dice-toggle" aria-label="Open Dice Roller">
       <svg class="dice-toggle-icon" viewBox="0 0 100 100" width="28" height="28" aria-hidden="true">
         <polygon points="50,2 97,28 97,72 50,98 3,72 3,28" fill="var(--red)" stroke="var(--gold)" stroke-width="4" stroke-linejoin="round"/>
         <line x1="50" y1="2" x2="50" y2="98" stroke="var(--gold-dark)" stroke-width="1.2" opacity="0.5"/>
@@ -628,7 +628,7 @@
           <label>Mod</label>
           <div class="dice-opt-spin">
             <button class="dice-opt-minus" data-target="diceMod">−</button>
-            <input type="number" id="diceMod" value="0">
+            <input type="number" id="diceMod" value="0" title="Modifier" aria-label="Modifier">
             <button class="dice-opt-plus" data-target="diceMod">+</button>
           </div>
         </div>
@@ -647,7 +647,7 @@
   </div>
 
   <!-- LEVEL UP MODAL -->
-  <div id="levelup-backdrop" class="levelup-backdrop" style="display:none">
+  <div id="levelup-backdrop" class="levelup-backdrop">
     <div class="levelup-modal">
       <div class="levelup-header">
         <h2 class="levelup-title" id="levelup-title">Level Up!</h2>
@@ -681,7 +681,7 @@
   <script src="js/resources.js"></script>
   <script src="js/wizard.js"></script>
   <!-- REST MODAL -->
-  <div id="rest-modal-backdrop" class="rest-modal-backdrop" style="display:none">
+  <div id="rest-modal-backdrop" class="rest-modal-backdrop">
     <div class="rest-modal" id="rest-modal">
       <div class="rest-modal-header">
         <h2 class="rest-modal-title" id="rest-modal-title">Rest</h2>

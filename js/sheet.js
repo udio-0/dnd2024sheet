@@ -698,6 +698,15 @@ window.Sheet = {
     this.sv('classWeaponProf', info.weaponProf || []);
     this.sv('classArmorProf', info.armorProf || []);
 
+    // Store fixed class tool proficiencies (e.g. Rogue's Thieves' Tools) and merge into toolProficiencies
+    const fixedClassTools = info.fixedToolProf || [];
+    this.sv('classFixedToolProf', fixedClassTools);
+    if (fixedClassTools.length) {
+      const existing = (this.lv('toolProficiencies', []) || []).map(t => t.toLowerCase());
+      const toAdd = fixedClassTools.filter(t => !existing.includes(t.toLowerCase()));
+      if (toAdd.length) this.sv('toolProficiencies', [...(this.lv('toolProficiencies', []) || []), ...toAdd]);
+    }
+
     // Store class language proficiencies (e.g. Thieves' Cant for Rogue, Druidic)
     const classLangs = [];
     if (typeof getClassFeaturesByLevel === 'function') {
@@ -1323,6 +1332,12 @@ window.Sheet = {
         const count = chooseTools.count || 1;
         for (let i = 0; i < count; i++) allTools.push(`Tool (choose ${i + 1})`);
       }
+      // Preserve class-chosen tools (e.g. Monk's artisan/instrument choice) so they aren't lost
+      const classChosenTools = this.lv('_classToolChoices', []).filter(Boolean);
+      classChosenTools.forEach(t => { if (!allTools.some(x => x.toLowerCase() === t.toLowerCase())) allTools.push(t); });
+      // Preserve fixed class tool profs (e.g. Rogue's Thieves' Tools)
+      const classFixedTools = this.lv('classFixedToolProf', []).filter(Boolean);
+      classFixedTools.forEach(t => { if (!allTools.some(x => x.toLowerCase() === t.toLowerCase())) allTools.push(t); });
       this.sv('toolProficiencies', allTools);
       this.buildToolProficiencies();
 

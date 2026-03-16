@@ -770,6 +770,71 @@ function getClassFeaturesByLevel(className) {
   return byLevel;
 }
 
+// Parse tool proficiency choices from a class's startingProficiencies.tools array.
+// Returns an array of choice groups, e.g.:
+//   [{ type: 'artisan', count: 1, label: "Artisan's Tools" }]
+//   [{ type: 'instrument', count: 3, label: 'Musical Instrument' }]
+//   [{ type: 'artisanOrInstrument', count: 1, label: "Artisan's Tools or Musical Instrument" }]
+// Returns null if no player choices are required (fixed tools).
+function _parseClassToolProfChoices(toolsArr) {
+  if (!toolsArr?.length) return null;
+  const groups = [];
+
+  for (const entry of toolsArr) {
+    // Handle plain-text string format: e.g. "Choose one type of {@item Artisan's Tools|XPHB} or {@item Musical Instrument|XPHB}"
+    if (typeof entry === 'string') {
+      const text = entry;
+      // Extract count word
+      const countMatch = text.match(/choose\s+(one|two|three|four|\d+)/i);
+      const WORD_TO_N = { one: 1, two: 2, three: 3, four: 4 };
+      const n = countMatch ? (WORD_TO_N[countMatch[1].toLowerCase()] || parseInt(countMatch[1]) || 1) : 1;
+
+      const hasArtisan = /artisan/i.test(text);
+      const hasInstrument = /musical instrument/i.test(text);
+
+      if (hasArtisan && hasInstrument) {
+        groups.push({ type: 'artisanOrInstrument', count: n, label: "Artisan's Tools or Musical Instrument" });
+      } else if (hasArtisan) {
+        groups.push({ type: 'artisan', count: n, label: "Artisan's Tools" });
+      } else if (hasInstrument) {
+        groups.push({ type: 'instrument', count: n, label: 'Musical Instrument' });
+      }
+      continue;
+    }
+
+    if (typeof entry !== 'object') continue;
+
+    for (const [rawKey, val] of Object.entries(entry)) {
+      const key = rawKey.split('|')[0];
+      const count = typeof val === 'number' ? val : (val?.count || 1);
+
+      if (key === 'anyArtisansTool') {
+        groups.push({ type: 'artisan', count, label: "Artisan's Tools" });
+      } else if (key === 'anyMusicalInstrument') {
+        groups.push({ type: 'instrument', count, label: 'Musical Instrument' });
+      } else if (key === 'anyTool') {
+        groups.push({ type: 'artisanOrInstrument', count, label: "Artisan's Tools or Musical Instrument" });
+      } else if (key === 'choose' && typeof val === 'object') {
+        const n = val.count || 1;
+        const from = val.from || val.fromType || [];
+        const hasArtisan = from.some(f => /artisan/i.test(String(f)));
+        const hasInstrument = from.some(f => /musical|instrument|INS/i.test(String(f)));
+        if (hasArtisan && hasInstrument) {
+          groups.push({ type: 'artisanOrInstrument', count: n, label: "Artisan's Tools or Musical Instrument" });
+        } else if (hasArtisan) {
+          groups.push({ type: 'artisan', count: n, label: "Artisan's Tools" });
+        } else if (hasInstrument) {
+          groups.push({ type: 'instrument', count: n, label: 'Musical Instrument' });
+        } else if (from.length) {
+          groups.push({ type: 'list', count: n, from: from.map(f => String(f).split('|')[0]), label: 'Tool' });
+        }
+      }
+    }
+  }
+
+  return groups.length ? groups : null;
+}
+
 function getClassInfo(className) {
   const details = DndData.classDetails[className];
   if (!details) return null;
@@ -806,6 +871,20 @@ function getClassInfo(className) {
   // Spell slot progression — standard full/half/third/pact caster tables
   const casterProgression = cls.casterProgression || null;
 
+  const toolProfChoices = _parseClassToolProfChoices(cls.startingProficiencies?.tools);
+
+  // Extract fixed (non-choice) tool proficiencies, e.g. Rogue's Thieves' Tools
+  // Uses toolProficiencies (not tools) — tools is display strings, toolProficiencies has the actual data
+  const fixedToolProf = [];
+  (cls.startingProficiencies?.toolProficiencies || []).forEach(entry => {
+    if (typeof entry !== 'object') return;
+    Object.entries(entry).forEach(([rawKey, val]) => {
+      const key = rawKey.split('|')[0];
+      if (key === 'anyArtisansTool' || key === 'anyMusicalInstrument' || key === 'anyTool' || key === 'choose') return;
+      if (val === true) fixedToolProf.push(key.replace(/\b\w/g, c => c.toUpperCase()));
+    });
+  });
+
   return {
     name: cls.name,
     source: cls.source,
@@ -816,6 +895,8 @@ function getClassInfo(className) {
     armorProf: cls.startingProficiencies?.armor || [],
     weaponProf: cls.startingProficiencies?.weapons || [],
     skillChoices: cls.startingProficiencies?.skills?.[0]?.choose || null,
+    toolProfChoices,
+    fixedToolProf,
     expertiseCount: expertiseFeature ? 2 : 0,
     fightingStyleLevel,
     weaponMasteryCount,
