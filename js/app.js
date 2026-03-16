@@ -88,49 +88,49 @@ document.addEventListener('change', e => {
         '--combat-border':'#8B3A3A', '--input-bg':'#262638',
         '--ac-bg':'#2A2A40', '--ac-hover':'#323250',
       }},
-    abyss: { dark: true, label: 'Abyss', bg: '#1A1808', accent: '#986020',
+    abyss: { dark: true, label: 'Abyss', bg: '#181410', accent: '#A06828',
       vars: {
-        '--red':'#986020', '--red-accent':'#C07828',
-        '--gold':'#E0A828', '--gold-light':'#F8D060', '--gold-dark':'#A07018',
-        '--parchment':'#1A1808', '--parchment-dk':'#120E06',
-        '--ink':'#F0D888', '--ink-light':'#C8A850', '--ink-faint':'#806830',
-        '--white':'#222010', '--border':'#3A3018',
-        '--body-bg':'#0C0A04', '--topbar-bg':'#100E06', '--tab-bar-bg':'#0A0804',
-        '--combat-border':'#986020', '--input-bg':'#201E0A',
-        '--ac-bg':'#222010', '--ac-hover':'#2C2A14',
+        '--red':'#A06828', '--red-accent':'#C88030',
+        '--gold':'#D4A03C', '--gold-light':'#F0C868', '--gold-dark':'#9A7020',
+        '--parchment':'#1C1812', '--parchment-dk':'#14100A',
+        '--ink':'#EDE4D4', '--ink-light':'#C4B494', '--ink-faint':'#7A6A50',
+        '--white':'#242018', '--border':'#3C3428',
+        '--body-bg':'#0E0C08', '--topbar-bg':'#121008', '--tab-bar-bg':'#0C0A06',
+        '--combat-border':'#A06828', '--input-bg':'#221E14',
+        '--ac-bg':'#242018', '--ac-hover':'#302A1E',
       }},
-    crimson: { dark: true, label: 'Crimson', bg: '#1C0808', accent: '#901818',
+    crimson: { dark: true, label: 'Crimson', bg: '#1C1214', accent: '#A82828',
       vars: {
-        '--red':'#901818', '--red-accent':'#B82020',
-        '--gold':'#E8B820', '--gold-light':'#FFD860', '--gold-dark':'#B08010',
-        '--parchment':'#1C0808', '--parchment-dk':'#140606',
-        '--ink':'#F8E8D0', '--ink-light':'#D0B890', '--ink-faint':'#906858',
-        '--white':'#2C1010', '--border':'#401818',
-        '--body-bg':'#0A0202', '--topbar-bg':'#120404', '--tab-bar-bg':'#0C0404',
-        '--combat-border':'#901818', '--input-bg':'#220E0E',
-        '--ac-bg':'#2C1010', '--ac-hover':'#381818',
+        '--red':'#A82828', '--red-accent':'#C83838',
+        '--gold':'#D4A050', '--gold-light':'#F0C880', '--gold-dark':'#A07830',
+        '--parchment':'#1E1416', '--parchment-dk':'#161012',
+        '--ink':'#F0E4DA', '--ink-light':'#C8B098', '--ink-faint':'#886860',
+        '--white':'#2A1C1E', '--border':'#482830',
+        '--body-bg':'#0C0608', '--topbar-bg':'#140A0C', '--tab-bar-bg':'#100808',
+        '--combat-border':'#A82828', '--input-bg':'#241618',
+        '--ac-bg':'#2A1C1E', '--ac-hover':'#342428',
       }},
-    emerald: { dark: true, label: 'Emerald', bg: '#081A08', accent: '#186A28',
+    emerald: { dark: true, label: 'Emerald', bg: '#121C16', accent: '#28784A',
       vars: {
-        '--red':'#186A28', '--red-accent':'#209838',
-        '--gold':'#58C858', '--gold-light':'#88E888', '--gold-dark':'#389838',
-        '--parchment':'#081A08', '--parchment-dk':'#061406',
-        '--ink':'#C8F0C0', '--ink-light':'#88C880', '--ink-faint':'#488040',
-        '--white':'#0E2A0E', '--border':'#1A3A1A',
-        '--body-bg':'#030E03', '--topbar-bg':'#041204', '--tab-bar-bg':'#030E03',
-        '--combat-border':'#186A28', '--input-bg':'#0C1E0C',
-        '--ac-bg':'#0E2A0E', '--ac-hover':'#143214',
+        '--red':'#28784A', '--red-accent':'#349860',
+        '--gold':'#C8B468', '--gold-light':'#E0D090', '--gold-dark':'#948440',
+        '--parchment':'#141E18', '--parchment-dk':'#0E1610',
+        '--ink':'#E0ECD8', '--ink-light':'#A8C8A0', '--ink-faint':'#5C8058',
+        '--white':'#1A2A1E', '--border':'#2A4030',
+        '--body-bg':'#080E0A', '--topbar-bg':'#0C140E', '--tab-bar-bg':'#0A100C',
+        '--combat-border':'#28784A', '--input-bg':'#182418',
+        '--ac-bg':'#1A2A1E', '--ac-hover':'#223424',
       }},
-    midnight: { dark: true, label: 'Midnight', bg: '#080A28', accent: '#2828A8',
+    midnight: { dark: true, label: 'Midnight', bg: '#10142A', accent: '#3848B0',
       vars: {
-        '--red':'#2828A8', '--red-accent':'#3838D0',
-        '--gold':'#8888F0', '--gold-light':'#B8B8FF', '--gold-dark':'#5858C0',
-        '--parchment':'#080A28', '--parchment-dk':'#06081E',
-        '--ink':'#D8D8FF', '--ink-light':'#A0A0D8', '--ink-faint':'#5858A0',
-        '--white':'#101230', '--border':'#1C2050',
-        '--body-bg':'#030416', '--topbar-bg':'#04061A', '--tab-bar-bg':'#030414',
-        '--combat-border':'#2828A8', '--input-bg':'#0E1030',
-        '--ac-bg':'#101230', '--ac-hover':'#181848',
+        '--red':'#3848B0', '--red-accent':'#4C60D0',
+        '--gold':'#C8B880', '--gold-light':'#E0D4A8', '--gold-dark':'#988850',
+        '--parchment':'#121628', '--parchment-dk':'#0C1020',
+        '--ink':'#E0E0F0', '--ink-light':'#A8A8D0', '--ink-faint':'#606890',
+        '--white':'#181C38', '--border':'#283058',
+        '--body-bg':'#060818', '--topbar-bg':'#0A0E20', '--tab-bar-bg':'#080C1A',
+        '--combat-border':'#3848B0', '--input-bg':'#161A30',
+        '--ac-bg':'#181C38', '--ac-hover':'#202848',
       }},
   };
 
@@ -507,6 +507,8 @@ document.addEventListener('change', e => {
       if (titleEl) titleEl.textContent = '';
       const pdfBtn = document.getElementById('btn-export-pdf');
       if (pdfBtn) pdfBtn.style.display = 'none';
+      const saveBtn = document.getElementById('btn-save-char');
+      if (saveBtn) saveBtn.style.display = 'none';
       Home.render();
     });
 
@@ -517,6 +519,8 @@ document.addEventListener('change', e => {
       if (titleEl) titleEl.textContent = '';
       const pdfBtn = document.getElementById('btn-export-pdf');
       if (pdfBtn) pdfBtn.style.display = 'none';
+      const saveBtn2 = document.getElementById('btn-save-char');
+      if (saveBtn2) saveBtn2.style.display = 'none';
       Wizard.start();
     });
 
@@ -525,10 +529,10 @@ document.addEventListener('change', e => {
       Router.showView('view-sheet');
       const pdfBtn = document.getElementById('btn-export-pdf');
       if (pdfBtn) pdfBtn.style.display = '';
+      const saveBtn = document.getElementById('btn-save-char');
+      if (saveBtn) saveBtn.style.display = '';
       Sheet.teardown();
-      Combat.teardown();
       Sheet.init(params.id);
-      Combat.init();
 
       // If data is ready, notify sheet
       if (dataReady) {
@@ -572,8 +576,30 @@ document.addEventListener('change', e => {
     }
   }, true);
 
+  // ---- SAVE BUTTON ----
+  function initSaveButton() {
+    const btn = document.getElementById('btn-save-char');
+    if (!btn) return;
+    btn.addEventListener('click', async () => {
+      btn.classList.add('saving');
+      btn.querySelector('.save-btn-text').textContent = 'Saving...';
+      try {
+        // Save character data
+        if (CharStore.activeId) {
+          await FileSync.saveCharacterToFile(CharStore.activeId);
+        }
+        // Save notes (independent from character)
+        await FileSync.saveNotesToFile();
+      } catch (e) {
+        console.warn('Save error:', e);
+      }
+      btn.classList.remove('saving');
+      btn.querySelector('.save-btn-text').textContent = 'Save';
+    });
+  }
+
   // ---- INIT ----
-  document.addEventListener('DOMContentLoaded', () => {
+  document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
     initUAToggle();
     init2024Toggle();
@@ -581,11 +607,17 @@ document.addEventListener('change', e => {
     Dice.initLogPanel();
     CharStore.initUndo();
 
+    // Init file sync (await so directory handle is restored before router starts)
+    if (typeof FileSync !== 'undefined') await FileSync.init();
+
     // Migrate old single-character data if present
     CharStore.migrateV1();
 
     // Init home page event listeners
     Home.init();
+
+    // Init save button
+    initSaveButton();
 
     // Setup router and start
     setupRouter();

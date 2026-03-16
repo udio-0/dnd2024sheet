@@ -2548,31 +2548,36 @@ window.UA2024_DATA = {
           "type": "entries",
           "name": "Magic Stealer",
           "entries": [
-            "You have learned to steal and redirect magical energy. The Magic Stealer subclass (UA 2026 Mystic Subclasses) lets you absorb spells to empower your Sneak Attack and redirect magical power to your allies.",
+            "While ordinary thieves are cutting purses and burgling homes, a Magic Stealer is after a much more valuable prize: magic. The Magic Stealer preys on spellcasters, repurposing their magic and eluding divination spells to take magical power at the point of a knife.",
             {
               "type": "entries",
-              "name": "3rd Level: Spellthief",
-              "entries": ["When you deal Sneak Attack damage to a creature that is concentrating on a spell, it must make a Constitution saving throw against DC 8 + your Proficiency Bonus + your Dexterity modifier. On a failed save, its concentration breaks."]
+              "name": "3rd Level: Empower Sneak Attack",
+              "entries": ["Immediately after a creature you can see within 30 feet of you casts a level 1+ spell, you can take a Reaction to absorb magical energy from the spell. When you do so, until the end of your next turn, the next time you hit with your Sneak Attack you deal extra Force damage. To determine the extra damage, roll a number of d6s equal to the spell's level, and add them together.", "You can take this Reaction a number of times equal to your Intelligence modifier (minimum of once), and you regain all expended uses when you finish a Long Rest."]
             },
             {
               "type": "entries",
-              "name": "3rd Level: Absorb Magic",
-              "entries": ["When a spell or magical effect targets you and misses or fails to affect you, you can use your Reaction to absorb the magical energy. Until the end of your next turn, your Sneak Attack deals an extra 1d6 Force damage."]
+              "name": "3rd Level: Drain Magic",
+              "entries": ["You can drain power from ongoing spells to recharge your allies' magic. As a Magic Action, you can touch a willing creature and end one ongoing level 1 or level 2 spell on it; the creature immediately recovers one expended spell slot of level 2 or lower (the target's choice).", "Once you use this feature, you can't do so again until you finish a Short or Long Rest."]
             },
             {
               "type": "entries",
-              "name": "9th Level: Redirect Magic",
-              "entries": ["When you absorb magic with Absorb Magic, you can choose an ally within 30 feet. That ally regains one expended spell slot of 1st level or lower."]
+              "name": "9th Level: Magical Sabotage",
+              "entries": ["You gain the following Cunning Strike options.", "Spell Susceptibility (Cost: 2d6). The target has Disadvantage on the next saving throw it makes against a spell until the start of your next turn.", "Disrupt Spell (Cost: 3d6). The target's magical acuity is disrupted until the start of your next turn. Whenever the target casts a spell during that time, it must succeed on an Intelligence saving throw or the spell dissipates with no effect, and the action, Bonus Action, or Reaction used to cast it is wasted. If that spell was cast with a spell slot, the slot isn't expended.", "Steal Resistance (Cost: 2d6). Choose one kind of damage. If the target has Resistance to that kind of damage, until the start of your next turn, the target loses that Resistance and you gain Resistance to that damage type."]
             },
             {
               "type": "entries",
-              "name": "13th Level: Spell Drain",
-              "entries": ["You can use Cunning Strike to steal magical resistance. On a hit, the target loses resistance to one damage type of your choice until the start of your next turn. If you make the target vulnerable to that damage type instead (via another feature), the target must succeed on a Constitution saving throw or its concentration on any spell breaks."]
+              "name": "13th Level: Occult Shroud",
+              "entries": ["Whenever you finish a Long Rest, you can cast the Nondetection spell, using Intelligence as your spellcasting ability. When you do so, you can target only yourself, and the duration increases to 24 hours."]
             },
             {
               "type": "entries",
-              "name": "17th Level: Arcane Predator",
-              "entries": ["When you make an attack against a creature that has cast a spell since the start of its last turn, you have Advantage on the attack roll."]
+              "name": "13th Level: Improved Drain Magic",
+              "entries": ["You can now use Drain Magic as a Bonus Action. In addition, when you use Drain Magic, you can end one ongoing level 1, level 2, or level 3 spell on the target, and the target recovers one expended spell slot of level 3 or lower (the target's choice)."]
+            },
+            {
+              "type": "entries",
+              "name": "17th Level: Eldritch Implosion",
+              "entries": ["When you use Empower Sneak Attack, you can force the target to make a Constitution saving throw (DC 8 plus your Dexterity modifier and Proficiency Bonus). On a failed save, the spell dissipates with no effect, and the target has the Stunned condition until the start of its next turn."]
             }
           ]
         }

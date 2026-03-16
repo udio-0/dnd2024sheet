@@ -97,21 +97,25 @@ window.Sheet = {
     this._initSpellConcentration();
     this._initSpellFilters();
     this._initSpellAttackRoll();
-    if (typeof Combat !== 'undefined') Combat.initDeathSaves();
+    this._initDeathSaves();
+    this._initHitDice();
+    this._initRestButtons();
+    this._initScrollButtons();
+
     this.recalcAll();
     this.syncXPToLevel();
     this.refreshAttackList();
     this.updateSubclassAccess();
     this.initEquippedGear();
-    this.initCombatEconomy();
     if (typeof LevelUp !== 'undefined') LevelUp.init();
+    if (typeof NotesManager !== 'undefined') NotesManager.init();
 
   },
 
   onDataReady() {
     this.populateDataLists();
     this.buildAttacks();
-    this.initSpellSearch();
+    this._initAddSpellButton();
     this.initItemSearch();
     this.initMagicItemSearch();
     this.restoreSpells();
@@ -135,6 +139,7 @@ window.Sheet = {
       if (el) el.innerHTML = '';
     });
     this.attackId = 0;
+    if (typeof NotesManager !== 'undefined') NotesManager.teardown();
   },
 
   // ---- TABS ----
@@ -386,10 +391,14 @@ window.Sheet = {
       if (atkEl) atkEl.textContent = this.fmtMod(prof + sm);
     }
 
+    // Auto-calculate prepared spells max and spell slots
+    this._calcPreparedMax(mods, level);
+    this.buildSpellSlots();
+
     this.refreshFeatList();
     this.renderCarryCapacity();
     this.qsa('#attacks-body tr').forEach(tr => tr._refreshRow?.());
-    if (typeof Combat !== 'undefined') Combat.syncHitDice();
+    this.syncHitDice();
     this._updateEquippedACSummary();
     this.applyConditionEffects();
   },
@@ -404,6 +413,8 @@ window.Sheet = {
         this.sv(key, el.type === 'checkbox' ? el.checked : el.value);
         if (this.ABILITIES.includes(key) || key === 'charLevel' || key === 'spellcastingAbility') this.recalcAll();
         if (key === 'charLevel') this.updateSubclassAccess();
+        if (key === 'spellPreparedMax') this._updatePreparedCount();
+        if (key === 'charSubclass') { const cls = this.lv('charClass', ''); if (cls) this.displayClassFeatures(cls); }
         if (key === 'charName') {
           const titleEl = this.$('topbar-title');
           if (titleEl) titleEl.textContent = el.value || 'Character Sheet';
@@ -658,6 +669,7 @@ window.Sheet = {
     input.addEventListener('change', () => {
       this.sv('charClass', input.value);
       this.applyClassSelection(input.value);
+      this.recalcAll();
     });
   },
 
@@ -667,7 +679,7 @@ window.Sheet = {
     if (!info) return;
 
     // Sync hit dice from class/level
-    Combat.syncHitDice();
+    this.syncHitDice();
 
     // Clear all saving throw proficiencies first, then apply the new class's
     ['str','dex','con','int','wis','cha'].forEach(ab => {
@@ -753,9 +765,41 @@ window.Sheet = {
       box.style.display = 'block';
       if (subtitleEl) subtitleEl.textContent = `(${className} Lv.${level})`;
       const items = [];
+      const subclassName = this.lv('charSubclass', '');
+      const details = DndData.classDetails?.[className];
+      const scEntry = subclassName ? (details?.subclasses || []).find(sc => sc.name === subclassName) : null;
+      const scShortName = scEntry?.shortName || subclassName;
       for (let l = 1; l <= level; l++) {
         if (features[l]) {
-          features[l].forEach(f => items.push({ label: `Lv.${l}: ${f.name}`, html: f.html || f.text || '' }));
+          features[l].forEach(f => {
+            const isPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name);
+            if (isPlaceholder && subclassName && details) {
+              const scFeatures = (details.subclassFeatures || []).filter(sf =>
+                sf.level === l && (
+                  sf.subclassShortName === scShortName ||
+                  sf.subclassShortName === subclassName ||
+                  sf.subclassShortName?.toLowerCase() === scShortName.toLowerCase() ||
+                  sf.subclassShortName?.toLowerCase() === subclassName.toLowerCase()
+                )
+              );
+              if (scFeatures.length) {
+                scFeatures.forEach(sf => {
+                  const sfHtml = typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : '';
+                  items.push({ label: `Lv.${l}: ${sf.name}`, html: sfHtml, subclass: true });
+                });
+                return;
+              }
+              // Fallback: check UA subclass data
+              const uaFeatures = this._getUASubclassFeatures(subclassName, className, l);
+              if (uaFeatures.length) {
+                uaFeatures.forEach(sf => {
+                  items.push({ label: `Lv.${l}: ${sf.name}`, html: sf.html, subclass: true });
+                });
+                return;
+              }
+            }
+            items.push({ label: `Lv.${l}: ${f.name}`, html: f.html || f.text || '' });
+          });
         }
       }
       if (!items.length) {
@@ -827,9 +871,67 @@ window.Sheet = {
     if (fullEl) {
       if (fullSub) fullSub.textContent = `(${className})`;
       fullEl.innerHTML = '';
+
+      // Get subclass features if a subclass is selected
+      const subclassName = this.lv('charSubclass', '');
+      const details = DndData.classDetails?.[className];
+      const scEntry = subclassName ? (details?.subclasses || []).find(sc => sc.name === subclassName) : null;
+      const scShortName = scEntry?.shortName || subclassName;
+
       for (let l = 1; l <= 20; l++) {
         if (!features[l]) continue;
         features[l].forEach(f => {
+          const isSubclassPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name);
+
+          if (isSubclassPlaceholder && subclassName && details) {
+            // Find actual subclass features for this level (standard 5etools data)
+            const scFeatures = (details.subclassFeatures || []).filter(sf =>
+              sf.level === l && (
+                sf.subclassShortName === scShortName ||
+                sf.subclassShortName === subclassName ||
+                sf.subclassShortName?.toLowerCase() === scShortName.toLowerCase() ||
+                sf.subclassShortName?.toLowerCase() === subclassName.toLowerCase()
+              )
+            );
+
+            if (scFeatures.length) {
+              scFeatures.forEach(sf => {
+                const div = document.createElement('div');
+                div.className = 'feature-entry feature-entry-subclass';
+                div.style.opacity = l > level ? '0.4' : '1';
+                const sfHtml = typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : '';
+                div.innerHTML = `
+                  <div class="feature-entry-header">
+                    <span class="feature-entry-name">${sf.name}</span>
+                    <span class="feature-entry-level">Level ${l}</span>
+                    <span class="feature-entry-subclass-badge">${subclassName}</span>
+                  </div>
+                  <div class="feature-entry-text">${this._highlightSpellText(sfHtml)}</div>`;
+                fullEl.appendChild(div);
+              });
+              return; // skip the placeholder
+            }
+
+            // Fallback: check UA subclass data (features stored inline in subclass entries)
+            const uaFeatures = this._getUASubclassFeatures(subclassName, className, l);
+            if (uaFeatures.length) {
+              uaFeatures.forEach(sf => {
+                const div = document.createElement('div');
+                div.className = 'feature-entry feature-entry-subclass';
+                div.style.opacity = l > level ? '0.4' : '1';
+                div.innerHTML = `
+                  <div class="feature-entry-header">
+                    <span class="feature-entry-name">${sf.name}</span>
+                    <span class="feature-entry-level">Level ${l}</span>
+                    <span class="feature-entry-subclass-badge">${subclassName}</span>
+                  </div>
+                  <div class="feature-entry-text">${this._highlightSpellText(sf.html)}</div>`;
+                fullEl.appendChild(div);
+              });
+              return; // skip the placeholder
+            }
+          }
+
           const div = document.createElement('div');
           div.className = 'feature-entry';
           div.style.opacity = l > level ? '0.4' : '1';
@@ -838,11 +940,44 @@ window.Sheet = {
               <span class="feature-entry-name">${f.name}</span>
               <span class="feature-entry-level">Level ${l}</span>
             </div>
-            <div class="feature-entry-text">${f.text || ''}</div>`;
+            <div class="feature-entry-text">${this._highlightSpellText(f.html || f.text || '')}</div>`;
           fullEl.appendChild(div);
         });
       }
     }
+  },
+
+  // Extract UA subclass features for a given level from inline entries
+  _getUASubclassFeatures(subclassName, className, level) {
+    const ORDINALS = {1:'1st',2:'2nd',3:'3rd',4:'4th',5:'5th',6:'6th',7:'7th',8:'8th',
+      9:'9th',10:'10th',11:'11th',12:'12th',13:'13th',14:'14th',15:'15th',
+      16:'16th',17:'17th',18:'18th',19:'19th',20:'20th'};
+    const prefix = ORDINALS[level];
+    if (!prefix) return [];
+    const uaData = window.UA2024_DATA;
+    if (!uaData) return [];
+    const sc = (uaData.subclass || []).find(s => s.name === subclassName && s.className === className);
+    if (!sc) return [];
+    const results = [];
+    const walk = (entries) => {
+      if (!Array.isArray(entries)) return;
+      entries.forEach(e => {
+        if (typeof e === 'object' && e.type === 'entries') {
+          if (e.name && e.name.startsWith(`${prefix} Level:`)) {
+            const featureName = e.name.replace(`${prefix} Level:`, '').trim();
+            const html = Array.isArray(e.entries) && typeof entriesToHtml === 'function'
+              ? entriesToHtml(e.entries) : '';
+            results.push({ name: featureName, html });
+          } else if (Array.isArray(e.entries)) {
+            walk(e.entries);
+          }
+        }
+      });
+    };
+    (sc.entries || []).forEach(topEntry => {
+      if (Array.isArray(topEntry.entries)) walk(topEntry.entries);
+    });
+    return results;
   },
 
   // ---- FIGHTING STYLE PICKER (shown when class grants one) ----
@@ -962,9 +1097,22 @@ window.Sheet = {
     const racialSpells = parseRacialSpells(info.additionalSpells, subraceName, subraceEntries);
     const level = this.getLevel();
 
+    // Clean up duplicate racial spells from saved data
+    const current = this.lv('charSpells', []) || [];
+    const seenRacial = new Set();
+    let hadDupes = false;
+    const cleaned = current.filter(s => {
+      if (!s.racial) return true;
+      const key = s.name.toLowerCase();
+      if (seenRacial.has(key)) { hadDupes = true; return false; }
+      seenRacial.add(key);
+      return true;
+    });
+    if (hadDupes) this.sv('charSpells', cleaned);
+
     // Get existing racial spell names to avoid duplicates (normalised to lowercase)
     const existingRacial = new Set(
-      (this.lv('charSpells', []) || []).filter(s => s.racial).map(s => s.name.toLowerCase())
+      cleaned.filter(s => s.racial).map(s => s.name.toLowerCase())
     );
 
     const capName = n => n ? n.replace(/\b\w/g, c => c.toUpperCase()) : n;
@@ -987,8 +1135,7 @@ window.Sheet = {
     }
 
     if (!toAdd.length) return;
-    const current = this.lv('charSpells', []) || [];
-    const updated = [...current, ...toAdd];
+    const updated = [...cleaned, ...toAdd];
     this.sv('charSpells', updated);
     // Render the new spell cards directly
     toAdd.forEach(s => {
@@ -1097,7 +1244,7 @@ window.Sheet = {
           <span class="feature-entry-name">${info.name}</span>
           <span class="feature-entry-level">${info.src}</span>
         </div>
-        <div class="feature-entry-text">${statsHtml}${info.traitsHtml || ''}</div>`;
+        <div class="feature-entry-text">${this._highlightSpellText(statsHtml + (info.traitsHtml || ''))}</div>`;
       fullEl.appendChild(div);
 
       // Subrace entry
@@ -1109,7 +1256,7 @@ window.Sheet = {
             <span class="feature-entry-name">${subraceInfo.name} Lineage</span>
             <span class="feature-entry-level">${subraceInfo._src || info.src}</span>
           </div>
-          <div class="feature-entry-text">${entriesToHtml(subraceInfo.entries)}</div>`;
+          <div class="feature-entry-text">${this._highlightSpellText(entriesToHtml(subraceInfo.entries))}</div>`;
         fullEl.appendChild(srDiv);
       }
     }
@@ -1374,7 +1521,7 @@ window.Sheet = {
             <span class="feature-entry-level charopt-type-badge" data-type="${info?.typeCode || ''}">${info?.typeName || 'Custom'}</span>
             ${info?.src ? `<span class="feature-entry-level">${info.src}</span>` : ''}
           </div>
-          <div class="feature-entry-text">${info?.description || '(No data found — check the source book)'}</div>`;
+          <div class="feature-entry-text">${this._highlightSpellText(info?.description || '(No data found — check the source book)')}</div>`;
         fullList.appendChild(entry);
       }
     });
@@ -1543,7 +1690,7 @@ window.Sheet = {
             <span class="feature-entry-name">${info.name}</span>
             <span class="feature-entry-level">${info.category}</span>
           </div>
-          <div class="feature-entry-text">${info.description || ''}</div>`;
+          <div class="feature-entry-text">${this._highlightSpellText(info.description || '')}</div>`;
         fullList.appendChild(entry2);
       }
     });
@@ -1789,56 +1936,135 @@ window.Sheet = {
     });
   },
 
-  // ---- SPELL SEARCH ----
-  initSpellSearch() {
-    const input = this.$('spell-search');
-    const dropdown = this.$('spell-search-results');
-    if (!input || !dropdown) return;
-
-    let selectedIdx = -1;
-
-    input.addEventListener('input', () => {
-      const query = input.value.toLowerCase().trim();
-      if (query.length < 2) { dropdown.style.display = 'none'; return; }
-
-      const className = this.lv('charClass', '');
-      let pool = className ? getSpellsForClass(className) : DndData.spells;
-      const matches = pool.filter(s => s.name.toLowerCase().includes(query)).slice(0, 30);
-
-      dropdown.innerHTML = '';
-      selectedIdx = -1;
-      if (!matches.length) { dropdown.style.display = 'none'; return; }
-
-      matches.forEach((spell, idx) => {
-        const div = document.createElement('div');
-        div.className = 'ac-item';
-        div.innerHTML = `
-          <span class="ac-item-name">${spell.name} <small style="color:var(--ink-faint)">[${spell._src || ''}]</small></span>
-          <span class="ac-item-detail">${spell._levelStr} ${spell._schoolName} | ${spell._castTime} | ${spell._rangeStr} | ${spell._durationStr}</span>`;
-        div.addEventListener('click', () => {
-          this.addSpellToSheet(spell);
-          input.value = '';
-          dropdown.style.display = 'none';
-        });
-        dropdown.appendChild(div);
-      });
-      dropdown.style.display = 'block';
-    });
-
-    input.addEventListener('keydown', e => {
-      const items = dropdown.querySelectorAll('.ac-item');
-      if (e.key === 'ArrowDown') { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, items.length - 1); this._updateACSelection(items, selectedIdx); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); this._updateACSelection(items, selectedIdx); }
-      else if (e.key === 'Enter' && selectedIdx >= 0) { e.preventDefault(); items[selectedIdx]?.click(); }
-      else if (e.key === 'Escape') { dropdown.style.display = 'none'; }
-    });
-
-    input.addEventListener('blur', () => setTimeout(() => dropdown.style.display = 'none', 200));
+  // ---- ADD SPELL BUTTON + MODAL ----
+  _initAddSpellButton() {
+    const btn = this.$('btn-add-spell');
+    if (!btn) return;
+    btn.addEventListener('click', () => this._openAddSpellModal());
   },
 
-  _updateACSelection(items, idx) {
-    items.forEach((it, i) => it.classList.toggle('selected', i === idx));
-    items[idx]?.scrollIntoView({ block: 'nearest' });
+  _openAddSpellModal() {
+    const className = this.lv('charClass', '');
+    const pool = className ? getSpellsForClass(className) : DndData.spells;
+
+    // Group spells by level
+    const byLevel = {};
+    pool.forEach(s => {
+      if (!byLevel[s.level]) byLevel[s.level] = [];
+      byLevel[s.level].push(s);
+    });
+    Object.values(byLevel).forEach(arr => arr.sort((a, b) => a.name.localeCompare(b.name)));
+
+    const levels = Object.keys(byLevel).map(Number).sort((a, b) => a - b);
+    const startLevel = levels[0] || 0;
+
+    document.getElementById('add-spell-modal-backdrop')?.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'add-spell-modal-backdrop';
+    backdrop.className = 'rest-modal-backdrop';
+    backdrop.style.display = 'flex';
+
+    const tabsHtml = levels.map(lv =>
+      `<button class="add-spell-tab${lv === startLevel ? ' active' : ''}" data-level="${lv}">${lv === 0 ? 'Cantrips' : 'Level ' + lv}</button>`
+    ).join('');
+
+    backdrop.innerHTML = `
+      <div class="rest-modal add-spell-modal">
+        <div class="rest-modal-header">
+          <h2 class="rest-modal-title">Add Spell</h2>
+          <button class="rest-modal-close" title="Close">✕</button>
+        </div>
+        <div class="rest-modal-body add-spell-body">
+          <div class="add-spell-tabs">${tabsHtml}</div>
+          <input type="text" class="add-spell-search" id="add-spell-search" placeholder="Search spells..." autocomplete="off">
+          <div class="add-spell-layout">
+            <div class="add-spell-list" id="add-spell-list"></div>
+            <div class="add-spell-preview" id="add-spell-preview">
+              <p class="add-spell-preview-empty">Hover over a spell to see its details</p>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.rest-modal-close').addEventListener('click', close);
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+    const listEl = backdrop.querySelector('#add-spell-list');
+    const previewEl = backdrop.querySelector('#add-spell-preview');
+    const searchInput = backdrop.querySelector('#add-spell-search');
+    let currentLevel = startLevel;
+
+    const alreadyAdded = new Set(this.lv('charSpells', []).map(s => s.name.toLowerCase()));
+
+    const renderLevel = (lv) => {
+      const spells = byLevel[lv] || [];
+      const q = searchInput.value.toLowerCase().trim();
+      const filtered = q ? spells.filter(s => s.name.toLowerCase().includes(q)) : spells;
+
+      listEl.innerHTML = '';
+      filtered.forEach(s => {
+        const added = alreadyAdded.has(s.name.toLowerCase());
+        const btn = document.createElement('button');
+        btn.className = 'add-spell-item' + (added ? ' added' : '');
+        btn.dataset.spell = s.name;
+        btn.innerHTML = `<span class="add-spell-item-name">${s.name}</span>
+          <span class="add-spell-item-meta">${s._schoolName || ''}${s._castTime ? ' · ' + s._castTime : ''}</span>
+          ${added ? '<span class="add-spell-item-check">✓</span>' : ''}`;
+
+        btn.addEventListener('mouseenter', () => {
+          previewEl.innerHTML = this._buildSpellDetailHTML(s);
+        });
+
+        btn.addEventListener('click', () => {
+          if (added) return;
+          this.addSpellToSheet(s);
+          alreadyAdded.add(s.name.toLowerCase());
+          btn.classList.add('added');
+          if (!btn.querySelector('.add-spell-item-check')) {
+            const ck = document.createElement('span');
+            ck.className = 'add-spell-item-check';
+            ck.textContent = '✓';
+            btn.appendChild(ck);
+          }
+        });
+
+        listEl.appendChild(btn);
+      });
+
+      if (!filtered.length) {
+        listEl.innerHTML = '<p style="color:var(--ink-faint);text-align:center;padding:20px;">No spells found.</p>';
+      }
+    };
+
+    // Tab switching
+    backdrop.querySelectorAll('.add-spell-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        backdrop.querySelectorAll('.add-spell-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentLevel = parseInt(tab.dataset.level);
+        renderLevel(currentLevel);
+        previewEl.innerHTML = '<p class="add-spell-preview-empty">Hover over a spell to see its details</p>';
+      });
+    });
+
+    // Search
+    searchInput.addEventListener('input', () => renderLevel(currentLevel));
+
+    // Keyboard shortcut
+    const onKey = e => { if (e.key === 'Escape') close(); };
+    document.addEventListener('keydown', onKey);
+    const origClose = close;
+    backdrop._close = () => { origClose(); document.removeEventListener('keydown', onKey); };
+    backdrop.querySelector('.rest-modal-close').removeEventListener('click', close);
+    backdrop.querySelector('.rest-modal-close').addEventListener('click', backdrop._close);
+    backdrop.removeEventListener('click', close);
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) backdrop._close(); });
+
+    renderLevel(startLevel);
+    searchInput.focus();
   },
 
   // ---- SPELL HELPERS ----
@@ -1875,12 +2101,83 @@ window.Sheet = {
     return matches.slice(0, 3); // max 3 dice expressions
   },
 
+  // 2024 PHB prepared spell tables for fixed-list casters
+  _PREPARED_TABLES: {
+    bard:     [0, 4, 5, 6, 7, 9, 9, 10, 10, 12, 14, 15, 15, 16, 18, 19, 19, 20, 22, 22, 22],
+    sorcerer: [0, 2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
+    warlock:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15],
+  },
+
+  _calcPreparedMax(mods, level) {
+    const maxEl = this.$('spellPreparedMax');
+    if (!maxEl) return;
+    const className = (this.lv('charClass', '') || '').toLowerCase().trim();
+    if (!className) return;
+
+    let max = null;
+
+    // Fixed-table casters
+    if (this._PREPARED_TABLES[className]) {
+      max = this._PREPARED_TABLES[className][Math.min(level, 20)] || 0;
+    }
+    // Level + ability mod casters
+    else if (className === 'wizard') {
+      max = Math.max(1, level + (mods.int || 0));
+    } else if (className === 'cleric') {
+      max = Math.max(1, level + (mods.wis || 0));
+    } else if (className === 'druid') {
+      max = Math.max(1, level + (mods.wis || 0));
+    }
+    // Half-casters
+    else if (className === 'paladin') {
+      max = Math.max(1, Math.floor(level / 2) + (mods.cha || 0));
+    } else if (className === 'ranger') {
+      max = Math.max(1, Math.floor(level / 2) + (mods.wis || 0));
+    }
+
+    if (max !== null) {
+      maxEl.value = max;
+      this.sv('spellPreparedMax', max);
+      this._updatePreparedCount();
+    }
+  },
+
   _updatePreparedCount() {
     const el = this.$('spellPreparedCount');
     if (!el) return;
     const spells = this.lv('charSpells', []);
     const count = spells.filter(s => s.prepared || s.racial).length;
     el.textContent = count;
+    const maxEl = this.$('spellPreparedMax');
+    const display = el.closest('.spell-prepared-display');
+    if (display && maxEl) {
+      const max = parseInt(maxEl.value);
+      display.classList.toggle('over-limit', !isNaN(max) && max > 0 && count > max);
+    }
+
+    // Grey out unprepared spell cards
+    this.qsa('.spell-card').forEach(card => {
+      const isPrepared = card.dataset.isPrepared === '1';
+      card.classList.toggle('spell-not-prepared', !isPrepared);
+    });
+  },
+
+  _showPreparedWarning(max, x, y) {
+    document.getElementById('prepared-limit-warning')?.remove();
+    const warn = document.createElement('div');
+    warn.id = 'prepared-limit-warning';
+    warn.className = 'prepared-limit-warning';
+    warn.textContent = `You can only have ${max} spells prepared. Unprepare a spell first.`;
+    document.body.appendChild(warn);
+    const rect = warn.getBoundingClientRect();
+    let left = x - rect.width / 2;
+    let top = y - rect.height - 8;
+    if (left < 8) left = 8;
+    if (left + rect.width > window.innerWidth - 8) left = window.innerWidth - rect.width - 8;
+    if (top < 8) top = y + 24;
+    warn.style.left = left + 'px';
+    warn.style.top = top + 'px';
+    setTimeout(() => warn.remove(), 2500);
   },
 
   addSpellToSheet(spell) {
@@ -1958,7 +2255,18 @@ window.Sheet = {
       }
     }
 
-    card.querySelector('.spell-card-name-clickable').addEventListener('click', () => this._showSpellDetail(spell));
+    // Hover to show spell detail tooltip
+    const nameEl = card.querySelector('.spell-card-name-clickable');
+    nameEl.addEventListener('mouseenter', (e) => {
+      this._showSpellHover(spell, e);
+    });
+    nameEl.addEventListener('mousemove', (e) => {
+      this._moveSpellHover(e);
+    });
+    nameEl.addEventListener('mouseleave', () => {
+      this._scheduleSpellHoverHide();
+    });
+
 
     // Dice buttons
     card.querySelectorAll('.spell-dice-btn').forEach(btn => {
@@ -1972,6 +2280,19 @@ window.Sheet = {
 
     if (!isRacial) {
       card.querySelector('input[type="checkbox"]').addEventListener('change', function () {
+        // Block preparing if at max
+        if (this.checked) {
+          const max = parseInt(CharStore.lv('spellPreparedMax', '')) || 0;
+          if (max > 0) {
+            const current = CharStore.lv('charSpells', []).filter(s => s.prepared || s.racial).length;
+            if (current >= max) {
+              this.checked = false;
+              const rect = this.getBoundingClientRect();
+              Sheet._showPreparedWarning(max, rect.left + rect.width / 2, rect.top);
+              return;
+            }
+          }
+        }
         const spells = CharStore.lv('charSpells', []);
         const s = spells.find(s => s.name === spell.name);
         if (s) s.prepared = this.checked;
@@ -2019,76 +2340,86 @@ window.Sheet = {
 
   // ---- CONCENTRATION TRACKER (Spell Tab) ----
   _initSpellConcentration() {
-    const cb = this.$('spell-conc-active');
-    const spellInput = this.$('spell-conc-spell');
-    const dropBtn = this.$('spell-conc-drop');
-    const checkBtn = this.$('spell-conc-check');
-    const bar = this.$('spell-conc-bar');
-
-    if (!cb || !spellInput) return;
+    // Both concentration trackers: spell tab and character tab
+    const pairs = [
+      { cb: this.$('spell-conc-active'), input: this.$('spell-conc-spell'), drop: this.$('spell-conc-drop'), check: this.$('spell-conc-check'), bar: this.$('spell-conc-bar') },
+      { cb: this.$('char-conc-active'), input: this.$('char-conc-spell'), drop: this.$('char-conc-drop'), check: this.$('char-conc-check'), bar: this.$('char-conc-bar') },
+    ].filter(p => p.cb && p.input);
 
     // Restore state
-    cb.checked = this.lv('combat_concentrating', false);
-    spellInput.value = this.lv('combat_concSpell', '');
-    if (cb.checked) bar?.classList.add('active');
-
-    cb.addEventListener('change', () => {
-      this.sv('combat_concentrating', cb.checked);
-      bar?.classList.toggle('active', cb.checked);
-      this._refreshConcentrationHighlight();
-      // Sync combat tab
-      const combatCb = this.$('conc-active');
-      if (combatCb) combatCb.checked = cb.checked;
+    const isConc = this.lv('combat_concentrating', false);
+    const concSpell = this.lv('combat_concSpell', '');
+    pairs.forEach(p => {
+      p.cb.checked = isConc;
+      p.input.value = concSpell;
+      if (isConc) p.bar?.classList.add('active');
     });
 
-    spellInput.addEventListener('input', () => {
-      this.sv('combat_concSpell', spellInput.value);
+    const syncAll = () => {
+      const checked = this.lv('combat_concentrating', false);
+      const spell = this.lv('combat_concSpell', '');
+      pairs.forEach(p => {
+        p.cb.checked = checked;
+        p.input.value = spell;
+        p.bar?.classList.toggle('active', checked);
+      });
       this._refreshConcentrationHighlight();
-      // Sync combat tab
-      const combatInput = this.$('conc-spell');
-      if (combatInput) combatInput.value = spellInput.value;
-    });
+    };
 
-    checkBtn?.addEventListener('click', () => {
-      const conScore = parseInt(this.$('con')?.value) || 10;
-      const conMod = Math.floor((conScore - 10) / 2);
-      const profBonus = this.getProfBonus(this.getLevel());
-      const isProf = this.lv('saveProf_con', false);
-      const totalMod = conMod + (isProf ? profBonus : 0);
-      const mode = this._concSaveMode();
-      const result = Dice.rollD20(totalMod, mode);
-      const label = mode === 'advantage' ? 'Concentration (Con Save — Adv: War Caster)' : 'Concentration Check (Con Save)';
-      Dice.showResult(label, result);
-    });
+    pairs.forEach(p => {
+      p.cb.addEventListener('change', () => {
+        this.sv('combat_concentrating', p.cb.checked);
+        if (!p.cb.checked) this.sv('combat_concSpell', '');
+        syncAll();
+      });
 
-    dropBtn?.addEventListener('click', () => {
-      cb.checked = false;
-      spellInput.value = '';
-      this.sv('combat_concentrating', false);
-      this.sv('combat_concSpell', '');
-      bar?.classList.remove('active');
-      this._refreshConcentrationHighlight();
-      // Sync combat tab
-      const combatCb = this.$('conc-active');
-      const combatInput = this.$('conc-spell');
-      if (combatCb) combatCb.checked = false;
-      if (combatInput) combatInput.value = '';
+      p.input.addEventListener('input', () => {
+        this.sv('combat_concSpell', p.input.value);
+        syncAll();
+      });
+
+      p.check?.addEventListener('click', () => {
+        const conScore = parseInt(this.$('con')?.value) || 10;
+        const conMod = Math.floor((conScore - 10) / 2);
+        const profBonus = this.getProfBonus(this.getLevel());
+        const isProf = this.lv('saveProf_con', false);
+        const totalMod = conMod + (isProf ? profBonus : 0);
+        const mode = this._concSaveMode();
+        const result = Dice.rollD20(totalMod, mode);
+        const passed = result.total >= 10;
+        const label = mode === 'advantage'
+          ? `Concentration (Con Save — Adv: War Caster) — ${passed ? 'Maintained!' : 'Lost!'}`
+          : `Concentration Check (Con Save) — ${passed ? 'Maintained!' : 'Lost!'}`;
+        Dice.showResult(label, result);
+        if (!passed) {
+          this.sv('combat_concentrating', false);
+          this.sv('combat_concSpell', '');
+          syncAll();
+        }
+      });
+
+      p.drop?.addEventListener('click', () => {
+        this.sv('combat_concentrating', false);
+        this.sv('combat_concSpell', '');
+        syncAll();
+      });
     });
   },
 
   _setConcentration(spellName) {
-    const cb = this.$('spell-conc-active');
-    const spellInput = this.$('spell-conc-spell');
-    const bar = this.$('spell-conc-bar');
-    if (cb) { cb.checked = true; this.sv('combat_concentrating', true); }
-    if (spellInput) { spellInput.value = spellName; this.sv('combat_concSpell', spellName); }
-    if (bar) bar.classList.add('active');
+    this.sv('combat_concentrating', true);
+    this.sv('combat_concSpell', spellName);
+    // Sync all concentration UIs
+    [['spell-conc-active', 'spell-conc-spell', 'spell-conc-bar'],
+     ['char-conc-active', 'char-conc-spell', 'char-conc-bar']].forEach(([cbId, inputId, barId]) => {
+      const cb = this.$(cbId);
+      const input = this.$(inputId);
+      const bar = this.$(barId);
+      if (cb) cb.checked = true;
+      if (input) input.value = spellName;
+      if (bar) bar.classList.add('active');
+    });
     this._refreshConcentrationHighlight();
-    // Sync combat tab
-    const combatCb = this.$('conc-active');
-    const combatInput = this.$('conc-spell');
-    if (combatCb) combatCb.checked = true;
-    if (combatInput) combatInput.value = spellName;
   },
 
   _refreshConcentrationHighlight() {
@@ -2143,10 +2474,7 @@ window.Sheet = {
     });
   },
 
-  _showSpellDetail(spell) {
-    const existing = document.getElementById('spell-detail-modal');
-    if (existing) existing.remove();
-
+  _buildSpellDetailHTML(spell) {
     const bodyHtml = typeof entriesToHtml === 'function' && spell.entries
       ? entriesToHtml(spell.entries)
       : (spell.entries ? spell.entries.map(e => typeof e === 'string' ? `<p>${e}</p>` : `<p><strong>${e.name}:</strong> ${(e.entries || []).join(' ')}</p>`).join('') : '<p>No description available.</p>');
@@ -2156,74 +2484,126 @@ window.Sheet = {
     const actionClass = this._actionColorClass(spell);
     const diceExprs = this._extractDice(spell);
 
-    // Build detail tags
     let tagsHtml = `<span class="spell-detail-tag">${spell._levelStr || (spell.level === 0 ? 'Cantrip' : `Level ${spell.level}`)}</span>`;
     tagsHtml += `<span class="spell-detail-tag">${spell._schoolName || ''}</span>`;
     if (isConc) tagsHtml += `<span class="spell-detail-tag spell-tag-conc">Concentration</span>`;
     if (isRitual) tagsHtml += `<span class="spell-detail-tag spell-tag-ritual">Ritual</span>`;
     if (spell._src) tagsHtml += `<span class="spell-detail-tag">${spell._src}</span>`;
 
-    // Dice roll section
     let diceSection = '';
     if (diceExprs.length > 0) {
       diceSection = `<div class="spell-detail-dice">${diceExprs.map(d => `<button class="spell-detail-dice-btn" data-dice="${d}">Roll ${d}</button>`).join('')}</div>`;
     }
 
-    // Concentration action button
     let concBtn = '';
     if (isConc && spell.level > 0) {
-      concBtn = `<button class="btn btn-sm spell-detail-conc-btn" id="spell-detail-concentrate">Concentrate on this spell</button>`;
+      concBtn = `<button class="btn btn-sm spell-detail-conc-btn spell-hover-conc-btn">Concentrate on this spell</button>`;
     }
 
-    const modal = document.createElement('div');
-    modal.id = 'spell-detail-modal';
-    modal.className = 'levelup-backdrop';
-    modal.style.display = 'flex';
-    modal.innerHTML = `
-      <div class="levelup-modal spell-detail-modal">
-        <div class="levelup-header">
-          <h2 class="levelup-title">${spell.name}</h2>
-          <button class="levelup-close" id="spell-detail-close">&times;</button>
-        </div>
-        <div class="levelup-body" style="font-size:0.88rem">
-          <div class="spell-detail-tags">${tagsHtml}</div>
-          <div class="spell-detail-stats">
-            ${spell._castTime ? `<div><strong>Casting Time:</strong> <span class="${actionClass}">${spell._castTime}</span></div>` : ''}
-            ${spell._rangeStr ? `<div><strong>Range:</strong> ${spell._rangeStr}</div>` : ''}
-            ${spell._componentsStr ? `<div><strong>Components:</strong> ${spell._componentsStr}</div>` : ''}
-            ${spell._durationStr ? `<div><strong>Duration:</strong> ${spell._durationStr}${isConc ? ' <span class="spell-tag-conc" style="font-size:0.75rem;padding:1px 5px;border-radius:3px">Concentration</span>' : ''}</div>` : ''}
-          </div>
-          ${diceSection}
-          <div class="spell-detail-body">${bodyHtml}</div>
-          ${concBtn}
-        </div>
-        <div class="levelup-footer">
-          <button class="btn levelup-btn-confirm" id="spell-detail-ok">Close</button>
-        </div>
-      </div>`;
+    return `
+      <div class="spell-hover-header"><strong>${spell.name}</strong></div>
+      <div class="spell-detail-tags">${tagsHtml}</div>
+      <div class="spell-detail-stats">
+        ${spell._castTime ? `<div><strong>Casting Time:</strong> <span class="${actionClass}">${spell._castTime}</span></div>` : ''}
+        ${spell._rangeStr ? `<div><strong>Range:</strong> ${spell._rangeStr}</div>` : ''}
+        ${spell._componentsStr ? `<div><strong>Components:</strong> ${spell._componentsStr}</div>` : ''}
+        ${spell._durationStr ? `<div><strong>Duration:</strong> ${spell._durationStr}${isConc ? ' <span class="spell-tag-conc" style="font-size:0.75rem;padding:1px 5px;border-radius:3px">Concentration</span>' : ''}</div>` : ''}
+      </div>
+      ${diceSection}
+      <div class="spell-detail-body">${this._highlightSpellText(bodyHtml)}</div>
+      ${concBtn}`;
+  },
 
-    document.body.appendChild(modal);
-    const close = () => modal.remove();
-    modal.querySelector('#spell-detail-close').addEventListener('click', close);
-    modal.querySelector('#spell-detail-ok').addEventListener('click', close);
-    modal.addEventListener('click', e => { if (e.target === modal) close(); });
+  _showSpellHover(spell, event) {
+    this._hideSpellHover();
+    const tip = document.createElement('div');
+    tip.className = 'spell-hover-tooltip';
+    tip.id = 'spell-hover-active';
+    tip.innerHTML = this._buildSpellDetailHTML(spell);
+    tip._spell = spell;
+    document.body.appendChild(tip);
 
-    // Dice buttons in modal
-    modal.querySelectorAll('.spell-detail-dice-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
+    // Position near the cursor
+    const cx = event.clientX;
+    const cy = event.clientY;
+    requestAnimationFrame(() => {
+      const tr = tip.getBoundingClientRect();
+      let top = cy + 12;
+      let left = cx + 12;
+      // Flip above if below viewport
+      if (top + tr.height > window.innerHeight - 8) top = cy - tr.height - 8;
+      // Flip left if beyond right edge
+      if (left + tr.width > window.innerWidth - 8) left = cx - tr.width - 8;
+      if (left < 8) left = 8;
+      if (top < 8) top = 8;
+      tip.style.top = top + 'px';
+      tip.style.left = left + 'px';
+      tip.classList.add('show');
+    });
+    tip.style.top = (cy + 12) + 'px';
+    tip.style.left = (cx + 12) + 'px';
+
+    // Keep tooltip open while hovering over it
+    tip.addEventListener('mouseenter', () => this._cancelSpellHoverHide());
+    tip.addEventListener('mouseleave', () => this._scheduleSpellHoverHide());
+
+    // Wire up dice buttons
+    this._wireSpellHoverButtons(tip, spell);
+  },
+
+  _moveSpellHover(event) {
+    const tip = document.getElementById('spell-hover-active');
+    if (!tip) return;
+    // Don't move if the cursor is hovering over the tooltip itself
+    const tr = tip.getBoundingClientRect();
+    const mx = event.clientX, my = event.clientY;
+    const margin = 20;
+    if (mx >= tr.left - margin && mx <= tr.right + margin &&
+        my >= tr.top - margin && my <= tr.bottom + margin) return;
+    let top = my + 12;
+    let left = mx + 12;
+    if (top + tr.height > window.innerHeight - 8) top = my - tr.height - 8;
+    if (left + tr.width > window.innerWidth - 8) left = mx - tr.width - 8;
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+  },
+
+  _wireSpellHoverButtons(tip, spell) {
+    tip.querySelectorAll('.spell-detail-dice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
         const expr = btn.dataset.dice.replace(/\s/g, '');
         const result = Dice.rollExpression(expr);
         Dice.showResult(`${spell.name} (${expr})`, result);
       });
     });
-
-    // Concentrate button
-    const concBtnEl = modal.querySelector('#spell-detail-concentrate');
-    if (concBtnEl) {
-      concBtnEl.addEventListener('click', () => {
+    const concBtn = tip.querySelector('.spell-hover-conc-btn');
+    if (concBtn) {
+      concBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         this._setConcentration(spell.name);
-        close();
+        this._hideSpellHover();
       });
+    }
+  },
+
+  _hideSpellHover() {
+    const tip = document.getElementById('spell-hover-active');
+    if (tip) tip.remove();
+    this._cancelSpellHoverHide();
+  },
+
+  _scheduleSpellHoverHide() {
+    this._cancelSpellHoverHide();
+    this._spellHoverTimer = setTimeout(() => this._hideSpellHover(), 300);
+  },
+
+  _cancelSpellHoverHide() {
+    if (this._spellHoverTimer) {
+      clearTimeout(this._spellHoverTimer);
+      this._spellHoverTimer = null;
     }
   },
 
@@ -2232,26 +2612,27 @@ window.Sheet = {
     const bar = this.$('spell-slots-bar');
     if (!bar) return;
     bar.innerHTML = '';
+
+    // Auto-calculate from class + level
+    const className = this.lv('charClass', '');
+    const level = this.getLevel();
+    if (className && typeof getSpellSlots === 'function') {
+      const slots = getSpellSlots(className, level);
+      for (let i = 0; i < 9; i++) {
+        this.sv(`slotMax_${i + 1}`, slots[i]);
+      }
+    }
+
     for (let lvl = 1; lvl <= 9; lvl++) {
       const total = this.lv(`slotMax_${lvl}`, 0);
       const div = document.createElement('div');
       div.className = 'slot-level';
       div.innerHTML = `
-        <h4>Level ${lvl}</h4>
-        <input type="number" class="slot-total-input" min="0" max="9" value="${total}" data-lvl="${lvl}">
+        <h4>Lvl ${lvl}</h4>
         <div class="slot-checkboxes" id="slot-cbs-${lvl}"></div>`;
       bar.appendChild(div);
       this.renderSlotCheckboxes(lvl, total);
     }
-    bar.querySelectorAll('.slot-total-input').forEach(inp => {
-      inp.addEventListener('change', () => {
-        const lvl = parseInt(inp.dataset.lvl);
-        const max = Math.max(0, Math.min(9, parseInt(inp.value) || 0));
-        inp.value = max;
-        this.sv(`slotMax_${lvl}`, max);
-        this.renderSlotCheckboxes(lvl, max);
-      });
-    });
   },
 
   renderSlotCheckboxes(level, count) {
@@ -2269,10 +2650,6 @@ window.Sheet = {
     }
   },
 
-  _spellTableHeader() {
-    return `<div class="spell-table-header"><span></span><span>Name</span><span>Badges</span><span>Cast Time</span><span>Dice</span><span></span><span></span></div>`;
-  },
-
   buildSpellLevelSections() {
     const mount = this.$('spell-levels-mount');
     if (!mount) return;
@@ -2283,19 +2660,8 @@ window.Sheet = {
       section.id = `spell-section-${lvl}`;
       section.innerHTML = `
         <h3 class="spell-level-heading">${['', '1st', '2nd', '3rd', '4th', '5th', '6th', '7th', '8th', '9th'][lvl]} Level</h3>
-        ${this._spellTableHeader()}
         <div class="spell-cards" id="spell-cards-${lvl}"></div>`;
       mount.appendChild(section);
-    }
-
-    // Also add header to cantrips section
-    const cantripSection = this.$('spell-section-0');
-    if (cantripSection) {
-      const cards = cantripSection.querySelector('.spell-cards');
-      const existingHeader = cantripSection.querySelector('.spell-table-header');
-      if (!existingHeader && cards) {
-        cards.insertAdjacentHTML('beforebegin', this._spellTableHeader());
-      }
     }
   },
 
@@ -2446,6 +2812,16 @@ window.Sheet = {
   },
 
   addItemToInventory(item) {
+    // Detect spell scroll — prompt user to assign a spell before adding
+    const tc = (item.type || '').split('|')[0].toUpperCase();
+    if (tc === 'SC' && !item._scrollSpellAssigned) {
+      const scrollLevel = this._parseScrollLevel(item.name);
+      if (scrollLevel !== null) {
+        this._promptScrollSpellPicker(item, scrollLevel);
+        return;
+      }
+    }
+
     const inv = this.lv('inventory', []);
     // Volume-only containerCapacity (liquid vessels) should NOT become folder containers
     const hasVolumeOnlyCapacity = item.containerCapacity
@@ -2458,7 +2834,7 @@ window.Sheet = {
     );
     const isLiquid = this._isLiquidContainer(item.name);
     if (!isContainer && !isLiquid) {
-      const existing = inv.find(i => i.name === item.name && !i.isContainer);
+      const existing = inv.find(i => i.name === item.name && !i.isContainer && i.scrollSpell === item._scrollSpell);
       if (existing) { existing.qty++; this.sv('inventory', inv); this.renderInventory(); return; }
     }
     const containerKey = isContainer
@@ -2470,7 +2846,8 @@ window.Sheet = {
     const emptyWeight = isLiquid ? Math.max(0, fullWeight - maxPints * PINT_LBS) : 0;
 
     inv.push({
-      name: item.name, type: item._type,
+      name: item._scrollSpell ? `Spell Scroll (${item._scrollSpell})` : item.name,
+      type: item._type,
       typeCode: (item.type || '').split('|')[0],
       damage: item._dmgStr || '', mastery: (item.mastery || []).map(m => m.split('|')[0]).join(', '),
       properties: item._propStr || '', weight: fullWeight,
@@ -2480,6 +2857,7 @@ window.Sheet = {
       description: typeof entriesToHtml === 'function' ? entriesToHtml(item.entries) : '',
       isContainer, containerOpen: true, containerId: null,
       itemId: Date.now().toString(36) + Math.random().toString(36).slice(2),
+      ...(item._scrollSpell && { scrollSpell: item._scrollSpell }),
       ...(isContainer && { containerKey, containerCapacity: item.containerCapacity || null, capacityStr: item.capacity || null }),
       ...(isLiquid && { pints: maxPints, emptyWeight, liquidKey: Date.now().toString(36) + Math.random().toString(36).slice(2) }),
     });
@@ -2608,7 +2986,8 @@ window.Sheet = {
     }
     it.qty = qty;
     this.sv('inventory', inv);
-    this.renderInventory();
+    this.renderCarryCapacity();
+    this.refreshAttackList();
   },
 
   _showSplitPopup(item) {
@@ -2712,14 +3091,14 @@ window.Sheet = {
     return accepted.some(t => lower === t || lower === t + 's' || lower + 's' === t || lower.startsWith(t) || t.startsWith(lower));
   },
 
-  _moveToContainer(itemName, containerKey) {
+  _moveToContainer(itemId, containerKey) {
     const inv = this.lv('inventory', []);
-    const item = inv.find(i => i.name === itemName);
+    const item = inv.find(i => i.itemId === itemId) || inv.find(i => i.name === itemId);
     if (!item) { this.renderInventory(); return; }
     if (containerKey) {
       const container = inv.find(i => i.containerKey === containerKey || i.name === containerKey);
       if (container) {
-        if (!this._containerAcceptsItem(container, itemName)) {
+        if (!this._containerAcceptsItem(container, item.name)) {
           this._showInvWarning(`${container.name} can only hold ${this._containerAcceptedLabel(container)}.`);
           return;
         }
@@ -2735,7 +3114,7 @@ window.Sheet = {
             return;
           }
         }
-        const maxCount = this._containerMaxItemCount(container, itemName);
+        const maxCount = this._containerMaxItemCount(container, item.name);
         if (maxCount != null) {
           const currentCount = inv
             .filter(i => i.containerId === container.containerKey && this._containerAcceptsItem(container, i.name))
@@ -3053,8 +3432,8 @@ window.Sheet = {
     gearEl.addEventListener('dragover', e => { e.preventDefault(); });
     gearEl.addEventListener('drop', e => {
       // Only act if not dropped on a container (containers stop propagation)
-      const name = e.dataTransfer.getData('text/plain');
-      if (name) this._moveToContainer(name, null);
+      const id = e.dataTransfer.getData('text/plain');
+      if (id) this._moveToContainer(id, null);
     });
 
     const containers = inv.filter(i => i.isContainer);
@@ -3101,29 +3480,20 @@ window.Sheet = {
         if (c) { c.containerOpen = !isNowHidden; this.sv('inventory', inv2); }
       });
 
-      // Drag-drop: the whole itemsEl accepts drops
+      // Drag-drop: the entire container element accepts drops
       const setDragOver = (on) => el.classList.toggle('drag-over-container', on);
-      itemsEl.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); });
-      itemsEl.addEventListener('dragleave', e => { if (!itemsEl.contains(e.relatedTarget)) setDragOver(false); });
-      itemsEl.addEventListener('drop', e => {
+      el.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); });
+      el.addEventListener('dragleave', e => { if (!el.contains(e.relatedTarget)) setDragOver(false); });
+      el.addEventListener('drop', e => {
         e.preventDefault(); e.stopPropagation(); setDragOver(false);
-        const name = e.dataTransfer.getData('text/plain');
-        if (name && name !== container.name) this._moveToContainer(name, cKey);
-      });
-
-      // Also accept drops on the header when closed
-      header.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); setDragOver(true); });
-      header.addEventListener('dragleave', () => setDragOver(false));
-      header.addEventListener('drop', e => {
-        e.preventDefault(); e.stopPropagation(); setDragOver(false);
-        const name = e.dataTransfer.getData('text/plain');
-        if (name && name !== container.name) this._moveToContainer(name, cKey);
+        const id = e.dataTransfer.getData('text/plain');
+        if (id && id !== container.itemId && id !== container.name) this._moveToContainer(id, cKey);
       });
 
       // Render contained items
       contained.forEach(item => {
         const card = this._makeInvCard(item, true);
-        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
+        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.itemId || item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
         card.addEventListener('dragend',   () => card.classList.remove('dragging'));
         itemsEl.appendChild(card);
       });
@@ -3140,7 +3510,8 @@ window.Sheet = {
     });
 
     // ---- Loose gear: 2-column grid ----
-    if (loose.length) {
+    // Always create the grid when containers exist so items can be dragged out of bags
+    if (loose.length || containers.length) {
       const grid = document.createElement('div');
       grid.className = 'inv-gear-grid';
 
@@ -3148,16 +3519,23 @@ window.Sheet = {
       grid.addEventListener('dragleave', e => { if (!grid.contains(e.relatedTarget)) grid.classList.remove('drag-over'); });
       grid.addEventListener('drop', e => {
         e.preventDefault(); e.stopPropagation(); grid.classList.remove('drag-over');
-        const name = e.dataTransfer.getData('text/plain');
-        if (name) this._moveToContainer(name, null);
+        const id = e.dataTransfer.getData('text/plain');
+        if (id) this._moveToContainer(id, null);
       });
 
       loose.forEach(item => {
         const card = this._makeInvCard(item, true);
-        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
+        card.addEventListener('dragstart', e => { e.dataTransfer.setData('text/plain', item.itemId || item.name); card.classList.add('dragging'); this._hideInvTooltip(); });
         card.addEventListener('dragend',   () => card.classList.remove('dragging'));
         grid.appendChild(card);
       });
+
+      if (!loose.length) {
+        const hint = document.createElement('div');
+        hint.className = 'inv-container-drop-zone';
+        hint.textContent = 'Drop items here to remove from bag';
+        grid.appendChild(hint);
+      }
       gearEl.appendChild(grid);
     } else if (!containers.length) {
       // No items at all — show hint
@@ -3168,28 +3546,6 @@ window.Sheet = {
       gearEl.appendChild(hint);
     }
 
-    // ---- Always-present eject zone (visible only while dragging from a container) ----
-    if (containers.length) {
-      const ejectZone = document.createElement('div');
-      ejectZone.className = 'inv-eject-zone';
-      ejectZone.textContent = 'Drop here to remove from bag';
-      ejectZone.addEventListener('dragover',  e => { e.preventDefault(); e.stopPropagation(); ejectZone.classList.add('active'); });
-      ejectZone.addEventListener('dragleave', e => { if (!ejectZone.contains(e.relatedTarget)) ejectZone.classList.remove('active'); });
-      ejectZone.addEventListener('drop', e => {
-        e.preventDefault(); e.stopPropagation(); ejectZone.classList.remove('active');
-        const name = e.dataTransfer.getData('text/plain');
-        if (name) this._moveToContainer(name, null);
-      });
-      gearEl.appendChild(ejectZone);
-
-      // Show/hide eject zone based on whether a drag from inside a container is active
-      const showEject = () => ejectZone.classList.add('visible');
-      const hideEject = () => { ejectZone.classList.remove('visible', 'active'); };
-      gearEl.querySelectorAll('.inv-container-items .inv-card').forEach(card => {
-        card.addEventListener('dragstart', showEject);
-        card.addEventListener('dragend',   hideEject);
-      });
-    }
 
     this.refreshAttackList();
     this.renderMagicItems();
@@ -3560,7 +3916,6 @@ window.Sheet = {
     });
 
     this.$('btn-add-attack')?.addEventListener('click', () => this.addAttackRow());
-    // Hit dice roll buttons are now handled by Combat._bindHitDice()
   },
 
   // ---- DICE ROLLER ----
@@ -3813,55 +4168,946 @@ window.Sheet = {
   get CONDITIONS() { return ConditionRules.CONDITION_LIST; },
 
   /* ---- COMBAT ECONOMY (Action / Bonus Action / Reaction / Movement) ---- */
-  initCombatEconomy() {
-    this.renderCombatEconomy();
+  _initDeathSaves() {
+    // Restore saved state for heart/skull icons
+    document.querySelectorAll('.death-icon').forEach(icon => {
+      const key = icon.dataset.save;
+      if (!key) return;
+      icon.classList.toggle('filled', this.lv(key, false));
+      icon.addEventListener('click', () => {
+        const next = !this.lv(key, false);
+        this.sv(key, next);
+        icon.classList.toggle('filled', next);
+      });
+    });
+
+    // Roll button on the label
+    const dsRollBtn = document.getElementById('btn-death-save-roll');
+    if (dsRollBtn) {
+      dsRollBtn.addEventListener('click', () => this._rollDeathSave());
+    }
   },
 
-  renderCombatEconomy() {
-    const el = this.$('combat-economy-content');
+  _rollDeathSave() {
+    const result = Dice.rollD20(0);
+    const roll = result.total;
+    let label = 'Death Save';
+    if (roll === 20) {
+      label = 'Death Save — NAT 20! Regain 1 HP';
+      this._markNextDeathSave('success');
+    } else if (roll === 1) {
+      label = 'Death Save — NAT 1! Two Failures';
+      this._markNextDeathSave('fail');
+      this._markNextDeathSave('fail');
+    } else if (roll >= 10) {
+      label = 'Death Save — Success';
+      this._markNextDeathSave('success');
+    } else {
+      label = 'Death Save — Failure';
+      this._markNextDeathSave('fail');
+    }
+    Dice.showResult(label, result);
+  },
+
+  _markNextDeathSave(type) {
+    const prefix = type === 'success' ? 'ds' : 'df';
+    for (let i = 0; i < 3; i++) {
+      const key = `${prefix}${i}`;
+      if (!this.lv(key, false)) {
+        this.sv(key, true);
+        const icon = document.querySelector(`.death-icon[data-save="${key}"]`);
+        if (icon) icon.classList.add('filled');
+        return;
+      }
+    }
+  },
+
+
+  /* ---- HIT DICE ---- */
+  getHitDice() {
+    try { return JSON.parse(this.lv('hitDice', '[]')) || []; }
+    catch { return []; }
+  },
+  saveHitDice(arr) { this.sv('hitDice', JSON.stringify(arr)); },
+
+  migrateHitDice() {
+    const existing = this.getHitDice();
+    if (existing.length) return;
+    const oldTotal = this.lv('hitDiceTotal', '');
+    if (!oldTotal) return;
+    const m = oldTotal.match(/(\d+)d(\d+)/i);
+    if (!m) return;
+    const total = parseInt(m[1]);
+    const faces = parseInt(m[2]);
+    const used = parseInt(this.lv('hitDiceUsed', '0')) || 0;
+    this.saveHitDice([{ die: faces, total, used }]);
+  },
+
+  syncHitDice() {
+    const className = this.lv('charClass', '');
+    const level = Math.max(1, Math.min(20, parseInt(this.$('charLevel')?.value) || 1));
+    if (!className) { this.saveHitDice([]); this.renderHitDice(); return; }
+    const info = typeof getClassInfo === 'function' ? getClassInfo(className) : null;
+    if (!info || !info.hitDieFaces) return;
+
+    const dice = this.getHitDice();
+    const existing = dice.find(hd => hd.die === info.hitDieFaces);
+    if (existing) {
+      existing.total = level;
+      existing.used = Math.min(existing.used, existing.total);
+    } else {
+      dice.push({ die: info.hitDieFaces, total: level, used: 0 });
+    }
+    const filtered = dice.filter(hd => hd.die === info.hitDieFaces);
+    this.saveHitDice(filtered);
+    this.renderHitDice();
+  },
+
+  renderHitDice() {
+    this._renderDsHitDie();
+  },
+
+  _renderDsHitDie() {
+    const el = this.$('ds-hd-section');
     if (!el) return;
-    const state = this.lv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
-    const speed = parseInt(this.$('speed')?.value) || 30;
+    const dice = this.getHitDice();
+    if (!dice.length) {
+      el.innerHTML = '<span class="rest-hd-empty">—</span>';
+      return;
+    }
+    el.innerHTML = dice.map(hd => {
+      const rem = hd.total - hd.used;
+      const low = rem === 0 ? ' depleted' : rem <= Math.ceil(hd.total / 4) ? ' low' : '';
+      return `<div class="rest-hd-row${low}"><span class="rest-hd-rem">${rem}</span><span class="rest-hd-sep">/</span><span class="rest-hd-tot">${hd.total}</span><span class="rest-hd-die">d${hd.die}</span></div>`;
+    }).join('');
+  },
 
-    el.innerHTML = '';
+  _rollHitDie(index) {
+    const dice = this.getHitDice();
+    const hd = dice[index];
+    if (!hd) return;
+    if (hd.total - hd.used <= 0) return;
+    const conScore = parseInt(this.$('con')?.value) || 10;
+    const conMod = Math.floor((conScore - 10) / 2);
+    const roll = Dice.roll(hd.die);
+    const healing = Math.max(1, roll + conMod);
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    const currentHP = parseInt(this.lv('hpCurrent', 0)) || 0;
+    const newHP = Math.min(maxHP, currentHP + healing);
+    this.sv('hpCurrent', newHP);
+    const hpInput = this.$('hpCurrent');
+    if (hpInput) hpInput.value = newHP;
+    dice[index].used++;
+    this.saveHitDice(dice);
+    this.renderHitDice();
+    Dice.showResult(`Hit Die (d${hd.die})`, { r1: roll, r2: null, used: roll, total: healing, modifier: conMod });
+  },
 
-    const items = [
-      { key: 'action',   label: 'Action',        icon: '\u2694' },
-      { key: 'bonus',    label: 'Bonus Action',   icon: '\u26A1' },
-      { key: 'reaction', label: 'Reaction',       icon: '\u21A9' },
-      { key: 'movement', label: `Movement (${speed} ft)`, icon: '\u{1F9B6}' },
-    ];
+  _initHitDice() {
+    this.migrateHitDice();
+    this.syncHitDice();
+  },
 
-    const grid = document.createElement('div');
-    grid.className = 'ce-grid';
+  /* ---- SCROLL SYSTEM ---- */
+  SCROLL_SCRIBE_COST: [15, 25, 50, 100, 250, 500, 1250, 2500, 5000, 12500],
+  SCROLL_SCRIBE_TIME: ['1 hour', '1 day', '3 days', '1 week', '2 weeks', '4 weeks', '8 weeks', '16 weeks', '24 weeks', '48 weeks'],
 
-    items.forEach(it => {
-      const cell = document.createElement('button');
-      cell.className = 'ce-cell' + (state[it.key] ? ' used' : '');
-      cell.innerHTML = `<span class="ce-icon">${it.icon}</span><span class="ce-label">${it.label}</span>`;
-      cell.addEventListener('click', () => {
-        const s = this.lv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
-        s[it.key] = !s[it.key];
-        this.sv('combatEconomy', s);
-        cell.classList.toggle('used');
+  _initScrollButtons() {
+    this.$('btn-learn-scroll')?.addEventListener('click', () => this._openLearnScrollModal());
+    this.$('btn-cast-scroll')?.addEventListener('click', () => this._openCastScrollModal());
+    this.$('spell-tab-learn-scroll')?.addEventListener('click', () => this._openLearnScrollModal());
+    this.$('spell-tab-cast-scroll')?.addEventListener('click', () => this._openCastScrollModal());
+  },
+
+  _getScrollsFromInventory() {
+    const inv = this.lv('inventory', []);
+    const scrolls = [];
+    inv.forEach(item => {
+      if ((item.typeCode || '').toUpperCase() !== 'SC') return;
+      if (!item.scrollSpell) return;
+      const spell = DndData.spells.find(s => s.name.toLowerCase() === item.scrollSpell.toLowerCase());
+      if (!spell) return;
+      scrolls.push({ item, spell, qty: item.qty || 1 });
+    });
+    return scrolls;
+  },
+
+  _parseScrollLevel(name) {
+    // "Spell Scroll (Cantrip)" → 0
+    if (/cantrip/i.test(name)) return 0;
+    // "Spell Scroll (1st Level)" → 1, "Spell Scroll (2nd Level)" → 2, etc.
+    const m = name.match(/(\d+)(?:st|nd|rd|th)\s*level/i);
+    if (m) return parseInt(m[1]);
+    return null;
+  },
+
+  _promptScrollSpellPicker(item, scrollLevel) {
+    const spells = DndData.spells.filter(s => s.level === scrollLevel).sort((a, b) => a.name.localeCompare(b.name));
+    if (!spells.length) {
+      alert(`No spells found for level ${scrollLevel}.`);
+      return;
+    }
+
+    // Build a lookup map for quick access
+    const spellMap = {};
+    spells.forEach(s => { spellMap[s.name] = s; });
+
+    document.getElementById('scroll-spell-picker-backdrop')?.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'scroll-spell-picker-backdrop';
+    backdrop.className = 'rest-modal-backdrop';
+    backdrop.style.display = 'flex';
+    backdrop.innerHTML = `
+      <div class="rest-modal scroll-modal scroll-picker-modal">
+        <div class="rest-modal-header">
+          <h2 class="rest-modal-title">Assign Spell to Scroll</h2>
+          <button class="rest-modal-close" title="Close">✕</button>
+        </div>
+        <div class="rest-modal-body scroll-picker-body">
+          <p class="rest-modal-desc">This is a <strong>${scrollLevel === 0 ? 'Cantrip' : 'Level ' + scrollLevel}</strong> spell scroll. Choose which spell it contains:</p>
+          <input type="text" class="scroll-search" id="scroll-picker-search" placeholder="Search spells..." autocomplete="off">
+          <div class="scroll-picker-layout">
+            <div class="scroll-picker-list" id="scroll-picker-list">
+              ${spells.map(s => {
+                const school = s._schoolName || '';
+                const castTime = s._castTime || '';
+                return `<button class="scroll-picker-item" data-spell="${s.name}">
+                  <span class="scroll-picker-name">${s.name}</span>
+                  <span class="scroll-picker-meta">${school}${castTime ? ' · ' + castTime : ''}</span>
+                </button>`;
+              }).join('')}
+            </div>
+            <div class="scroll-picker-preview" id="scroll-picker-preview">
+              <p class="scroll-picker-preview-empty">Hover over a spell to see its details</p>
+            </div>
+          </div>
+        </div>
+        <div class="rest-modal-footer">
+          <button class="btn" id="scroll-picker-cancel">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.rest-modal-close').addEventListener('click', close);
+    backdrop.querySelector('#scroll-picker-cancel').addEventListener('click', close);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+
+    // Preview panel
+    const preview = backdrop.querySelector('#scroll-picker-preview');
+
+    // Search filter
+    const search = backdrop.querySelector('#scroll-picker-search');
+    search.addEventListener('input', () => {
+      const q = search.value.toLowerCase();
+      backdrop.querySelectorAll('.scroll-picker-item').forEach(el => {
+        el.style.display = el.dataset.spell.toLowerCase().includes(q) ? '' : 'none';
       });
-      grid.appendChild(cell);
+    });
+    search.focus();
+
+    // Hover to show spell details + Spell selection
+    backdrop.querySelectorAll('.scroll-picker-item').forEach(btn => {
+      btn.addEventListener('mouseenter', () => {
+        const spell = spellMap[btn.dataset.spell];
+        if (spell) {
+          preview.innerHTML = this._buildSpellDetailHTML(spell);
+        }
+      });
     });
 
-    el.appendChild(grid);
-
-    // Reset button
-    const resetRow = document.createElement('div');
-    resetRow.className = 'ce-reset-row';
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'ce-reset-btn';
-    resetBtn.textContent = 'New Turn';
-    resetBtn.addEventListener('click', () => {
-      this.sv('combatEconomy', { action: false, bonus: false, reaction: false, movement: false });
-      this.renderCombatEconomy();
+    backdrop.querySelectorAll('.scroll-picker-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        item._scrollSpell = btn.dataset.spell;
+        item._scrollSpellAssigned = true;
+        this.addItemToInventory(item);
+        close();
+      });
     });
-    resetRow.appendChild(resetBtn);
-    el.appendChild(resetRow);
+  },
+
+  _getScribeDiscount() {
+    const subclass = this.lv('charSubclass', '');
+    if (subclass.toLowerCase().includes('scribes')) return 0.5;
+    return 1;
+  },
+
+  _getScribeCost(spellLevel) {
+    const baseCost = this.SCROLL_SCRIBE_COST[spellLevel] || 0;
+    return Math.floor(baseCost * this._getScribeDiscount());
+  },
+
+  _getTotalGold() {
+    const cp = parseInt(this.$('cp')?.value) || 0;
+    const sp = parseInt(this.$('sp')?.value) || 0;
+    const ep = parseInt(this.$('ep')?.value) || 0;
+    const gp = parseInt(this.$('gp')?.value) || 0;
+    const pp = parseInt(this.$('pp')?.value) || 0;
+    return pp * 10 + gp + ep * 0.5 + sp * 0.1 + cp * 0.01;
+  },
+
+  _deductGold(amount) {
+    let remaining = Math.round(amount * 100);
+    const coins = ['pp', 'gp', 'ep', 'sp', 'cp'];
+    const values = [1000, 100, 50, 10, 1];
+    coins.forEach((coin, i) => {
+      const el = this.$(coin);
+      let have = parseInt(el?.value) || 0;
+      const coinVal = values[i];
+      const spend = Math.min(have, Math.floor(remaining / coinVal));
+      if (spend > 0) {
+        have -= spend;
+        remaining -= spend * coinVal;
+        if (el) el.value = have;
+        this.sv(coin, have);
+      }
+    });
+  },
+
+  _openLearnScrollModal() {
+    const charClass = this.lv('charClass', '');
+    if (!charClass) { alert('Select a class first.'); return; }
+
+    const scrolls = this._getScrollsFromInventory();
+    if (!scrolls.length) {
+      this._showScrollPopup('No Scrolls', '<p class="rest-modal-empty">No spell scrolls found in your inventory.</p>');
+      return;
+    }
+
+    const totalGold = this._getTotalGold();
+    const discount = this._getScribeDiscount();
+    const discountLabel = discount < 1 ? ` <span class="scroll-discount">(${Math.round((1 - discount) * 100)}% Order of Scribes discount)</span>` : '';
+    const knownSpells = this.lv('charSpells', []).map(s => s.name.toLowerCase());
+
+    let html = `<div class="scroll-learn-list">`;
+    scrolls.forEach(({ item, spell }) => {
+      const already = knownSpells.includes(spell.name.toLowerCase());
+      const cost = this._getScribeCost(spell.level);
+      const time = this.SCROLL_SCRIBE_TIME[spell.level] || '—';
+      const canAfford = totalGold >= cost;
+      const disabled = already || !canAfford;
+      let reason = '';
+      if (already) reason = '<span class="scroll-reason">Already known</span>';
+      else if (!canAfford) reason = `<span class="scroll-reason scroll-reason-gold">Not enough gold (need ${cost} gp, have ${Math.floor(totalGold)} gp)</span>`;
+
+      html += `
+        <div class="scroll-learn-row${disabled ? ' disabled' : ''}">
+          <div class="scroll-learn-info">
+            <span class="scroll-learn-name">${spell.name}</span>
+            <span class="scroll-learn-level">${spell.level === 0 ? 'Cantrip' : 'Level ' + spell.level}</span>
+          </div>
+          <div class="scroll-learn-cost">
+            <span>${cost} gp</span>
+            <span class="scroll-learn-time">${time}</span>
+          </div>
+          <div class="scroll-learn-action">
+            ${reason || `<button class="btn btn-sm scroll-learn-btn" data-spell="${spell.name}" data-cost="${cost}" data-item="${item.itemId}">Learn</button>`}
+          </div>
+        </div>`;
+    });
+    html += `</div>`;
+    if (discountLabel) html = `<p class="scroll-discount-note">${discountLabel}</p>` + html;
+
+    const modal = this._showScrollPopup('Learn from Scroll', html);
+    modal.querySelectorAll('.scroll-learn-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const spellName = btn.dataset.spell;
+        const cost = parseInt(btn.dataset.cost);
+        const itemId = btn.dataset.item;
+        const spell = DndData.spells.find(s => s.name === spellName);
+        if (!spell) return;
+
+        this._deductGold(cost);
+        this.addSpellToSheet(spell);
+
+        // Remove scroll from inventory
+        const inv = this.lv('inventory', []);
+        const idx = inv.findIndex(i => i.itemId === itemId);
+        if (idx >= 0) {
+          if (inv[idx].qty > 1) inv[idx].qty--;
+          else inv.splice(idx, 1);
+          this.sv('inventory', inv);
+          this.renderInventory();
+        }
+
+        btn.closest('.scroll-learn-row').classList.add('disabled');
+        btn.replaceWith(Object.assign(document.createElement('span'), { className: 'scroll-reason', textContent: 'Learned!' }));
+      });
+    });
+  },
+
+  _openCastScrollModal() {
+    const scrolls = this._getScrollsFromInventory();
+    if (!scrolls.length) {
+      this._showScrollPopup('No Scrolls', '<p class="rest-modal-empty">No spell scrolls found in your inventory.</p>');
+      return;
+    }
+
+    // Sort by level then name
+    scrolls.sort((a, b) => a.spell.level - b.spell.level || a.spell.name.localeCompare(b.spell.name));
+
+    let listHtml = '<div class="scroll-cast-list">';
+    scrolls.forEach(({ item, spell }) => {
+      const school = spell._schoolName || '';
+      const castTime = spell._castTime || '';
+      const levelLabel = spell.level === 0 ? 'Cantrip' : `Lvl ${spell.level}`;
+      const desc = this._buildSpellDetailHTML(spell);
+      listHtml += `
+        <div class="scroll-cast-row">
+          <div class="scroll-cast-info">
+            <span class="scroll-cast-name">${spell.name}</span>
+            <span class="scroll-cast-meta">${levelLabel} · ${school}${castTime ? ' · ' + castTime : ''}</span>
+            <span class="scroll-cast-qty">&times;${item.qty || 1}</span>
+          </div>
+          <div class="scroll-cast-actions">
+            <button class="btn btn-sm scroll-detail-btn" title="View spell details">Details</button>
+            <button class="btn btn-sm scroll-cast-btn" data-spell="${spell.name}" data-item="${item.itemId}">Cast</button>
+          </div>
+          <div class="scroll-cast-detail" style="display:none">${desc}</div>
+        </div>`;
+    });
+    listHtml += '</div>';
+
+    const modal = this._showScrollPopup('Cast Scroll', listHtml);
+
+    // Detail toggles
+    modal.querySelectorAll('.scroll-detail-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const detail = btn.closest('.scroll-cast-row').querySelector('.scroll-cast-detail');
+        if (detail) {
+          const showing = detail.style.display !== 'none';
+          detail.style.display = showing ? 'none' : '';
+          btn.textContent = showing ? 'Details' : 'Hide';
+        }
+      });
+    });
+
+    // Concentrate buttons inside spell details
+    modal.querySelectorAll('.spell-hover-conc-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const row = btn.closest('.scroll-cast-row');
+        const castBtn = row?.querySelector('.scroll-cast-btn');
+        const spellName = castBtn?.dataset.spell;
+        if (spellName) this._setConcentration(spellName);
+      });
+    });
+
+    // Cast buttons
+    modal.querySelectorAll('.scroll-cast-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const itemId = btn.dataset.item;
+        const spellName = btn.dataset.spell;
+
+        // Remove one scroll from inventory
+        const inv = this.lv('inventory', []);
+        const idx = inv.findIndex(i => i.itemId === itemId);
+        if (idx >= 0) {
+          if (inv[idx].qty > 1) {
+            inv[idx].qty--;
+            const qtyEl = btn.closest('.scroll-cast-row').querySelector('.scroll-cast-qty');
+            if (qtyEl) qtyEl.textContent = `×${inv[idx].qty}`;
+          } else {
+            inv.splice(idx, 1);
+            btn.closest('.scroll-cast-row').remove();
+          }
+          this.sv('inventory', inv);
+          this.renderInventory();
+        }
+
+        // Set concentration if applicable
+        const spell = DndData.spells.find(s => s.name === spellName);
+        if (spell && this._isConcentration(spell)) {
+          this._setConcentration(spellName);
+        }
+
+        // Mark as cast visually
+        const row = btn.closest('.scroll-cast-row');
+        if (row && !row.querySelector('.scroll-cast-row')) {
+          btn.disabled = true;
+          btn.textContent = 'Cast!';
+          setTimeout(() => { if (row.parentNode) row.style.opacity = '0.5'; }, 300);
+        }
+      });
+    });
+
+    // Wire up dice buttons inside detail sections
+    modal.querySelectorAll('.spell-detail-dice-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const expr = btn.dataset.dice.replace(/\s/g, '');
+        const result = Dice.rollExpression(expr);
+        const row = btn.closest('.scroll-cast-row');
+        const spellName = row?.querySelector('.scroll-cast-btn')?.dataset.spell || 'Scroll';
+        Dice.showResult(`${spellName} (${expr})`, result);
+      });
+    });
+  },
+
+  _showScrollPopup(title, bodyHtml) {
+    // Remove any existing scroll modal
+    document.getElementById('scroll-modal-backdrop')?.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'scroll-modal-backdrop';
+    backdrop.className = 'rest-modal-backdrop';
+    backdrop.style.display = 'flex';
+    backdrop.innerHTML = `
+      <div class="rest-modal scroll-modal">
+        <div class="rest-modal-header">
+          <h2 class="rest-modal-title">${title}</h2>
+          <button class="rest-modal-close" title="Close">✕</button>
+        </div>
+        <div class="rest-modal-body">${bodyHtml}</div>
+        <div class="rest-modal-footer">
+          <button class="btn" id="scroll-modal-close">Close</button>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.rest-modal-close').addEventListener('click', close);
+    backdrop.querySelector('#scroll-modal-close').addEventListener('click', close);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+
+    return backdrop;
+  },
+
+  /* ---- REST MODAL SYSTEM ---- */
+  _initRestButtons() {
+    this.$('btn-short-rest-main')?.addEventListener('click', () => this._openRestModal('short'));
+    this.$('btn-long-rest-main')?.addEventListener('click', () => this._openRestModal('long'));
+    this.$('btn-dawn-rest-main')?.addEventListener('click', () => this._openRestModal('dawn'));
+  },
+
+  _openRestModal(type) {
+    const backdrop = this.$('rest-modal-backdrop');
+    const title = this.$('rest-modal-title');
+    const body = this.$('rest-modal-body');
+    const confirmBtn = this.$('rest-modal-confirm');
+    const cancelBtn = this.$('rest-modal-cancel');
+    const closeBtn = this.$('rest-modal-close');
+    if (!backdrop || !body) return;
+
+    if (type === 'short') {
+      title.textContent = 'Short Rest';
+      this._buildShortRestBody(body);
+      confirmBtn.textContent = 'Finish Short Rest';
+      confirmBtn.onclick = () => { this._doShortRest(body); this._closeRestModal(); };
+    } else if (type === 'long') {
+      title.textContent = 'Long Rest';
+      this._buildLongRestBody(body);
+      confirmBtn.textContent = 'Finish Long Rest';
+      confirmBtn.onclick = () => { this._doLongRest(body); this._closeRestModal(); };
+    } else if (type === 'dawn') {
+      title.textContent = 'Dawn';
+      this._buildDawnBody(body);
+      confirmBtn.textContent = 'Confirm Dawn';
+      confirmBtn.onclick = () => { this._doDawn(); this._closeRestModal(); };
+    }
+
+    const close = () => this._closeRestModal();
+    cancelBtn.onclick = close;
+    closeBtn.onclick = close;
+    backdrop.onclick = (e) => { if (e.target === backdrop) close(); };
+    backdrop.style.display = 'flex';
+  },
+
+  _closeRestModal() {
+    const backdrop = this.$('rest-modal-backdrop');
+    if (backdrop) backdrop.style.display = 'none';
+  },
+
+  _buildShortRestBody(body) {
+    const dice = this.getHitDice();
+    const conScore = parseInt(this.$('con')?.value) || 10;
+    const conMod = Math.floor((conScore - 10) / 2);
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    let currentHP = parseInt(this.lv('hpCurrent', 0)) || 0;
+
+    const resources = this.lv('resources', []) || [];
+    const srResources = resources.filter(r => r.refresh === 'sr' && r.used > 0);
+    const srUsable = resources.filter(r => r.usableOnShortRest && r.refresh === 'lr' && r.used < r.max);
+
+    const charClass = this.lv('charClass', '');
+    let warlockSlotHtml = '';
+    if (charClass === 'Warlock') {
+      const slotInfo = [];
+      for (let lvl = 1; lvl <= 5; lvl++) {
+        const max = this.lv(`slotMax_${lvl}`, 0);
+        if (max > 0) {
+          let used = 0;
+          for (let i = 0; i < max; i++) { if (this.lv(`slotUsed_${lvl}_${i}`, false)) used++; }
+          if (used > 0) slotInfo.push(`Level ${lvl}: ${used}/${max} used`);
+        }
+      }
+      if (slotInfo.length) {
+        warlockSlotHtml = `
+        <div class="rest-modal-section">
+          <div class="rest-modal-section-title">Pact Magic — Slots Restored on Short Rest</div>
+          <ul class="rest-feature-list">
+            ${slotInfo.map(s => `<li><span class="rest-feature-name">${s}</span> <span class="rest-feature-uses">→ will restore</span></li>`).join('')}
+          </ul>
+        </div>`;
+      }
+    }
+
+    body.innerHTML = `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Hit Dice</div>
+        <div class="sr-hd-status">
+          <div class="sr-hd-hp-bar">
+            <span class="sr-hd-hp-label">HP</span>
+            <span class="sr-hd-hp-val" id="sr-hp-display">${currentHP}</span>
+            <span class="sr-hd-hp-sep">/</span>
+            <span class="sr-hd-hp-max">${maxHP}</span>
+          </div>
+          <div class="sr-hd-con">CON ${conMod >= 0 ? '+' : ''}${conMod}</div>
+        </div>
+        ${dice.length === 0 ? '<p class="rest-modal-empty">No hit dice available — all spent.</p>' : ''}
+        <div class="rest-hd-list" id="rest-hd-list"></div>
+        <div class="rest-roll-log" id="rest-roll-log"></div>
+      </div>
+      ${warlockSlotHtml}
+      ${srResources.length ? `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Features Refreshed on Short Rest</div>
+        <ul class="rest-feature-list">
+          ${srResources.map(r => `<li><span class="rest-feature-name">${r.name}</span> <span class="rest-feature-uses">(${r.used}/${r.max} uses spent → will reset)</span></li>`).join('')}
+        </ul>
+      </div>` : ''}
+      ${srUsable.length ? `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Once-per-Day Features (Usable During Short Rest)</div>
+        <ul class="rest-feature-list">
+          ${srUsable.map(r => `<li><span class="rest-feature-name">${r.name}</span> <span class="rest-feature-uses">(available — use before finishing rest)</span></li>`).join('')}
+        </ul>
+      </div>` : ''}
+    `;
+
+    const hdList = body.querySelector('#rest-hd-list');
+    const rollLog = body.querySelector('#rest-roll-log');
+    const hpDisplay = body.querySelector('#sr-hp-display');
+    const liveDice = JSON.parse(JSON.stringify(dice));
+
+    const renderHdButtons = () => {
+      hdList.innerHTML = '';
+      liveDice.forEach((hd, idx) => {
+        const remaining = hd.total - hd.used;
+        const wrap = document.createElement('div');
+        wrap.className = 'sr-hd-entry';
+        wrap.innerHTML = `
+          <button class="hd-die-btn rest-hd-btn${remaining <= 0 ? ' disabled' : ''}" ${remaining <= 0 ? 'disabled' : ''}>
+            Roll d${hd.die}
+          </button>
+          <span class="sr-hd-pips">
+            ${Array.from({length: hd.total}, (_, i) =>
+              `<span class="sr-hd-pip${i < remaining ? ' avail' : ' spent'}"></span>`
+            ).join('')}
+          </span>
+          <span class="sr-hd-count">${remaining}/${hd.total}</span>`;
+        wrap.querySelector('button').addEventListener('click', () => {
+          if (liveDice[idx].used >= liveDice[idx].total) return;
+          const roll = Dice.roll(hd.die);
+          const healing = Math.max(1, roll + conMod);
+          currentHP = Math.min(maxHP, currentHP + healing);
+          liveDice[idx].used++;
+          this.sv('hpCurrent', currentHP);
+          const hpInput = this.$('hpCurrent');
+          if (hpInput) hpInput.value = currentHP;
+          this.saveHitDice(liveDice);
+          this.renderHitDice();
+          if (hpDisplay) hpDisplay.textContent = `${currentHP}`;
+          const entry = document.createElement('div');
+          entry.className = 'rest-roll-entry';
+          entry.innerHTML = `<span class="rest-roll-die">d${hd.die}</span> rolled <strong>${roll}</strong> + ${conMod} CON = <strong class="rest-roll-heal">+${healing} HP</strong>`;
+          rollLog.prepend(entry);
+          renderHdButtons();
+        });
+        hdList.appendChild(wrap);
+      });
+    };
+    renderHdButtons();
+  },
+
+  _buildLongRestBody(body) {
+    this._pendingAttune = null;
+    const weaponMastery = this.lv('weaponMastery', []) || [];
+    const charClass = this.lv('charClass', '');
+    const level = parseInt(this.lv('charLevel', 1)) || 1;
+    let masterySlots = 0;
+    if (typeof ClassResources !== 'undefined') {
+      masterySlots = ClassResources.getMasterySlots(charClass, level);
+    } else {
+      const classInfo = typeof getClassInfo === 'function' ? getClassInfo(charClass) : null;
+      masterySlots = classInfo?.weaponMasteryCount || 0;
+    }
+
+    const resources = this.lv('resources', []) || [];
+    const lrResources = resources.filter(r => (r.refresh === 'lr' || r.refresh === 'sr') && r.used > 0);
+
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    const exhaustion = this.lv('combat_exhaustion', 0);
+
+    const masteryHtml = masterySlots > 0 ? `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Weapon Mastery — Swap One Choice</div>
+        <p class="rest-modal-desc">You may swap <strong>one</strong> of your ${masterySlots} mastery weapons. Current choices: <strong>${weaponMastery.join(', ') || 'None set'}</strong></p>
+        <div class="rest-mastery-swap" id="rest-mastery-swap">
+          <label class="rest-label">Swap out:
+            <select id="rest-mastery-remove" class="rest-select">
+              <option value="">— Keep all current —</option>
+              ${weaponMastery.map(w => `<option value="${w}">${w}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rest-label" id="rest-mastery-add-wrap" style="display:none">Replace with:
+            <select id="rest-mastery-add" class="rest-select">
+              <option value="">— Choose new weapon —</option>
+            </select>
+          </label>
+        </div>
+      </div>` : '';
+
+    const inv = this.lv('inventory', []);
+    const attunableItems = inv.filter(i => i.reqAttune);
+    const attuneCount = attunableItems.filter(i => i.attuned).length;
+    const MAX_ATTUNE = 3;
+    const attunedNote = attunableItems.length ? `
+      <div class="rest-modal-section" id="rest-attune-section">
+        <div class="rest-modal-section-title">Attunement <span style="font-size:0.72rem;font-weight:400;color:var(--ink-faint)">(${attuneCount}/${MAX_ATTUNE} slots used)</span></div>
+        <p class="rest-modal-desc">Click items to attune or un-attune. Maximum 3 items can be attuned at once.</p>
+        <div class="rest-attune-list">
+          ${attunableItems.map((it, idx) => `
+            <label class="rest-attune-row" data-attune-idx="${idx}">
+              <span class="rest-attune-cb${it.attuned ? ' checked' : ''}" data-attune-idx="${idx}"></span>
+              <span class="rest-attune-name">${it.name}</span>
+              <span class="rest-attune-req">${typeof it.reqAttune === 'string' ? it.reqAttune : ''}</span>
+            </label>`).join('')}
+        </div>
+        <div class="rest-attune-warning" id="rest-attune-warning" style="display:none"></div>
+      </div>` : `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Attunement</div>
+        <p class="rest-modal-empty">No items in inventory require attunement.</p>
+      </div>`;
+
+    const lrResourcesHtml = lrResources.length ? `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Features & Resources Restored</div>
+        <ul class="rest-feature-list">
+          ${lrResources.map(r => `<li><span class="rest-feature-name">${r.name}</span> <span class="rest-feature-uses">(${r.used}/${r.max} uses spent → will reset)</span></li>`).join('')}
+        </ul>
+      </div>` : '';
+
+    const isPreparedCaster = typeof ClassResources !== 'undefined' && ClassResources.PREPARED_SPELL_CLASSES.includes(charClass);
+    const preparedSpellHtml = isPreparedCaster ? `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Prepared Spells</div>
+        <p class="rest-modal-desc">As a <strong>${charClass}</strong>, you may change your prepared spells after completing a Long Rest.</p>
+        <button class="btn btn-sm" id="rest-go-spells">Go to Spells Tab</button>
+      </div>` : '';
+
+    body.innerHTML = `
+      <div class="rest-modal-section rest-summary-section">
+        <div class="rest-modal-section-title">Long Rest Summary</div>
+        <ul class="rest-summary-list">
+          <li>HP restored to maximum <strong>(${maxHP} HP)</strong></li>
+          <li>Temporary HP removed</li>
+          <li>Half your hit dice restored (minimum 1)</li>
+          <li>All spell slots restored</li>
+          <li>Death saves reset</li>
+          ${exhaustion > 0 ? `<li>Exhaustion reduced from ${exhaustion} to ${exhaustion - 1}</li>` : ''}
+        </ul>
+      </div>
+      ${masteryHtml}
+      ${lrResourcesHtml}
+      ${preparedSpellHtml}
+      ${attunedNote}
+    `;
+
+    body.querySelector('#rest-go-spells')?.addEventListener('click', () => {
+      this._closeRestModal();
+      const spellsTab = document.querySelector('[data-tab="spells"]');
+      if (spellsTab) spellsTab.click();
+    });
+
+    if (masterySlots > 0) {
+      const removeSelect = body.querySelector('#rest-mastery-remove');
+      const addWrap = body.querySelector('#rest-mastery-add-wrap');
+      const addSelect = body.querySelector('#rest-mastery-add');
+      if (removeSelect && addSelect && addWrap) {
+        const allowRanged = typeof ClassResources !== 'undefined' && ClassResources.allowsRangedMastery(charClass);
+        const allWeapons = typeof getWeaponsForMastery === 'function' ? getWeaponsForMastery(allowRanged) : (typeof getMeleeWeaponsForMastery === 'function' ? getMeleeWeaponsForMastery() : []);
+        removeSelect.addEventListener('change', () => {
+          const swapOut = removeSelect.value;
+          if (!swapOut) { addWrap.style.display = 'none'; return; }
+          addWrap.style.display = '';
+          addSelect.innerHTML = '<option value="">— Choose new weapon —</option>';
+          allWeapons.filter(w => !weaponMastery.includes(w.name) || w.name === swapOut).forEach(w => {
+            const opt = document.createElement('option');
+            opt.value = w.name;
+            opt.textContent = `${w.name} (${w.category})`;
+            addSelect.appendChild(opt);
+          });
+        });
+      }
+    }
+
+    if (attunableItems.length) {
+      const liveAttune = attunableItems.map(it => ({ name: it.name, attuned: !!it.attuned }));
+      const updateAttuneDisplay = () => {
+        const count = liveAttune.filter(a => a.attuned).length;
+        const section = body.querySelector('#rest-attune-section');
+        if (!section) return;
+        const titleEl = section.querySelector('.rest-modal-section-title');
+        if (titleEl) titleEl.innerHTML = `Attunement <span style="font-size:0.72rem;font-weight:400;color:var(--ink-faint)">(${count}/${MAX_ATTUNE} slots used)</span>`;
+        liveAttune.forEach((a, idx) => {
+          const cb = section.querySelector(`.rest-attune-cb[data-attune-idx="${idx}"]`);
+          if (cb) cb.classList.toggle('checked', a.attuned);
+        });
+      };
+      body.querySelectorAll('.rest-attune-row').forEach((row, idx) => {
+        row.addEventListener('click', () => {
+          const a = liveAttune[idx];
+          const warning = body.querySelector('#rest-attune-warning');
+          if (!a.attuned && liveAttune.filter(x => x.attuned).length >= MAX_ATTUNE) {
+            if (warning) { warning.textContent = 'You can only be attuned to 3 items at once.'; warning.style.display = ''; setTimeout(() => { warning.style.display = 'none'; }, 2500); }
+            return;
+          }
+          a.attuned = !a.attuned;
+          updateAttuneDisplay();
+        });
+      });
+      this._pendingAttune = liveAttune;
+    } else {
+      this._pendingAttune = null;
+    }
+  },
+
+  _buildDawnBody(body) {
+    const resources = this.lv('resources', []) || [];
+    const dawnResources = resources.filter(r => r.refresh === 'dawn');
+
+    body.innerHTML = `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Dawn</div>
+        <p class="rest-modal-desc">The following features and resources recharge at dawn. These are <strong>not</strong> tied to Short or Long Rests — they reset when the sun rises, regardless of when you last rested.</p>
+        ${dawnResources.length === 0 ? '<p class="rest-modal-empty">No dawn-refresh features tracked. Add resources with "At Dawn" refresh type.</p>' : `
+        <ul class="rest-feature-list">
+          ${dawnResources.map(r => {
+            const rechargeInfo = r.rechargeRoll ? ` · Recharges: ${r.rechargeRoll}` : '';
+            return `<li>
+              <span class="rest-feature-name">${r.name}</span>
+              <span class="rest-feature-uses">${r.used > 0 ? `(${r.used}/${r.max} uses spent → will reset)` : `(${r.max - r.used}/${r.max} available — already full)`}${rechargeInfo}</span>
+              ${r.rechargeRoll ? `<button class="btn btn-sm rest-dawn-roll" data-roll="${r.rechargeRoll}" data-name="${r.name}" style="margin-left:6px;font-size:0.72rem">Roll ${r.rechargeRoll}</button>` : ''}
+            </li>`;
+          }).join('')}
+        </ul>`}
+      </div>
+    `;
+
+    body.querySelectorAll('.rest-dawn-roll').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const expr = btn.dataset.roll;
+        const result = typeof Dice !== 'undefined' ? Dice.rollDamageString(expr) : null;
+        if (result && result.total !== undefined) {
+          btn.textContent = `Rolled: ${result.total}`;
+          btn.disabled = true;
+          Dice.showResult(`${btn.dataset.name} Recharge`, result);
+        }
+      });
+    });
+  },
+
+  _doShortRest() {
+    this.resetResourcesByType(['sr']);
+
+    const charClass = this.lv('charClass', '');
+    if (charClass === 'Warlock') {
+      for (let lvl = 1; lvl <= 9; lvl++) {
+        const max = this.lv(`slotMax_${lvl}`, 0);
+        for (let i = 0; i < max; i++) {
+          this.sv(`slotUsed_${lvl}_${i}`, false);
+        }
+      }
+      this.buildSpellSlots();
+    }
+
+    this.renderHitDice();
+  },
+
+  _doLongRest(body) {
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    this.sv('hpCurrent', maxHP);
+    const hpInput = this.$('hpCurrent');
+    if (hpInput) hpInput.value = maxHP;
+
+    this.sv('hpTemp', 0);
+    const tempInput = this.$('hpTemp');
+    if (tempInput) tempInput.value = 0;
+
+    const dice = this.getHitDice();
+    dice.forEach(hd => {
+      if (hd.used > 0) {
+        const restored = Math.max(1, Math.floor(hd.total / 2));
+        hd.used = Math.max(0, hd.used - restored);
+      }
+    });
+    this.saveHitDice(dice);
+    this.renderHitDice();
+
+    for (let lvl = 1; lvl <= 9; lvl++) {
+      const max = this.lv(`slotMax_${lvl}`, 0);
+      for (let i = 0; i < max; i++) {
+        this.sv(`slotUsed_${lvl}_${i}`, false);
+      }
+    }
+
+    for (let i = 0; i < 3; i++) {
+      this.sv(`ds${i}`, false);
+      this.sv(`df${i}`, false);
+      const ds = document.querySelector(`[data-save="ds${i}"]`);
+      const df = document.querySelector(`[data-save="df${i}"]`);
+      if (ds) ds.classList.remove('filled');
+      if (df) df.classList.remove('filled');
+    }
+
+    this.resetResourcesByType(['lr', 'sr']);
+
+    const exhaustion = this.lv('combat_exhaustion', 0);
+    if (exhaustion > 0) this.sv('combat_exhaustion', exhaustion - 1);
+
+    this.sv('combat_concentrating', false);
+    this.sv('combat_concSpell', '');
+
+    if (this._pendingAttune) {
+      const inv = this.lv('inventory', []);
+      this._pendingAttune.forEach(a => {
+        const it = inv.find(i => i.name === a.name);
+        if (it) it.attuned = a.attuned;
+      });
+      this.sv('inventory', inv);
+      this._pendingAttune = null;
+      this.renderMagicItems();
+    }
+
+    if (body) {
+      const removeSelect = body.querySelector('#rest-mastery-remove');
+      const addSelect = body.querySelector('#rest-mastery-add');
+      if (removeSelect?.value && addSelect?.value) {
+        const mastery = this.lv('weaponMastery', []) || [];
+        const idx = mastery.indexOf(removeSelect.value);
+        if (idx >= 0) mastery[idx] = addSelect.value;
+        this.sv('weaponMastery', mastery);
+      }
+    }
+
+    this.buildSpellSlots();
+    this.recalcAll();
+  },
+
+  _doDawn() {
+    this.resetResourcesByType(['dawn']);
   },
 
   initEquippedGear() {
@@ -4713,7 +5959,6 @@ window.Sheet = {
         this.sv('conditions', conds);
         this._renderConditions();
         this.applyConditionEffects();
-        if (typeof Combat !== 'undefined' && Combat._buildConditions) Combat._buildConditions();
       });
 
       // Tooltip on hover
@@ -4818,10 +6063,6 @@ window.Sheet = {
         }
         this._renderConditions();
         this.applyConditionEffects();
-        if (typeof Combat !== 'undefined') {
-          Combat._buildConditions();
-          Combat._buildExhaustion();
-        }
       });
 
       // Tooltip on hover for current effect
@@ -4835,6 +6076,46 @@ window.Sheet = {
 
     exhDiv.appendChild(exhPips);
     el.appendChild(exhDiv);
+  },
+
+  _highlightSpellText(html) {
+    // Damage types (red)
+    html = html.replace(/\b(Fire|Cold|Lightning|Thunder|Acid|Poison|Necrotic|Radiant|Force|Psychic|Bludgeoning|Piercing|Slashing)\b(?:\s+damage)?/g,
+      (match) => `<span class="spell-kw-dmg">${match}</span>`);
+    // Healing keywords (green)
+    html = html.replace(/\b(hit points?|regains?|heals?|healing|temporary hit points)\b/gi,
+      '<span class="spell-kw-heal">$1</span>');
+    // Conditions (purple)
+    html = html.replace(/\b(Blinded|Charmed|Deafened|Frightened|Grappled|Incapacitated|Invisible|Paralyzed|Petrified|Poisoned|Prone|Restrained|Stunned|Unconscious|Exhaustion)\b/g,
+      '<span class="spell-kw-cond">$1</span>');
+    // Rest keywords (teal)
+    html = html.replace(/\b(Short Rest|Long Rest|Dawn)\b/g,
+      '<span class="spell-kw-rest">$1</span>');
+    // Mechanical terms (gold)
+    html = html.replace(/\b(saving throw|attack roll|spell attack|ability check|Advantage|Disadvantage|AC|Armor Class|spell save DC|concentration|ritual|bonus action|action|reaction|opportunity attack|difficult terrain|proficiency bonus|ability modifier|spell slot|cantrip)\b/gi,
+      '<span class="spell-kw-mech">$1</span>');
+    // Dice expressions (blue)
+    html = html.replace(/\b(\d+d\d+(?:\s*\+\s*\d+)?)\b/g,
+      '<span class="spell-kw-dice">$1</span>');
+    // Distances and durations (blue)
+    html = html.replace(/\b(\d+[\s-](?:feet|foot|ft|mile|miles|minutes?|hours?|rounds?))\b/gi,
+      '<span class="spell-kw-dice">$1</span>');
+    // Schools of magic (orange italic)
+    html = html.replace(/\b(Abjuration|Conjuration|Divination|Enchantment|Evocation|Illusion|Necromancy|Transmutation)\b/g,
+      '<span class="spell-kw-school">$1</span>');
+    // Spell names (cyan) — match known spells from loaded data
+    if (typeof DndData !== 'undefined' && DndData.spells) {
+      if (!this._spellNamePattern) {
+        const names = DndData.spells.map(s => s.name).filter(n => n.length > 3).sort((a, b) => b.length - a.length);
+        const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        this._spellNamePattern = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'g');
+      }
+      html = html.replace(this._spellNamePattern, (match) => {
+        // Don't double-wrap if already inside a span
+        return `<span class="spell-kw-name">${match}</span>`;
+      });
+    }
+    return html;
   },
 
   _highlightConditionText(text) {

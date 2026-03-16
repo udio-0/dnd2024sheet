@@ -163,6 +163,9 @@ window.CharStore = {
       entry.updatedAt = now;
       this.saveIndex(index);
     }
+
+    // Mark as dirty for file sync
+    if (typeof FileSync !== 'undefined') FileSync.markDirty(id);
   },
 
   deleteCharacter(id) {

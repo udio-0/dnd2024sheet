@@ -14,15 +14,85 @@ window.Home = {
       reader.onload = e => {
         try {
           const id = CharStore.importCharacter(e.target.result);
+          // Immediately save to folder if connected
+          if (typeof FileSync !== 'undefined' && FileSync.hasFolder()) {
+            FileSync.saveCharacterToFile(id);
+          }
           Home.render();
         } catch (err) { alert('Invalid character file: ' + err.message); }
       };
       reader.readAsText(file);
       this.value = '';
     });
+
+    // Folder picker
+    const folderBtn = document.getElementById('btn-open-folder');
+    const changeBtn = document.getElementById('btn-change-folder');
+    if (folderBtn) {
+      folderBtn.addEventListener('click', () => this._openFolder());
+      // Hide if File System Access API not supported
+      if (typeof FileSync !== 'undefined' && !FileSync.isSupported()) {
+        folderBtn.style.display = 'none';
+      }
+    }
+    if (changeBtn) {
+      changeBtn.addEventListener('click', () => this._openFolder());
+    }
   },
 
-  render() {
+  async _openFolder() {
+    if (typeof FileSync === 'undefined') {
+      alert('FileSync module not loaded');
+      return;
+    }
+    if (!FileSync.isSupported()) {
+      alert('Your browser does not support the File System Access API.\nPlease use Chrome or Edge.');
+      return;
+    }
+    try {
+      const ok = await FileSync.pickFolder();
+      if (!ok) return;
+
+      // Sync characters from folder
+      await FileSync.syncFromFolder();
+      FileSync.markAllClean(); // freshly loaded = clean
+
+      this._updateFolderStatus();
+      this.render();
+    } catch (err) {
+      console.error('Open folder error:', err);
+      alert('Error opening folder: ' + err.message);
+    }
+  },
+
+  _updateFolderStatus() {
+    const status = document.getElementById('folder-status');
+    const folderBtn = document.getElementById('btn-open-folder');
+    if (typeof FileSync === 'undefined' || !FileSync.hasFolder()) {
+      if (status) status.style.display = 'none';
+      if (folderBtn) folderBtn.style.display = '';
+      return;
+    }
+    if (status) status.style.display = 'inline-flex';
+    if (folderBtn) folderBtn.style.display = 'none';
+    // Show folder name
+    const textEl = document.getElementById('folder-status-text');
+    if (textEl && FileSync._dirHandle) {
+      textEl.textContent = FileSync._dirHandle.name || 'Local folder';
+    }
+  },
+
+  async render() {
+    // Auto-sync from folder if handle was restored from a previous session
+    if (typeof FileSync !== 'undefined' && FileSync.hasFolder() && !this._synced) {
+      this._synced = true;
+      const ok = await FileSync.ensurePermission();
+      if (ok) {
+        await FileSync.syncFromFolder();
+        FileSync.markAllClean();
+      }
+    }
+    this._updateFolderStatus();
     const chars = CharStore.listCharacters();
     const grid = document.getElementById('character-cards');
     const empty = document.getElementById('empty-state');
@@ -72,8 +142,12 @@ window.Home = {
         URL.revokeObjectURL(url);
       });
 
-      card.querySelector('.card-delete').addEventListener('click', () => {
+      card.querySelector('.card-delete').addEventListener('click', async () => {
         if (confirm(`Delete "${c.name}"? This cannot be undone.`)) {
+          // Also delete from folder
+          if (typeof FileSync !== 'undefined') {
+            await FileSync.deleteCharacterFile(c.id);
+          }
           CharStore.deleteCharacter(c.id);
           this.render();
         }

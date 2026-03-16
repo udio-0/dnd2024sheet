@@ -1241,6 +1241,11 @@ function parseRacialSpells(additionalSpells, subraceName, subraceEntries) {
     });
   });
 
+  // Deduplicate spell lists (some species data yields the same cantrip via multiple paths)
+  result.cantrips = [...new Set(result.cantrips)];
+  result.level3  = [...new Set(result.level3)];
+  result.level5  = [...new Set(result.level5)];
+
   return result;
 }
 

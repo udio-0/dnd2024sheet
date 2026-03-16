@@ -70,6 +70,10 @@
             </div>
           </div>
         </div>
+        <button id="btn-save-char" class="save-btn" title="Save character to file" style="display:none">
+          <span class="save-btn-text">Save</span>
+          <span class="save-btn-dot"></span>
+        </button>
         <button id="btn-export-pdf" class="ua-toggle" title="Export character to PDF" style="display:none">
           <span>PDF</span>
         </button>
@@ -102,13 +106,19 @@
             <button id="btn-new-char" class="btn btn-primary btn-lg">+ Create New Character</button>
             <button id="btn-import-home" class="btn btn-lg">Import Character</button>
             <input type="file" id="import-file-home" accept=".json" hidden>
+            <button id="btn-open-folder" class="btn btn-lg btn-folder" title="Open a local folder to load and save characters">Open Folder</button>
+          </div>
+          <div id="folder-status" class="folder-status" style="display:none">
+            <span class="folder-status-dot"></span>
+            <span id="folder-status-text">Local folder</span>
+            <button id="btn-change-folder" class="folder-change-btn" title="Change folder">Change</button>
           </div>
         </div>
         <div id="character-cards" class="character-grid"></div>
         <div id="empty-state" class="empty-state" style="display:none">
           <div class="empty-icon">🏰</div>
           <p>No adventurers yet.</p>
-          <p>Create your first character to begin!</p>
+          <p id="empty-text">Open a folder with character files or create your first character!</p>
         </div>
       </div>
     </div>
@@ -132,7 +142,7 @@
       <!-- SHEET TABS -->
       <nav class="tabs" id="sheet-tabs">
         <button class="tab active" data-tab="main">Character</button>
-        <button class="tab" data-tab="combat">Combat</button>
+
         <button class="tab" data-tab="spells">Spells</button>
         <button class="tab" data-tab="features">Features</button>
         <button class="tab" data-tab="chronicle">Chronicle</button>
@@ -271,7 +281,6 @@
 
               <div class="combat-box ds-box">
                 <div class="ds-inner">
-                  <button class="ds-roll-bar" id="btn-death-save-roll" title="Roll Death Saving Throw (DC 10)"></button>
                   <div class="death-saves-grid">
                     <div class="death-row">
                       <span class="death-icon heart" data-save="ds0" title="Death Save Success"></span>
@@ -285,7 +294,7 @@
                     </div>
                   </div>
                 </div>
-                <div class="combat-label">Death Saves</div>
+                <button class="combat-label ds-roll-label" id="btn-death-save-roll" title="Roll Death Saving Throw (DC 10)">Death Saves</button>
               </div>
             </div>
 
@@ -354,10 +363,18 @@
               <div id="conditions-grid" class="conditions-grid-2col"></div>
             </div>
 
-            <!-- COMBAT ECONOMY -->
-            <div class="sheet-box" id="combat-economy-box">
-              <div class="box-title">Combat Economy</div>
-              <div id="combat-economy-content"></div>
+            <!-- CONCENTRATION -->
+            <div class="sheet-box" id="char-conc-box">
+              <div class="box-title">Concentration</div>
+              <div class="char-conc-bar" id="char-conc-bar">
+                <label class="spell-conc-toggle" title="Toggle concentration">
+                  <input type="checkbox" id="char-conc-active">
+                </label>
+                <input type="text" id="char-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
+                <button class="btn btn-sm spell-conc-save-btn" id="char-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
+                <button class="btn btn-sm scroll-btn" id="btn-learn-scroll" title="Learn a spell from a scroll in your inventory">Learn Scroll</button>
+                <button class="btn btn-sm scroll-btn" id="btn-cast-scroll" title="Cast a spell from a scroll in your inventory">Cast Scroll</button>
+              </div>
             </div>
 
             <!-- EQUIPPED GEAR -->
@@ -405,12 +422,6 @@
         </div>
       </div><!-- /tab-main -->
 
-      <!-- TAB: COMBAT -->
-      <div id="tab-combat" class="tab-panel">
-        <div class="combat-tracker" id="combat-tracker">
-          <!-- Rendered by combat.js -->
-        </div>
-      </div>
 
       <!-- TAB: SPELLS -->
       <div id="tab-spells" class="tab-panel">
@@ -422,29 +433,25 @@
           </div>
           <div class="spell-info-field"><div class="badge badge-lg" id="spellSaveDC">8</div><div class="field-label">Spell Save DC</div></div>
           <div class="spell-info-field"><div class="badge badge-lg spell-atk-rollable" id="spellAttackBonus" title="Roll Spell Attack">+0</div><div class="field-label">Spell Attack</div></div>
-          <div class="spell-info-field spell-prepared-count">
-            <div class="badge badge-lg" id="spellPreparedCount">0</div>
+          <div class="spell-info-field spell-prepared-count" title="Check class rules to know how many spells each class can have prepared at any time">
+            <div class="spell-prepared-display"><span id="spellPreparedCount">0</span><span class="spell-prepared-sep">/</span><input type="number" id="spellPreparedMax" class="spell-prepared-max" min="0" max="99" data-save="spellPreparedMax" placeholder="--"></div>
             <div class="field-label">Prepared</div>
           </div>
+          <div class="spell-slots-bar" id="spell-slots-bar"></div>
         </div>
 
-        <!-- Concentration tracker (inline in spell tab) -->
-        <div class="spell-conc-bar" id="spell-conc-bar">
-          <label class="spell-conc-toggle" title="Toggle concentration">
-            <input type="checkbox" id="spell-conc-active">
-            <span class="spell-conc-icon">&#9673;</span>
-            <span>Concentrating</span>
-          </label>
-          <input type="text" id="spell-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
-          <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
-          <button class="btn btn-sm spell-conc-drop-btn" id="spell-conc-drop" title="Drop concentration">Drop</button>
-        </div>
-
-        <div class="spell-slots-bar" id="spell-slots-bar"></div>
-
-        <!-- Spell filters -->
+        <!-- Add Spell button + Concentration tracker + Scroll buttons + Filters -->
         <div class="spell-filter-bar" id="spell-filter-bar">
-          <div class="spell-search-bar"><input type="text" id="spell-search" placeholder="Search spells to add..." class="spell-search-input" autocomplete="off"><div id="spell-search-results" class="autocomplete-dropdown" style="display:none"></div></div>
+          <button class="btn btn-sm spell-add-btn" id="btn-add-spell">Add Spell</button>
+          <div class="spell-conc-bar" id="spell-conc-bar">
+            <label class="spell-conc-toggle" title="Toggle concentration">
+              <input type="checkbox" id="spell-conc-active">
+            </label>
+            <input type="text" id="spell-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
+            <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
+          </div>
+          <button class="btn btn-sm scroll-btn" id="spell-tab-learn-scroll" title="Learn a spell from a scroll in your inventory">Learn Scroll</button>
+          <button class="btn btn-sm scroll-btn" id="spell-tab-cast-scroll" title="Cast a spell from a scroll in your inventory">Cast Scroll</button>
           <div class="spell-filters">
             <button class="spell-filter-btn active" data-filter="all" title="Show all spells">All</button>
             <button class="spell-filter-btn" data-filter="prepared" title="Show only prepared spells">Prepared</button>
@@ -493,9 +500,7 @@
                 <div class="mini-field"><input type="text" id="charHair" data-save="charHair"><label>Hair</label></div>
               </div>
             </div>
-          </div>
 
-          <div class="chronicle-right">
             <!-- Personality -->
             <div class="sheet-box"><div class="box-title">Personality Traits</div><textarea id="personalityTraits" rows="3" data-save="personalityTraits"></textarea></div>
             <div class="two-col-row">
@@ -503,6 +508,9 @@
               <div class="sheet-box"><div class="box-title">Bonds</div><textarea id="bonds" rows="3" data-save="bonds"></textarea></div>
             </div>
             <div class="sheet-box"><div class="box-title">Flaws</div><textarea id="flaws" rows="3" data-save="flaws"></textarea></div>
+          </div>
+
+          <div class="chronicle-right">
             <div class="sheet-box" id="bg-flavor-box" style="display:none"><div class="box-title" id="bg-flavor-title">Background</div><div class="auto-traits" id="bg-flavor-text"></div></div>
             <div class="sheet-box"><div class="box-title">Backstory</div><textarea id="backstory" rows="7" data-save="backstory"></textarea></div>
             <div class="sheet-box"><div class="box-title">Allies &amp; Organizations</div><textarea id="allies" rows="5" data-save="allies"></textarea></div>
@@ -513,20 +521,78 @@
       <!-- TAB: FEATURES -->
       <div id="tab-features" class="tab-panel">
         <div class="features-body">
-          <div class="sheet-box" id="full-class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="full-class-subtitle"></span></div><div id="full-class-features" class="features-list"></div></div>
-          <div class="sheet-box" id="full-feats-box"><div class="box-title">Feats</div><div id="full-feats-list" class="features-list"></div></div>
-          <div class="sheet-box" id="full-charopts-box"><div class="box-title">Other Character Options</div><div id="full-charopts-list" class="features-list"></div></div>
-          <div class="sheet-box" id="full-species-box"><div class="box-title">Specie Traits</div><div id="full-species-traits" class="features-list"></div></div>
-          <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures"></textarea></div>
+          <div class="features-col features-col-left">
+            <div class="sheet-box" id="full-class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="full-class-subtitle"></span></div><div id="full-class-features" class="features-list"></div></div>
+          </div>
+          <div class="features-col features-col-right">
+            <div class="sheet-box" id="full-feats-box"><div class="box-title">Feats</div><div id="full-feats-list" class="features-list"></div></div>
+            <div class="sheet-box" id="full-charopts-box"><div class="box-title">Other Character Options</div><div id="full-charopts-list" class="features-list"></div></div>
+            <div class="sheet-box" id="full-species-box"><div class="box-title">Specie Traits</div><div id="full-species-traits" class="features-list"></div></div>
+            <div class="sheet-box"><div class="box-title">Additional Features</div><textarea id="customFeatures" rows="8" data-save="customFeatures"></textarea></div>
+          </div>
         </div>
       </div>
 
       <!-- TAB: NOTES -->
       <div id="tab-notes" class="tab-panel">
-        <div class="notes-body">
-          <div class="sheet-box"><div class="box-title">Campaign Notes</div><textarea id="campaignNotes" rows="15" data-save="campaignNotes"></textarea></div>
-          <div class="sheet-box"><div class="box-title">NPC Tracker</div><textarea id="npcNotes" rows="10" data-save="npcNotes"></textarea></div>
-          <div class="sheet-box"><div class="box-title">Quest Log</div><textarea id="questNotes" rows="8" data-save="questNotes"></textarea></div>
+        <div class="notes-body" id="notes-tab-root">
+
+          <!-- SIDEBAR -->
+          <div class="notes-sidebar">
+            <div class="notes-sidebar-header">
+              <div class="notes-sidebar-actions">
+                <button id="notes-btn-new" class="notes-action-btn" title="New Note">+ Note</button>
+                <button id="notes-btn-new-folder" class="notes-action-btn" title="New Folder">+ Folder</button>
+                <button id="notes-btn-export" class="notes-action-btn notes-io-btn" title="Export Notes">↓ Save</button>
+                <button id="notes-btn-import" class="notes-action-btn notes-io-btn" title="Import Notes">↑ Load</button>
+                <input type="file" id="notes-import-file" accept=".json" style="display:none">
+              </div>
+              <div class="notes-search-wrap">
+                <input type="text" id="notes-search" class="notes-search" placeholder="Search notes...">
+              </div>
+            </div>
+
+            <!-- Tag filters -->
+            <div class="notes-tag-filters" id="notes-tag-filters"></div>
+
+            <!-- Folder tree -->
+            <div class="notes-folder-tree" id="notes-folder-tree"></div>
+
+            <!-- Note list -->
+            <div class="notes-list" id="notes-list"></div>
+          </div>
+
+          <!-- EDITOR -->
+          <div class="notes-editor">
+            <button id="notes-btn-back" class="notes-back-btn" title="Back to list">← Back</button>
+            <div class="notes-editor-toolbar" id="notes-editor-toolbar">
+              <input type="text" id="notes-editor-title" class="notes-editor-title" placeholder="Note title..." disabled>
+              <div class="notes-toolbar-btns">
+                <button id="notes-btn-pin" class="notes-tool-btn" title="Pin/Unpin">📌</button>
+                <button id="notes-btn-move" class="notes-tool-btn" title="Move to folder">📁</button>
+                <button id="notes-btn-delete" class="notes-tool-btn notes-tool-danger" title="Delete note"><span class="notes-delete-icon">✕</span> Delete</button>
+              </div>
+            </div>
+            <div class="notes-tag-bar" id="notes-tag-bar">
+              <div class="notes-editor-tags" id="notes-editor-tags"></div>
+              <button id="notes-add-tag-btn" class="notes-add-tag-btn" title="Add tag">+ Tag</button>
+            </div>
+            <div class="notes-symbol-legend">
+              <span class="notes-legend-title">Link shortcuts:</span>
+              <span class="notes-legend-item" style="--tag-color:#8e44ad"><kbd>@</kbd>NPC</span>
+              <span class="notes-legend-item" style="--tag-color:#27ae60"><kbd>#</kbd>Location</span>
+              <span class="notes-legend-item" style="--tag-color:#c0392b"><kbd>!</kbd>Quest</span>
+              <span class="notes-legend-item" style="--tag-color:#d4a017"><kbd>$</kbd>Item</span>
+              <span class="notes-legend-item" style="--tag-color:#7f8c8d"><kbd>&amp;</kbd>Faction</span>
+              <span class="notes-legend-item" style="--tag-color:#8B4513"><kbd>~</kbd>Lore</span>
+              <span class="notes-legend-item" style="--tag-color:#2980b9"><kbd>^</kbd>Event</span>
+              <span class="notes-legend-item" style="--tag-color:#e67e22"><kbd>%</kbd>Session</span>
+            </div>
+            <textarea id="notes-editor-content" class="notes-editor-content" placeholder="Write your note here...&#10;&#10;Link shortcuts:&#10;  @Name → NPC    #Place → Location&#10;  !Quest → Quest    $Item → Item&#10;  &amp;Faction    ~Lore    ^Event    %Session&#10;  [[Any Note]] → generic link" disabled></textarea>
+            <div class="notes-link-preview" id="notes-link-preview"></div>
+            <div class="notes-editor-meta" id="notes-editor-meta"></div>
+          </div>
+
         </div>
       </div>
 
@@ -606,6 +672,7 @@
   <!-- SCRIPTS (dependency order) -->
   <script src="js/ua-data.js"></script>
   <script src="js/data.js"></script>
+  <script src="js/filesync.js"></script>
   <script src="js/store.js"></script>
   <script src="js/router.js"></script>
   <script src="js/dice.js"></script>
@@ -628,7 +695,9 @@
     </div>
   </div>
 
+
   <script src="js/combat.js"></script>
+  <script src="js/notes.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/levelup.js"></script>
   <script src="js/app.js"></script>
