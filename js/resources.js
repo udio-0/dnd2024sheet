@@ -100,6 +100,12 @@ window.ClassResources = {
     'Fey-Touched: Misty Step': {
       text: 'You can cast Misty Step once without expending a spell slot. You regain the ability after a Long Rest.',
     },
+    'Phantasmal Creatures (Free Cast)': {
+      text: 'Once per Long Rest, you can cast Summon Beast or Summon Fey without expending a spell slot. The spell automatically uses an Illusion version of the creature.',
+    },
+    'Illusory Self': {
+      text: 'When a creature makes an attack roll against you, you can use your Reaction to interpose an illusory duplicate. The attack automatically misses. Once used, you must finish a Short or Long Rest before using it again.',
+    },
   },
 
   /**
@@ -246,7 +252,13 @@ window.ClassResources = {
     'Warlock:The Fiend': [],
     'Warlock:The Archfey': [],
     'Wizard:School of Evocation': [],
+    'Wizard:Evoker': [],
     'Wizard:School of Divination': [
+      { name: 'Portent', maxAt: [
+        { level: 2, max: 2 }, { level: 14, max: 3 },
+      ], refresh: 'lr', startLevel: 2 },
+    ],
+    'Wizard:Diviner': [
       { name: 'Portent', maxAt: [
         { level: 2, max: 2 }, { level: 14, max: 3 },
       ], refresh: 'lr', startLevel: 2 },
@@ -257,6 +269,14 @@ window.ClassResources = {
     ],
     'Paladin:Oath of Devotion': [],
     'Paladin:Oath of the Ancients': [],
+    'Wizard:Illusionist': [
+      { name: 'Phantasmal Creatures (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
+      { name: 'Illusory Self', maxAt: [{ level: 10, max: 1 }], refresh: 'sr', startLevel: 10 },
+    ],
+    'Wizard:School of Illusion': [
+      { name: 'Phantasmal Creatures (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
+      { name: 'Illusory Self', maxAt: [{ level: 10, max: 1 }], refresh: 'sr', startLevel: 10 },
+    ],
   },
 
   /* ================================================================

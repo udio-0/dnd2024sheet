@@ -4,10 +4,48 @@
    ============================================= */
 'use strict';
 
+// Attaches the spell tooltip (shared with wizard.js) to a spell row element.
+// Reuses .wiz-spell-tooltip CSS, _highlightSpellKeywords, _positionSpellTooltip (wizard.js globals).
+function _luAttachSpellTooltip(row, spell) {
+  row.addEventListener('mouseenter', (e) => {
+    let tip = document.getElementById('wiz-spell-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'wiz-spell-tooltip';
+      tip.className = 'wiz-spell-tooltip';
+      document.body.appendChild(tip);
+    }
+    const desc = typeof entriesToHtml === 'function' ? entriesToHtml(spell.entries || []) : '';
+    const higher = spell.entriesHigherLevel
+      ? `<p class="wiz-tip-higher"><strong>At Higher Levels.</strong> ${typeof entriesToHtml === 'function' ? entriesToHtml(spell.entriesHigherLevel) : ''}</p>`
+      : '';
+    const header = `<div class="wiz-tip-header"><span class="wiz-tip-name">${spell.name}</span><span class="wiz-tip-level">${spell._levelStr || ''} ${spell._schoolName ? '— ' + spell._schoolName : ''}</span></div>`;
+    const meta = `<div class="wiz-tip-meta">${[spell._castTime, spell._rangeStr, spell._componentsStr, spell._durationStr].filter(Boolean).join(' | ')}</div>`;
+    const body = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords(desc + higher) : (desc + higher);
+    tip.innerHTML = header + meta + '<div class="wiz-tip-body">' + body + '</div>';
+    tip.style.display = 'block';
+    if (typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+  });
+  row.addEventListener('mousemove', (e) => {
+    const tip = document.getElementById('wiz-spell-tooltip');
+    if (tip && typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+  });
+  row.addEventListener('mouseleave', () => {
+    const tip = document.getElementById('wiz-spell-tooltip');
+    if (tip) tip.style.display = 'none';
+  });
+}
+
 window.LevelUp = {
   ASI_LEVELS: [4, 8, 12, 16, 19],
   EXTRA_ASI_LEVELS: { 'Fighter': [6, 14], 'Rogue': [10] },
-  EXPERTISE_LEVELS: { 'Rogue': [6], 'Bard': [2, 9] },
+  EXPERTISE_LEVELS: { 'Rogue': [6], 'Bard': [2, 9], 'Wizard': [2] },
+  // How many skills to pick (default 2; Wizard Scholar picks only 1)
+  EXPERTISE_COUNTS: { 'Wizard': 1 },
+  // Skills restricted for expertise; null = all proficient skills
+  EXPERTISE_SKILL_FILTERS: {
+    'Wizard': ['arcana', 'history', 'investigation', 'medicine', 'nature', 'religion'],
+  },
   SUBCLASS_LEVELS: {
     'Barbarian': 3, 'Bard': 3, 'Cleric': 3, 'Druid': 3, 'Fighter': 3,
     'Monk': 3, 'Paladin': 3, 'Ranger': 3, 'Rogue': 3, 'Sorcerer': 3,
@@ -70,6 +108,8 @@ window.LevelUp = {
   _isExpertiseLevel(level, className) {
     return (this.EXPERTISE_LEVELS[className] || []).includes(level);
   },
+  _expertiseCount(className) { return this.EXPERTISE_COUNTS[className] ?? 2; },
+  _expertiseSkillFilter(className) { return this.EXPERTISE_SKILL_FILTERS[className] ?? null; },
 
   // Subclass mechanical grants: spells, tool proficiencies, spell modifications
   SUBCLASS_GRANTS: {
@@ -83,6 +123,43 @@ window.LevelUp = {
       6: {
         spells: [{ name: 'Spirit Guardians', level: 3, prepared: true, alwaysPrepared: true, subclass: true }],
       },
+    },
+    'Wizard:Illusionist': {
+      3: {
+        // Improved Illusions: grant Minor Illusion, or let user pick any Wizard cantrip if already known
+        conditionalCantrip: { primary: 'Minor Illusion', altClass: 'Wizard' },
+        // Illusion Savant: pick 2 Illusion Wizard spells of level 1–2 for free spellbook
+        spellPicks: { count: 2, school: 'I', minLevel: 1, maxLevel: 2, label: 'Illusion Savant' },
+      },
+      5:  { spellPicks: { count: 1, school: 'I', minLevel: 3, maxLevel: 3, label: 'Illusion Savant' } },
+      6:  { spells: [
+        { name: 'Summon Beast', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Summon Fey', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7:  { spellPicks: { count: 1, school: 'I', minLevel: 4, maxLevel: 4, label: 'Illusion Savant' } },
+      9:  { spellPicks: { count: 1, school: 'I', minLevel: 5, maxLevel: 5, label: 'Illusion Savant' } },
+      11: { spellPicks: { count: 1, school: 'I', minLevel: 6, maxLevel: 6, label: 'Illusion Savant' } },
+      13: { spellPicks: { count: 1, school: 'I', minLevel: 7, maxLevel: 7, label: 'Illusion Savant' } },
+      15: { spellPicks: { count: 1, school: 'I', minLevel: 8, maxLevel: 8, label: 'Illusion Savant' } },
+      17: { spellPicks: { count: 1, school: 'I', minLevel: 9, maxLevel: 9, label: 'Illusion Savant' } },
+    },
+    // 2014 PHB naming alias
+    'Wizard:School of Illusion': {
+      3: {
+        conditionalCantrip: { primary: 'Minor Illusion', altClass: 'Wizard' },
+        spellPicks: { count: 2, school: 'I', minLevel: 1, maxLevel: 2, label: 'Illusion Savant' },
+      },
+      5:  { spellPicks: { count: 1, school: 'I', minLevel: 3, maxLevel: 3, label: 'Illusion Savant' } },
+      6:  { spells: [
+        { name: 'Summon Beast', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Summon Fey', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7:  { spellPicks: { count: 1, school: 'I', minLevel: 4, maxLevel: 4, label: 'Illusion Savant' } },
+      9:  { spellPicks: { count: 1, school: 'I', minLevel: 5, maxLevel: 5, label: 'Illusion Savant' } },
+      11: { spellPicks: { count: 1, school: 'I', minLevel: 6, maxLevel: 6, label: 'Illusion Savant' } },
+      13: { spellPicks: { count: 1, school: 'I', minLevel: 7, maxLevel: 7, label: 'Illusion Savant' } },
+      15: { spellPicks: { count: 1, school: 'I', minLevel: 8, maxLevel: 8, label: 'Illusion Savant' } },
+      17: { spellPicks: { count: 1, school: 'I', minLevel: 9, maxLevel: 9, label: 'Illusion Savant' } },
     },
   },
 
@@ -604,20 +681,26 @@ window.LevelUp = {
       this._pending[level].masteryChoices = [];
     }
 
-    // Expertise section (e.g. Rogue level 6)
+    // Expertise section (e.g. Rogue level 6, Bard level 2, Wizard level 2 Scholar)
     if (needsExpertise) {
+      const expCount = this._expertiseCount(className);
+      const expFilter = this._expertiseSkillFilter(className);
       const proficientSkills = Sheet.SKILLS.filter(s => Sheet.lv(`skillProf_${s.key}`, false));
       const alreadyExpert = Sheet.SKILLS
         .filter(s => Sheet.lv(`skillExpert_${s.key}`, false))
         .map(s => s.key);
-      const eligible = proficientSkills.filter(s => !alreadyExpert.includes(s.key));
+      let eligible = proficientSkills.filter(s => !alreadyExpert.includes(s.key));
+      if (expFilter) eligible = eligible.filter(s => expFilter.includes(s.key));
+      const isScholar = className === 'Wizard';
+      const sectionTitle = isScholar ? 'Scholar — Choose 1 Skill' : `Expertise — Choose ${expCount} Skills`;
+      const sectionDesc = isScholar
+        ? 'Choose one of your proficient skills from the Scholar list (Arcana, History, Investigation, Medicine, Nature, or Religion) to gain Expertise in.'
+        : `Select ${expCount} skills you're proficient in to gain Expertise (double proficiency bonus).`;
 
       html += `
         <div class="lu-section" id="lu-expertise-section-${level}">
-          <div class="lu-section-title">Expertise — Choose 2 Skills</div>
-          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
-            Select 2 skills you're proficient in to gain Expertise (double proficiency bonus).
-          </div>
+          <div class="lu-section-title">${sectionTitle}</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">${sectionDesc}</div>
           <div class="lu-expertise-grid">
             ${eligible.length ? eligible.map(s => `
               <label class="lu-expertise-choice">
@@ -625,7 +708,7 @@ window.LevelUp = {
                 ${s.label}
               </label>`).join('') : '<span style="color:var(--ink-faint)">No eligible skills found.</span>'}
           </div>
-          <div class="lu-points-left" id="lu-expertise-msg-${level}">Select 2 skills (<span id="lu-expertise-left-${level}">2</span> remaining)</div>
+          <div class="lu-points-left" id="lu-expertise-msg-${level}">Select ${expCount} skill${expCount > 1 ? 's' : ''} (<span id="lu-expertise-left-${level}">${expCount}</span> remaining)</div>
         </div>`;
       this._pending[level].expertise = [];
     }
@@ -754,6 +837,8 @@ window.LevelUp = {
     if (cantripGain > 0 && level > 1) {
       this._bindCantripGainForLevel(sectionEl, level, className, cantripGain);
     }
+    // Inject subclass spell picks (e.g. Illusion Savant) and conditional cantrip grants
+    this._injectSubclassSpellPicksSections(sectionEl, level, className, existingSubclass);
   },
 
   // ---- Spellbook spell selection for level-up ----
@@ -796,12 +881,13 @@ window.LevelUp = {
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        _luAttachSpellTooltip(row, spell);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newSpells) this._pending[level].newSpells = [];
@@ -898,12 +984,13 @@ window.LevelUp = {
         if ((atMax || alreadyKnown) && !isSelected) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${(atMax || alreadyKnown) && !isSelected ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        _luAttachSpellTooltip(row, spell);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newPreparedSpells) this._pending[level].newPreparedSpells = [];
@@ -1028,12 +1115,13 @@ window.LevelUp = {
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        _luAttachSpellTooltip(row, spell);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newCantrips) this._pending[level].newCantrips = [];
@@ -1051,6 +1139,198 @@ window.LevelUp = {
       });
     };
     this._cantripRenderers.push(() => renderList(searchEl?.value || ''));
+    renderList('');
+    searchEl?.addEventListener('input', () => renderList(searchEl.value));
+  },
+
+  // ---- Subclass spell picks + conditional cantrip injection ----
+  // Called from _appendLevelSection (initial render) and from _bindSubclassForLevel (on change).
+  // Removes any existing sections, then re-injects them if the subclass has picks at this level.
+  _injectSubclassSpellPicksSections(sec, level, className, chosenSubclass) {
+    // Always remove old sections first
+    sec.querySelector(`#lu-sc-spell-picks-section-${level}`)?.remove();
+    sec.querySelector(`#lu-sc-cantrip-section-${level}`)?.remove();
+    if (this._pending[level]) {
+      delete this._pending[level].subclassSpellPicks;
+      delete this._pending[level].conditionalCantrip;
+    }
+
+    if (!chosenSubclass) return;
+    const scKey = `${className}:${chosenSubclass}`;
+    const grants = this.SUBCLASS_GRANTS[scKey]?.[level] || {};
+    const { spellPicks, conditionalCantrip } = grants;
+    if (!spellPicks && !conditionalCantrip) return;
+
+    if (!this._pending[level]) this._pending[level] = {};
+
+    // --- Conditional cantrip (e.g. Improved Illusions) ---
+    if (conditionalCantrip) {
+      const knownSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
+      const primaryKnown = knownSpells.has(conditionalCantrip.primary.toLowerCase());
+      if (primaryKnown) {
+        // Minor Illusion already known — show picker for an alternate cantrip
+        this._pending[level].conditionalCantrip = null;
+        const div = document.createElement('div');
+        div.className = 'lu-section';
+        div.id = `lu-sc-cantrip-section-${level}`;
+        div.innerHTML = `
+          <div class="lu-section-title">Improved Illusions — Bonus Cantrip</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            You already know Minor Illusion. Choose any ${conditionalCantrip.altClass || className} cantrip instead (doesn't count against cantrips known).
+          </div>
+          <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-sc-cantrip-search-${level}" placeholder="Search cantrips..." autocomplete="off" style="margin-bottom:6px">
+          <div class="lu-cantrip-list" id="lu-sc-cantrip-list-${level}" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+          <div class="lu-points-left" id="lu-sc-cantrip-msg-${level}">Select 1 cantrip</div>`;
+        sec.appendChild(div);
+        this._bindConditionalCantripForLevel(sec, level, className, conditionalCantrip);
+      }
+      // If not known: no UI needed — will be auto-granted in confirm()
+    }
+
+    // --- Subclass spell picks (e.g. Illusion Savant) ---
+    if (spellPicks) {
+      this._pending[level].subclassSpellPicks = [];
+      const { count = 1, label = 'Subclass Spells', minLevel = 1, maxLevel: spMaxLevel = 9 } = spellPicks;
+      const rangeStr = minLevel === spMaxLevel ? `level ${minLevel}` : `levels ${minLevel}–${spMaxLevel}`;
+      const div = document.createElement('div');
+      div.className = 'lu-section';
+      div.id = `lu-sc-spell-picks-section-${level}`;
+      div.innerHTML = `
+        <div class="lu-section-title">${label} — ${count} Free Spell${count > 1 ? 's' : ''}</div>
+        <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+          Choose ${count} Illusion spell${count > 1 ? 's' : ''} (${rangeStr}) from the ${className} spell list to add to your spellbook for free.
+        </div>
+        <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-sc-spell-search-${level}" placeholder="Search spells..." autocomplete="off" style="margin-bottom:6px">
+        <div class="lu-spellbook-list" id="lu-sc-spell-list-${level}" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+        <div class="lu-points-left" id="lu-sc-spell-msg-${level}">Select ${count} spell${count > 1 ? 's' : ''} (<span id="lu-sc-spell-left-${level}">${count}</span> remaining)</div>`;
+      sec.appendChild(div);
+      this._bindSubclassSpellPicksForLevel(sec, level, className, spellPicks);
+    }
+  },
+
+  // ---- Bind subclass free spell picks (e.g. Illusion Savant) ----
+  _bindSubclassSpellPicksForLevel(_sectionEl, level, className, config) {
+    const { count = 1, school, minLevel = 1, maxLevel: cfgMax = 9 } = config;
+    const allSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass(className) : [];
+    const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+    const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+    const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+    const eligible = allSpells.filter(s => {
+      if (s.level < minLevel || s.level > cfgMax) return false;
+      if (school && s.school !== school) return false;
+      if (s.source === 'UA2024') return ua && show24;
+      if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+      return show14;
+    }).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
+    const listEl = document.getElementById(`lu-sc-spell-list-${level}`);
+    const searchEl = document.getElementById(`lu-sc-spell-search-${level}`);
+    if (!listEl) return;
+
+    const currentSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
+
+    const renderList = (filter) => {
+      listEl.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const filtered = eligible.filter(s => !q || s.name.toLowerCase().includes(q));
+      filtered.forEach(spell => {
+        const alreadyKnown = currentSpells.has(spell.name.toLowerCase());
+        const isSelected = (this._pending[level].subclassSpellPicks || []).includes(spell.name);
+        const atMax = !isSelected && (this._pending[level].subclassSpellPicks || []).length >= count;
+        const row = document.createElement('label');
+        row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
+        if (atMax || alreadyKnown) row.style.opacity = '0.45';
+        row.innerHTML = `
+          <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+          <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+          <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+          <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+          <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        _luAttachSpellTooltip(row, spell);
+        const cb = row.querySelector('input');
+        cb.addEventListener('change', () => {
+          if (!this._pending[level].subclassSpellPicks) this._pending[level].subclassSpellPicks = [];
+          if (cb.checked) {
+            if (this._pending[level].subclassSpellPicks.length >= count) { cb.checked = false; return; }
+            this._pending[level].subclassSpellPicks.push(spell.name);
+          } else {
+            this._pending[level].subclassSpellPicks = this._pending[level].subclassSpellPicks.filter(n => n !== spell.name);
+          }
+          renderList(searchEl?.value || '');
+          const leftEl = document.getElementById(`lu-sc-spell-left-${level}`);
+          if (leftEl) leftEl.textContent = count - this._pending[level].subclassSpellPicks.length;
+        });
+        listEl.appendChild(row);
+      });
+      if (!filtered.length) {
+        listEl.innerHTML = '<div style="padding:8px;color:var(--ink-faint);font-size:0.85rem;">No spells found.</div>';
+      }
+    };
+    renderList('');
+    searchEl?.addEventListener('input', () => renderList(searchEl.value));
+  },
+
+  // ---- Bind conditional cantrip picker (e.g. Improved Illusions alternate cantrip) ----
+  _bindConditionalCantripForLevel(_sectionEl, level, className, config) {
+    const altClass = config.altClass || className;
+    const primaryName = config.primary;
+    const allSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass(altClass) : [];
+    const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+    const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+    const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+    const cantrips = allSpells.filter(s => {
+      if (s.level !== 0) return false;
+      if (s.name.toLowerCase() === primaryName.toLowerCase()) return false; // exclude the primary
+      if (s.source === 'UA2024') return ua && show24;
+      if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+      return show14;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const listEl = document.getElementById(`lu-sc-cantrip-list-${level}`);
+    const searchEl = document.getElementById(`lu-sc-cantrip-search-${level}`);
+    if (!listEl) return;
+
+    const currentCantrips = new Set(
+      (Sheet.lv('charSpells', []) || []).filter(s => s.level === 0).map(s => s.name.toLowerCase())
+    );
+
+    const renderList = (filter) => {
+      listEl.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const filtered = cantrips.filter(s => !q || s.name.toLowerCase().includes(q));
+      filtered.forEach(spell => {
+        const alreadyKnown = currentCantrips.has(spell.name.toLowerCase());
+        const isSelected = this._pending[level].conditionalCantrip === spell.name;
+        const atMax = !isSelected && !!this._pending[level].conditionalCantrip;
+        const row = document.createElement('label');
+        row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
+        if (atMax || alreadyKnown) row.style.opacity = '0.45';
+        row.innerHTML = `
+          <span class="wiz-spell-col-check"><input type="radio" name="lu-sc-cantrip-pick-${level}" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+          <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+          <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+          <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+          <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        _luAttachSpellTooltip(row, spell);
+        const rb = row.querySelector('input');
+        rb.addEventListener('change', () => {
+          if (rb.checked) {
+            this._pending[level].conditionalCantrip = spell.name;
+            renderList(searchEl?.value || '');
+            const msgEl = document.getElementById(`lu-sc-cantrip-msg-${level}`);
+            if (msgEl) msgEl.textContent = `Selected: ${spell.name}`;
+          }
+        });
+        listEl.appendChild(row);
+      });
+      if (!filtered.length) {
+        listEl.innerHTML = '<div style="padding:8px;color:var(--ink-faint);font-size:0.85rem;">No cantrips found.</div>';
+      }
+    };
     renderList('');
     searchEl?.addEventListener('input', () => renderList(searchEl.value));
   },
@@ -1420,6 +1700,7 @@ window.LevelUp = {
       document.querySelectorAll('[id^="lu-level-section-"]').forEach(sec => {
         const secLevel = parseInt(sec.id.replace('lu-level-section-', ''));
         injectSubclassFeatures(sec, secLevel);
+        this._injectSubclassSpellPicksSections(sec, secLevel, className, chosenSubclass);
       });
 
       // Clear consolidated desc (features are shown per-level above)
@@ -1723,21 +2004,23 @@ window.LevelUp = {
 
   // ---- Expertise binding ----
   _bindExpertiseForLevel(sectionEl, level) {
+    const className = Sheet.lv('charClass', '');
+    const maxPicks = this._expertiseCount(className);
     const checkboxes = sectionEl.querySelectorAll('.lu-expertise-cb');
     checkboxes.forEach(cb => {
       cb.addEventListener('change', () => {
         const chosen = [...sectionEl.querySelectorAll('.lu-expertise-cb:checked')].map(c => c.value);
-        if (chosen.length > 2) {
+        if (chosen.length > maxPicks) {
           cb.checked = false;
           return;
         }
         if (!this._pending[level]) this._pending[level] = {};
         this._pending[level].expertise = chosen;
         const leftEl = sectionEl.querySelector(`#lu-expertise-left-${level}`);
-        if (leftEl) leftEl.textContent = 2 - chosen.length;
-        // Disable unchecked boxes when 2 are selected
+        if (leftEl) leftEl.textContent = maxPicks - chosen.length;
+        // Disable unchecked boxes when maxPicks are selected
         checkboxes.forEach(other => {
-          if (!other.checked) other.disabled = chosen.length >= 2;
+          if (!other.checked) other.disabled = chosen.length >= maxPicks;
         });
       });
     });
@@ -1816,8 +2099,9 @@ window.LevelUp = {
           }
         }
         if (this._isExpertiseLevel(lvl, className)) {
-          if (!p.expertise || p.expertise.length < 2) {
-            alert(`Please select 2 skills for Expertise at level ${lvl}.`); return;
+          const needed = this._expertiseCount(className);
+          if (!p.expertise || p.expertise.length < needed) {
+            alert(`Please select ${needed} skill${needed > 1 ? 's' : ''} for Expertise at level ${lvl}.`); return;
           }
         }
         // Weapon mastery — all slots must be filled
@@ -1858,6 +2142,20 @@ window.LevelUp = {
           if ((p.swapOut && !p.swapIn) || (!p.swapOut && p.swapIn)) {
             alert(`Please complete the spell swap (select both a spell to replace and its replacement) or leave both empty.`); return;
           }
+        }
+        // Subclass spell picks (e.g. Illusion Savant)
+        const _scKeyVal = `${className}:${p.subclass || existingSubclass || (Sheet.lv('charSubclass', '') || '').trim()}`;
+        const _scGrantsVal = this.SUBCLASS_GRANTS[_scKeyVal]?.[lvl] || {};
+        if (_scGrantsVal.spellPicks) {
+          const needed = _scGrantsVal.spellPicks.count || 1;
+          if (!p.subclassSpellPicks || p.subclassSpellPicks.length < needed) {
+            const lbl = _scGrantsVal.spellPicks.label || 'subclass';
+            alert(`Please choose ${needed} ${lbl} spell${needed > 1 ? 's' : ''} at level ${lvl}.`); return;
+          }
+        }
+        // Conditional cantrip (e.g. Improved Illusions)
+        if (_scGrantsVal.conditionalCantrip && 'conditionalCantrip' in p && !p.conditionalCantrip) {
+          alert(`Please choose a bonus cantrip from Improved Illusions at level ${lvl}.`); return;
         }
       }
 
@@ -1985,6 +2283,39 @@ window.LevelUp = {
             }
           }
           Sheet.sv('charSpells', spells);
+        }
+
+        // Apply subclass spell picks (free spellbook additions, e.g. Illusion Savant)
+        if (p.subclassSpellPicks?.length) {
+          const spells = Sheet.lv('charSpells', []) || [];
+          p.subclassSpellPicks.forEach(name => {
+            if (!spells.some(s => s.name === name)) {
+              const spell = DndData.spells.find(s => s.name === name);
+              spells.push({ name, level: spell?.level || 1, prepared: false, subclass: true });
+            }
+          });
+          Sheet.sv('charSpells', spells);
+        }
+
+        // Apply conditional cantrip grant (e.g. Improved Illusions)
+        const _scKeyApp = `${className}:${p.subclass || activeSubclass}`;
+        const _scGrantsApp = this.SUBCLASS_GRANTS[_scKeyApp]?.[lvl] || {};
+        if (_scGrantsApp.conditionalCantrip) {
+          const primaryName = _scGrantsApp.conditionalCantrip.primary;
+          const spells = Sheet.lv('charSpells', []) || [];
+          const primaryKnown = spells.some(s => s.name === primaryName && s.level === 0);
+          if (!primaryKnown) {
+            // Auto-grant the primary cantrip (Minor Illusion)
+            spells.push({ name: primaryName, level: 0, prepared: true, subclass: true });
+            Sheet.sv('charSpells', spells);
+          } else if (p.conditionalCantrip) {
+            // Grant the chosen alternate cantrip
+            const current = Sheet.lv('charSpells', []) || [];
+            if (!current.some(s => s.name === p.conditionalCantrip)) {
+              current.push({ name: p.conditionalCantrip, level: 0, prepared: true, subclass: true });
+              Sheet.sv('charSpells', current);
+            }
+          }
         }
       }
 

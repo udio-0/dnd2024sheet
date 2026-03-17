@@ -2665,8 +2665,28 @@ window.Wizard = {
     const prepLabel = spellSectionHint
       ? `${spellSectionTitle} <small style="font-weight:normal;color:var(--ink-faint)">${spellSectionHint}</small>`
       : spellSectionTitle;
+    // Compute final spellcasting ability score including background ASI (applied in finish())
+    // so the description matches what the sheet will show after creation.
+    const _spAbKey = classInfo?.spellcastingAbility || 'int';
+    let _finalAbScore = d[_spAbKey] || 10;
+    if (d._bgAsi) {
+      const _clampAb = (s, n) => Math.min(20, s + n);
+      const _bt = d._bgAsi.type;
+      if (_bt === 'fixed' && d._bgInfo?.ability) {
+        const { fixedBonus: _fb } = _parseBgAbility(d._bgInfo.ability);
+        if (_fb[_spAbKey]) _finalAbScore = _clampAb(_finalAbScore, _fb[_spAbKey]);
+      } else if (_bt === 'two_one') {
+        if (d._bgAsi.twoAb === _spAbKey) _finalAbScore = _clampAb(_finalAbScore, 2);
+        else if (d._bgAsi.oneAb === _spAbKey) _finalAbScore = _clampAb(_finalAbScore, 1);
+      } else if (_bt === 'two_plus_one') {
+        if (d._bgAsi.twoAb === _spAbKey || d._bgAsi.oneAb === _spAbKey) _finalAbScore = _clampAb(_finalAbScore, 1);
+      } else if (_bt === 'all_three') {
+        if ((d._bgAsi.threeAbs || []).includes(_spAbKey)) _finalAbScore = _clampAb(_finalAbScore, 1);
+      }
+    }
+    const _preparedDescCount = Math.max(1, 1 + Math.floor((_finalAbScore - 10) / 2));
     const descText = isSpellbook
-      ? `Choose ${maxCantrips || 3} cantrips and ${maxSpells} 1st-level spells for your ${className} spellbook. You can later prepare ${Math.max(1, 1 + Math.floor(((d[classInfo?.spellcastingAbility || 'int'] || 10) - 10) / 2))} of these spells after a Long Rest.`
+      ? `Choose ${maxCantrips || 3} cantrips and ${maxSpells} 1st-level spells for your ${className} spellbook. You can prepare up to ${_preparedDescCount} of these spells after a Long Rest (INT modifier + Wizard level).`
       : `Select cantrips and 1st-level spells for your ${className || 'class'}.`;
 
     container.innerHTML = `
@@ -2712,7 +2732,7 @@ window.Wizard = {
         if (isDisabled) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isRacial ? 'checked disabled' : (isSelected ? 'checked' : '')} ${atMax ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${isRacial ? ' <small style="color:var(--ink-faint)">(from species)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${isRacial ? ' <small style="color:var(--ink-faint)">(from species)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -2747,7 +2767,7 @@ window.Wizard = {
           if (isRacial) { this.checked = true; return; } // cannot toggle racial cantrips
           if (this.checked) {
             if (max !== null && countSelected(level) >= max) { this.checked = false; return; }
-            d.charSpells.push({ name: spell.name, level, prepared: true });
+            d.charSpells.push({ name: spell.name, level, prepared: false });
           } else {
             d.charSpells = d.charSpells.filter(s => s.name !== spell.name);
           }

@@ -340,7 +340,11 @@ window.Sheet = {
 
     const initEl = this.$('initiative');
     if (initEl) {
-      initEl.textContent = this.fmtMod(mods.dex + (_jackOfAllTrades ? halfProf : 0));
+      // Alert feat (2024): adds Proficiency Bonus to initiative
+      const _feats = this.lv('feats', []);
+      const _hasAlert = _feats.some(f => this._featName(f).toLowerCase() === 'alert');
+      const initMod = mods.dex + (_jackOfAllTrades ? halfProf : 0) + (_hasAlert ? prof : 0);
+      initEl.textContent = this.fmtMod(initMod);
       if (!initEl.dataset.rollBound) {
         initEl.dataset.rollBound = '1';
         initEl.style.cursor = 'pointer';

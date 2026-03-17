@@ -1542,7 +1542,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .col-atk-drag { width: 18px; }
 .atk-drag-th { padding: 0; }
 .atk-drag-cell { padding: 0 2px; width: 18px; text-align: center; }
-.atk-drag-handle { cursor: grab; font-size: 0.85rem; color: var(--ink-faint, #999); user-select: none; letter-spacing: -1px; }
+.atk-drag-handle { cursor: grab; font-size: 0.85rem; color: var(--ink-faint, #999); -webkit-user-select: none; user-select: none; letter-spacing: -1px; }
 .atk-drag-handle:hover { color: var(--gold, #b8860b); }
 .atk-drag-handle:active { cursor: grabbing; }
 #attacks-body tr.atk-dragging { opacity: 0.25; }
