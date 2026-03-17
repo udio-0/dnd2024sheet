@@ -7,7 +7,7 @@
 window.LevelUp = {
   ASI_LEVELS: [4, 8, 12, 16, 19],
   EXTRA_ASI_LEVELS: { 'Fighter': [6, 14], 'Rogue': [10] },
-  EXPERTISE_LEVELS: { 'Rogue': [6], 'Bard': [10] },
+  EXPERTISE_LEVELS: { 'Rogue': [6], 'Bard': [2, 9] },
   SUBCLASS_LEVELS: {
     'Barbarian': 3, 'Bard': 3, 'Cleric': 3, 'Druid': 3, 'Fighter': 3,
     'Monk': 3, 'Paladin': 3, 'Ranger': 3, 'Rogue': 3, 'Sorcerer': 3,
@@ -27,7 +27,10 @@ window.LevelUp = {
     this._startLevel = Sheet.getLevel();
     this._newLevel = Math.min(20, this._startLevel + 1);
     this._pending = {};
-    this._hp = { choice: 'avg', rolls: [], manualValue: null };
+    this._cantripRenderers = [];
+    this._preparedRenderers = [];
+    const savedHpMethod = Sheet.lv('hpMethod', null);
+    this._hp = { choice: savedHpMethod || 'avg', rolls: [], manualValue: null };
     this._buildModal();
     document.getElementById('levelup-backdrop').style.display = 'flex';
   },
@@ -66,6 +69,98 @@ window.LevelUp = {
 
   _isExpertiseLevel(level, className) {
     return (this.EXPERTISE_LEVELS[className] || []).includes(level);
+  },
+
+  // Subclass mechanical grants: spells, tool proficiencies, spell modifications
+  SUBCLASS_GRANTS: {
+    'Bard:College of Spirits': {
+      3: {
+        spells: [{ name: 'Guidance', level: 0, prepared: true, subclass: true }],
+        spellMods: { 'Guidance': { rangeOverride: '60 feet' } },
+        toolProficiencies: ['Playing Cards'],
+        grantedItems: [{ name: 'Playing Cards', type: 'Gaming Set', typeCode: 'GS', weight: 0, category: 'gear' }],
+      },
+      6: {
+        spells: [{ name: 'Spirit Guardians', level: 3, prepared: true, alwaysPrepared: true, subclass: true }],
+      },
+    },
+  },
+
+  _applySubclassGrants(subclassName, className, level) {
+    const key = `${className}:${subclassName}`;
+    const allGrants = this.SUBCLASS_GRANTS[key];
+    if (!allGrants) return;
+
+    // Apply grants for this level and all lower subclass levels being gained
+    for (const [grantLevel, grants] of Object.entries(allGrants)) {
+      if (parseInt(grantLevel) > level) continue;
+
+      // Add granted spells
+      if (grants.spells?.length) {
+        const spells = Sheet.lv('charSpells', []) || [];
+        grants.spells.forEach(sp => {
+          if (!spells.some(s => s.name === sp.name && s.level === sp.level)) {
+            spells.push({ ...sp });
+          }
+        });
+        Sheet.sv('charSpells', spells);
+      }
+
+      // Apply spell modifications (e.g. range overrides)
+      if (grants.spellMods) {
+        const mods = Sheet.lv('spellMods', {}) || {};
+        for (const [spellName, mod] of Object.entries(grants.spellMods)) {
+          mods[spellName] = { ...(mods[spellName] || {}), ...mod };
+        }
+        Sheet.sv('spellMods', mods);
+      }
+
+      // Add granted items to inventory
+      if (grants.grantedItems?.length) {
+        const inv = Sheet.lv('inventory', []) || [];
+        const allItems = DndData.allItems || [];
+        grants.grantedItems.forEach(gi => {
+          const itemName = typeof gi === 'string' ? gi : gi.name;
+          if (inv.some(i => i.name.toLowerCase() === itemName.toLowerCase())) return;
+          // Try exact match, then partial match
+          let found = allItems.find(i => i.name.toLowerCase() === itemName.toLowerCase());
+          if (!found) found = allItems.find(i => i.name.toLowerCase().includes(itemName.toLowerCase()));
+          if (found) {
+            inv.push({
+              name: found.name, type: found._type || '', damage: found._dmgStr || '',
+              mastery: (found.mastery || []).map(m => m.split('|')[0]).join(', '),
+              properties: found._propStr || '', weight: found.weight || 0,
+              value: found._valueStr || '', _valueCp: found.value || 0,
+              ac: found.ac || 0, rarity: found.rarity || 'none',
+              category: found._category || '', qty: 1,
+              itemId: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              typeCode: found.typeCode || '',
+            });
+          } else {
+            // Fallback: create item manually if not found in data
+            const fallback = typeof gi === 'object' ? gi : {};
+            inv.push({
+              name: itemName, type: fallback.type || 'Gaming Set', damage: '',
+              mastery: '', properties: '', weight: fallback.weight || 0,
+              value: fallback.value || '', _valueCp: fallback._valueCp || 0,
+              ac: 0, rarity: 'none', category: fallback.category || 'gear', qty: 1,
+              itemId: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              typeCode: fallback.typeCode || 'GS',
+            });
+          }
+        });
+        Sheet.sv('inventory', inv);
+      }
+
+      // Add tool proficiencies
+      if (grants.toolProficiencies?.length) {
+        const tools = CharStore.lv('toolProficiencies', []) || [];
+        grants.toolProficiencies.forEach(t => {
+          if (!tools.some(e => e.toLowerCase() === t.toLowerCase())) tools.push(t);
+        });
+        CharStore.sv('toolProficiencies', tools);
+      }
+    }
   },
 
   _numLevels() {
@@ -139,9 +234,9 @@ window.LevelUp = {
           if (e.name && e.name.startsWith(`${prefix} Level:`)) {
             const featureName = e.name.replace(`${prefix} Level:`, '').trim();
             const text = Array.isArray(e.entries)
-              ? e.entries.filter(x => typeof x === 'string').join(' ')
+              ? (typeof entriesToHtml === 'function' ? entriesToHtml(e.entries) : e.entries.filter(x => typeof x === 'string').join(' '))
               : '';
-            features.push({ name: featureName, text });
+            features.push({ name: featureName, text, _isHtml: typeof entriesToHtml === 'function' });
           } else if (Array.isArray(e.entries)) {
             parseEntries(e.entries);
           }
@@ -366,11 +461,13 @@ window.LevelUp = {
       filteredClassFeatures = featuresAtLevel;
     }
 
+    const _hl = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
+
     if (filteredClassFeatures.length) {
       const featureHtml = filteredClassFeatures.map(f => `
         <li>
           <div class="lu-feature-name">${f.name}</div>
-          ${f.text ? `<div class="lu-feature-desc">${f.text}</div>` : ''}
+          ${f.text ? `<div class="lu-feature-desc">${_hl(f.text)}</div>` : ''}
         </li>`).join('');
       html += `
         <div class="lu-section">
@@ -383,7 +480,7 @@ window.LevelUp = {
       const scFeatHtml = subclassFeatures.map(f => `
         <li>
           <div class="lu-feature-name">${f.name}</div>
-          ${f.text ? `<div class="lu-feature-desc">${f.text}</div>` : ''}
+          ${f.text ? `<div class="lu-feature-desc">${_hl(f.text)}</div>` : ''}
         </li>`).join('');
       html += `
         <div class="lu-section lu-subclass-features-section" id="lu-sc-feat-section-${level}">
@@ -579,6 +676,53 @@ window.LevelUp = {
         </div>`;
     }
 
+    // Prepared spells: learn new spells + optional swap (Bard, Ranger, etc.)
+    const prepProg = classInfo?.preparedSpellsProgression;
+    const prevPrepMax = prepProg ? (prepProg[level - 2] ?? 0) : 0;
+    const newPrepMax = prepProg ? (prepProg[level - 1] ?? 0) : 0;
+    const prepGain = level > 1 ? Math.max(0, newPrepMax - prevPrepMax) : 0;
+    const hasPreparedGain = prepProg && level > 1 && !classInfo?.spellbookSpellsPerLevel;
+    if (hasPreparedGain) {
+      this._pending[level].newPreparedSpells = [];
+      this._pending[level].swapOut = null;
+      this._pending[level].swapIn = null;
+      const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 1;
+      const tabsHtml = Array.from({ length: maxSpellLevel }, (_, i) => {
+        const sl = i + 1;
+        return `<button class="lu-spell-tab${sl === 1 ? ' active' : ''}" data-splvl="${sl}">${sl === 1 ? '1st' : sl === 2 ? '2nd' : sl === 3 ? '3rd' : sl + 'th'}</button>`;
+      }).join('');
+      if (prepGain > 0) {
+        html += `
+        <div class="lu-section" id="lu-prepared-section-${level}">
+          <div class="lu-section-title">Prepared Spells (${prevPrepMax} → ${newPrepMax})</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            Choose ${prepGain} new ${className} spell${prepGain > 1 ? 's' : ''} to prepare (up to level ${maxSpellLevel}).
+          </div>
+          <div class="lu-spell-tabs" id="lu-prep-tabs-${level}">${tabsHtml}</div>
+          <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-prep-search-${level}" placeholder="Search spells..." autocomplete="off" style="margin-bottom:6px">
+          <div class="lu-spellbook-list" id="lu-prep-list-${level}" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+          <div class="lu-points-left" id="lu-prep-msg-${level}">Select ${prepGain} spell${prepGain > 1 ? 's' : ''} (<span id="lu-prep-left-${level}">${prepGain}</span> remaining)</div>
+        </div>`;
+      }
+      html += `
+        <div class="lu-section" id="lu-swap-section-${level}">
+          <div class="lu-section-title">Spell Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            You may exchange one prepared spell for a different ${className} spell.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <label style="font-size:0.85rem;">Replace:</label>
+            <select id="lu-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
+              <option value="">— none —</option>
+            </select>
+            <label style="font-size:0.85rem;">With:</label>
+            <select id="lu-swap-in-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
+              <option value="">— none —</option>
+            </select>
+          </div>
+        </div>`;
+    }
+
     html += `</div>`;
     container.insertAdjacentHTML('beforeend', html);
 
@@ -586,6 +730,10 @@ window.LevelUp = {
     if (showsSubclass) this._bindSubclassForLevel(sectionEl, level, existingSubclass);
     if (needsAsi)      this._bindAsiLogicForLevel(sectionEl, level);
     if (needsExpertise) this._bindExpertiseForLevel(sectionEl, level);
+    // Bind prepared spells picker
+    if (hasPreparedGain) {
+      this._bindPreparedSpellsForLevel(sectionEl, level, className, classInfo, prepGain);
+    }
     // Bind mastery selects
     if (masteryIncrease > 0) {
       sectionEl.querySelectorAll('.lu-mastery-select').forEach(sel => {
@@ -688,6 +836,152 @@ window.LevelUp = {
     searchEl?.addEventListener('input', () => renderList(searchEl.value));
   },
 
+  // ---- Prepared spell gain + swap for level-up (Bard, Ranger, etc.) ----
+  _bindPreparedSpellsForLevel(_sectionEl, level, className, classInfo, prepGain) {
+    const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 1;
+    let allSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass(className) : [];
+
+    // Magical Secrets: Bard level 10+ can pick from Cleric, Druid, and Wizard lists
+    if (className === 'Bard' && level >= 10 && typeof getSpellsForClass === 'function') {
+      const existingNames = new Set(allSpells.map(s => s.name.toLowerCase()));
+      ['Cleric', 'Druid', 'Wizard'].forEach(cls => {
+        getSpellsForClass(cls).forEach(s => {
+          if (!existingNames.has(s.name.toLowerCase())) {
+            existingNames.add(s.name.toLowerCase());
+            allSpells.push(s);
+          }
+        });
+      });
+    }
+    const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+    const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+    const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+    const eligible = allSpells.filter(s => {
+      if (s.level < 1 || s.level > maxSpellLevel) return false;
+      if (s.source === 'UA2024') return ua && show24;
+      if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+      return show14;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const listEl = document.getElementById(`lu-prep-list-${level}`);
+    const searchEl = document.getElementById(`lu-prep-search-${level}`);
+    const tabsEl = document.getElementById(`lu-prep-tabs-${level}`);
+    if (!listEl) return;
+
+    let activeTabLevel = 1;
+    const currentSpells = new Set((Sheet.lv('charSpells', []) || []).filter(s => s.level > 0).map(s => s.name.toLowerCase()));
+
+    // Collect spells chosen at other pending levels to prevent duplicates
+    const _otherPendingSpells = () => {
+      const set = new Set();
+      for (const [lvl, p] of Object.entries(this._pending)) {
+        if (parseInt(lvl) !== level && p.newPreparedSpells) {
+          p.newPreparedSpells.forEach(n => set.add(n.toLowerCase()));
+        }
+      }
+      return set;
+    };
+
+    const renderList = (filter) => {
+      listEl.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const otherPending = _otherPendingSpells();
+      const filtered = eligible.filter(s =>
+        s.level === activeTabLevel && (!q || s.name.toLowerCase().includes(q))
+      );
+      filtered.forEach(spell => {
+        const alreadyKnown = currentSpells.has(spell.name.toLowerCase()) || otherPending.has(spell.name.toLowerCase());
+        const isSelected = (this._pending[level].newPreparedSpells || []).includes(spell.name);
+        const atMax = prepGain > 0 && !isSelected && (this._pending[level].newPreparedSpells || []).length >= prepGain;
+        const row = document.createElement('label');
+        row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + ((atMax || alreadyKnown) && !isSelected ? ' disabled' : '');
+        if ((atMax || alreadyKnown) && !isSelected) row.style.opacity = '0.45';
+        row.innerHTML = `
+          <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${(atMax || alreadyKnown) && !isSelected ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+          <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+          <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+          <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+          <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        const cb = row.querySelector('input');
+        cb.addEventListener('change', () => {
+          if (!this._pending[level].newPreparedSpells) this._pending[level].newPreparedSpells = [];
+          if (cb.checked) {
+            if (prepGain > 0 && this._pending[level].newPreparedSpells.length >= prepGain) { cb.checked = false; return; }
+            this._pending[level].newPreparedSpells.push(spell.name);
+          } else {
+            this._pending[level].newPreparedSpells = this._pending[level].newPreparedSpells.filter(n => n !== spell.name);
+          }
+          this._rerenderAllPrepared();
+          const leftEl = document.getElementById(`lu-prep-left-${level}`);
+          if (leftEl) leftEl.textContent = prepGain - this._pending[level].newPreparedSpells.length;
+        });
+        listEl.appendChild(row);
+      });
+    };
+    this._preparedRenderers.push(() => renderList(searchEl?.value || ''));
+
+    if (tabsEl) {
+      tabsEl.querySelectorAll('.lu-spell-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          activeTabLevel = parseInt(tab.dataset.splvl);
+          tabsEl.querySelectorAll('.lu-spell-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          if (searchEl) searchEl.value = '';
+          renderList('');
+        });
+      });
+    }
+    renderList('');
+    searchEl?.addEventListener('input', () => renderList(searchEl.value));
+
+    // Spell swap dropdowns
+    const swapOutEl = document.getElementById(`lu-swap-out-${level}`);
+    const swapInEl = document.getElementById(`lu-swap-in-${level}`);
+    if (swapOutEl && swapInEl) {
+      // Populate swap-out with current prepared spells (level 1+, not always-prepared)
+      const currentPrepared = (Sheet.lv('charSpells', []) || []).filter(s => s.level > 0 && s.prepared && !s.alwaysPrepared && !s.racial);
+      currentPrepared.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
+        swapOutEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
+      });
+
+      const populateSwapIn = () => {
+        const outName = swapOutEl.value;
+        swapInEl.innerHTML = '<option value="">— none —</option>';
+        if (!outName) { this._pending[level].swapIn = null; this._pending[level].swapOut = null; return; }
+        const outSpell = currentPrepared.find(s => s.name === outName);
+        const outLevel = outSpell?.level || 1;
+        // Can swap for any eligible spell of same level or lower that isn't already known
+        eligible.filter(s => s.level <= maxSpellLevel && !currentSpells.has(s.name.toLowerCase()))
+          .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
+          .forEach(s => {
+            swapInEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
+          });
+      };
+
+      swapOutEl.addEventListener('change', () => {
+        this._pending[level].swapOut = swapOutEl.value || null;
+        populateSwapIn();
+      });
+      swapInEl.addEventListener('change', () => {
+        this._pending[level].swapIn = swapInEl.value || null;
+      });
+    }
+  },
+
+  // Cross-level re-render registries
+  _cantripRenderers: [],
+  _preparedRenderers: [],
+
+  _rerenderAllCantrips() {
+    this._cantripRenderers.forEach(fn => fn());
+  },
+
+  _rerenderAllPrepared() {
+    this._preparedRenderers.forEach(fn => fn());
+  },
+
   // ---- Cantrip gain selection for level-up ----
   _bindCantripGainForLevel(_sectionEl, level, className, maxPicks) {
     const allSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass(className) : [];
@@ -709,12 +1003,24 @@ window.LevelUp = {
       (Sheet.lv('charSpells', []) || []).filter(s => s.level === 0).map(s => s.name.toLowerCase())
     );
 
+    // Collect cantrips chosen at other pending levels to prevent duplicates
+    const _otherPendingCantrips = () => {
+      const set = new Set();
+      for (const [lvl, p] of Object.entries(this._pending)) {
+        if (parseInt(lvl) !== level && p.newCantrips) {
+          p.newCantrips.forEach(n => set.add(n.toLowerCase()));
+        }
+      }
+      return set;
+    };
+
     const renderList = (filter) => {
       listEl.innerHTML = '';
       const q = (filter || '').toLowerCase();
+      const otherPending = _otherPendingCantrips();
       const filtered = cantrips.filter(s => !q || s.name.toLowerCase().includes(q));
       filtered.forEach(spell => {
-        const alreadyKnown = currentCantrips.has(spell.name.toLowerCase());
+        const alreadyKnown = currentCantrips.has(spell.name.toLowerCase()) || otherPending.has(spell.name.toLowerCase());
         const isSelected = (this._pending[level].newCantrips || []).includes(spell.name);
         const atMax = !isSelected && (this._pending[level].newCantrips || []).length >= maxPicks;
         const row = document.createElement('label');
@@ -737,13 +1043,14 @@ window.LevelUp = {
           } else {
             this._pending[level].newCantrips = this._pending[level].newCantrips.filter(n => n !== spell.name);
           }
-          renderList(searchEl?.value || '');
+          this._rerenderAllCantrips();
           const leftEl = document.getElementById(`lu-cantrip-left-${level}`);
           if (leftEl) leftEl.textContent = maxPicks - this._pending[level].newCantrips.length;
         });
         listEl.appendChild(row);
       });
     };
+    this._cantripRenderers.push(() => renderList(searchEl?.value || ''));
     renderList('');
     searchEl?.addEventListener('input', () => renderList(searchEl.value));
   },
@@ -1005,11 +1312,12 @@ window.LevelUp = {
       sec.querySelector('.lu-subclass-features-section')?.remove();
 
       const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, lvl);
+      const _hl2 = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
       if (feats.length) {
         const scFeatHtml = feats.map(f => `
           <li>
             <div class="lu-feature-name">${f.name}</div>
-            ${f.text ? `<div class="lu-feature-desc">${f.text}</div>` : ''}
+            ${f.text ? `<div class="lu-feature-desc">${_hl2(f.text)}</div>` : ''}
           </li>`).join('');
         const scDiv = document.createElement('div');
         scDiv.className = 'lu-section lu-subclass-features-section';
@@ -1087,10 +1395,11 @@ window.LevelUp = {
         if (chosenSubclass) {
           const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, secLevel);
           if (feats.length) {
+            const _hl2 = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
             const scFeatHtml = feats.map(f => `
               <li>
                 <div class="lu-feature-name">${f.name}</div>
-                ${f.text ? `<div class="lu-feature-desc">${f.text}</div>` : ''}
+                ${f.text ? `<div class="lu-feature-desc">${_hl2(f.text)}</div>` : ''}
               </li>`).join('');
             const scDiv = document.createElement('div');
             scDiv.className = 'lu-section lu-subclass-features-section';
@@ -1537,6 +1846,19 @@ window.LevelUp = {
             alert(`Please choose ${gain} new cantrip${gain > 1 ? 's' : ''} at level ${lvl}.`); return;
           }
         }
+        // Prepared spell gain — must pick the required number
+        if (_classInfoLu?.preparedSpellsProgression && !_classInfoLu?.spellbookSpellsPerLevel && lvl > 1) {
+          const prevMax = _classInfoLu.preparedSpellsProgression[lvl - 2] ?? 0;
+          const newMax = _classInfoLu.preparedSpellsProgression[lvl - 1] ?? 0;
+          const gain = Math.max(0, newMax - prevMax);
+          if (gain > 0 && (!p.newPreparedSpells || p.newPreparedSpells.length < gain)) {
+            alert(`Please choose ${gain} new prepared spell${gain > 1 ? 's' : ''} at level ${lvl}.`); return;
+          }
+          // Validate swap: if one is set, both must be
+          if ((p.swapOut && !p.swapIn) || (!p.swapOut && p.swapIn)) {
+            alert(`Please complete the spell swap (select both a spell to replace and its replacement) or leave both empty.`); return;
+          }
+        }
       }
 
       // Validate HP
@@ -1553,6 +1875,12 @@ window.LevelUp = {
           const subInput = document.getElementById('charSubclass');
           if (subInput) subInput.value = p.subclass;
           Sheet.sv('charSubclass', p.subclass);
+        }
+
+        // Apply subclass grants at every level (spells, proficiencies, etc.)
+        const activeSubclass = p.subclass || Sheet.lv('charSubclass', '');
+        if (activeSubclass) {
+          this._applySubclassGrants(activeSubclass, className, lvl);
         }
 
         if (this._isAsiLevel(lvl, className) && p.asi?.type) {
@@ -1573,6 +1901,7 @@ window.LevelUp = {
                 name: p.asi.feat,
                 chosenSpells: p.asi.featSpells.flat(),
                 ...(p.asi.featSpellClass && { spellClass: p.asi.featSpellClass }),
+                ...(p.asi.featAbility && { spellAbility: p.asi.featAbility }),
               };
               if (typeof Sheet.addFeat === 'function') Sheet.addFeat(featObj);
             } else {
@@ -1629,7 +1958,38 @@ window.LevelUp = {
           });
           Sheet.sv('charSpells', spells);
         }
+
+        // Apply new prepared spells
+        if (p.newPreparedSpells?.length) {
+          const spells = Sheet.lv('charSpells', []) || [];
+          p.newPreparedSpells.forEach(name => {
+            const spell = DndData.spells.find(s => s.name === name);
+            const spellLevel = spell?.level || 1;
+            if (!spells.some(s => s.name === name)) {
+              spells.push({ name, level: spellLevel, prepared: true });
+            }
+          });
+          Sheet.sv('charSpells', spells);
+        }
+
+        // Apply spell swap
+        if (p.swapOut && p.swapIn) {
+          const spells = Sheet.lv('charSpells', []) || [];
+          const idx = spells.findIndex(s => s.name === p.swapOut && s.level > 0);
+          if (idx !== -1) {
+            spells.splice(idx, 1);
+            const spell = DndData.spells.find(s => s.name === p.swapIn);
+            const spellLevel = spell?.level || 1;
+            if (!spells.some(s => s.name === p.swapIn)) {
+              spells.push({ name: p.swapIn, level: spellLevel, prepared: true });
+            }
+          }
+          Sheet.sv('charSpells', spells);
+        }
       }
+
+      // Save HP method preference for future level-ups
+      Sheet.sv('hpMethod', this._hp.choice);
 
       // Apply HP (single total gain)
       const hpGain = this._calcHpGain();
@@ -1708,6 +2068,7 @@ window.LevelUp = {
     }
 
     Sheet.recalcAll();
+    Sheet.renderInventory();
     if (className) Sheet.displayClassFeatures(className);
     this._xpBeforeLevelUp = undefined;
     // Apply long rest effects on level up
@@ -1730,9 +2091,7 @@ window.LevelUp = {
     document.getElementById('levelup-close')?.addEventListener('click', () => this.close());
     document.getElementById('levelup-cancel')?.addEventListener('click', () => this.close());
     document.getElementById('levelup-confirm')?.addEventListener('click', () => this.confirm());
-    document.getElementById('levelup-backdrop')?.addEventListener('click', e => {
-      if (e.target === document.getElementById('levelup-backdrop')) this.close();
-    });
+    // Backdrop click intentionally does nothing — use Cancel button to close
 
     const stored = parseInt(CharStore.lv('charLevel', 1)) || 1;
     const display = document.getElementById('charLevel-display');

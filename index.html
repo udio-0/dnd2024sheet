@@ -32,7 +32,7 @@
           <span class="logo-sub">2024</span>
         </a>
       </div>
-      <div class="topbar-center" id="topbar-title"></div>
+
       <div class="topbar-right">
         <button id="btn-2024" class="ua-toggle" title="Toggle 2024 edition content">
           <span>'24</span>
@@ -222,7 +222,6 @@
             </div>
             <div class="sheet-box col-left-full"><div class="box-title">Proficiencies &amp; Languages</div><textarea id="profLanguages" rows="4" data-save="profLanguages" title="Proficiencies and Languages"></textarea></div>
             <div class="sheet-box col-left-full" id="species-info-box"><div class="box-title">Specie Traits</div><div class="auto-traits" id="species-traits-text"></div></div>
-            <div class="sheet-box col-left-full" id="class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
           </div>
 
           <!-- CENTER: Combat stats, HP, Attacks, Personality -->
@@ -318,6 +317,7 @@
             <div class="sheet-box"><div class="box-title">Attacks</div>
               <table class="attack-table">
   <colgroup>
+    <col class="col-atk-drag">
     <col class="col-atk-name">
     <col class="col-atk-ability">
     <col class="col-atk-prof">
@@ -328,7 +328,7 @@
     <col class="col-atk-ed">
     <col class="col-atk-actions">
   </colgroup>
-  <thead><tr><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">Prof</th><th>Bon</th><th>Dmg</th><th>Type</th><th>Mastery</th><th>Ed.</th><th aria-label="Actions"></th></tr></thead>
+  <thead><tr><th class="atk-drag-th"></th><th>Name</th><th>Ability</th><th title="Add proficiency bonus to attack roll">Prof</th><th>Bon</th><th>Dmg</th><th>Type</th><th>Mastery</th><th>Ed.</th><th aria-label="Actions"></th></tr></thead>
   <tbody id="attacks-body"></tbody>
 </table>
               <button id="btn-add-attack" class="btn btn-sm">+ Add Attack</button>
@@ -382,6 +382,9 @@
               <div class="box-title">Equipped Gear</div>
               <div id="equipped-slots"></div>
             </div>
+
+            <!-- CLASS FEATURES -->
+            <div class="sheet-box" id="class-features-box"><div class="box-title">Class Features <span class="box-subtitle" id="class-features-subtitle"></span></div><div class="auto-traits" id="class-features-text"></div></div>
 
             <div class="sheet-box">
               <div class="box-title">Other Character Options</div>
@@ -564,8 +567,12 @@
 
           <!-- EDITOR -->
           <div class="notes-editor">
-            <button id="notes-btn-back" class="notes-back-btn" title="Back to list">← Back</button>
+            <div class="notes-nav-bar">
+              <button id="notes-btn-back" class="notes-back-btn" title="Back to list">← Back</button>
+            </div>
             <div class="notes-editor-toolbar" id="notes-editor-toolbar">
+              <button id="notes-nav-prev" class="notes-nav-btn" title="Previous note" disabled>◀</button>
+              <button id="notes-nav-next" class="notes-nav-btn" title="Next note" disabled>▶</button>
               <input type="text" id="notes-editor-title" class="notes-editor-title" placeholder="Note title..." disabled>
               <div class="notes-toolbar-btns">
                 <button id="notes-btn-pin" class="notes-tool-btn" title="Pin/Unpin">📌</button>
@@ -577,18 +584,44 @@
               <div class="notes-editor-tags" id="notes-editor-tags"></div>
               <button id="notes-add-tag-btn" class="notes-add-tag-btn" title="Add tag">+ Tag</button>
             </div>
-            <div class="notes-symbol-legend">
-              <span class="notes-legend-title">Link shortcuts:</span>
-              <span class="notes-legend-item" data-type="npc"><kbd>@</kbd>NPC</span>
-              <span class="notes-legend-item" data-type="location"><kbd>#</kbd>Location</span>
-              <span class="notes-legend-item" data-type="quest"><kbd>!</kbd>Quest</span>
-              <span class="notes-legend-item" data-type="item"><kbd>$</kbd>Item</span>
-              <span class="notes-legend-item" data-type="faction"><kbd>&amp;</kbd>Faction</span>
-              <span class="notes-legend-item" data-type="lore"><kbd>~</kbd>Lore</span>
-              <span class="notes-legend-item" data-type="event"><kbd>^</kbd>Event</span>
-              <span class="notes-legend-item" data-type="session"><kbd>%</kbd>Session</span>
+            <div class="notes-help-wrap">
+              <button id="notes-help-btn" class="notes-help-btn" title="Formatting help">?</button>
+              <div class="notes-help-tooltip" id="notes-help-tooltip">
+                <div class="notes-help-section">
+                  <div class="notes-help-heading">Link Shortcuts</div>
+                  <table class="notes-help-table">
+                    <tr><td><kbd>@</kbd>Name</td><td>NPC</td></tr>
+                    <tr><td><kbd>#</kbd>Place</td><td>Location (no space)</td></tr>
+                    <tr><td><kbd>!</kbd>Quest</td><td>Quest</td></tr>
+                    <tr><td><kbd>$</kbd>Item</td><td>Item</td></tr>
+                    <tr><td><kbd>&amp;</kbd>Faction</td><td>Faction</td></tr>
+                    <tr><td><kbd>~</kbd>Lore</td><td>Lore</td></tr>
+                    <tr><td><kbd>^</kbd>Event</td><td>Event</td></tr>
+                    <tr><td><kbd>%</kbd>Session</td><td>Session</td></tr>
+                    <tr><td><kbd>[[</kbd>Title<kbd>]]</kbd></td><td>Generic link</td></tr>
+                  </table>
+                </div>
+                <div class="notes-help-section">
+                  <div class="notes-help-heading">Markdown</div>
+                  <table class="notes-help-table">
+                    <tr><td><kbd># </kbd>Heading</td><td>Header (with space)</td></tr>
+                    <tr><td><kbd>**</kbd>bold<kbd>**</kbd></td><td><strong>bold</strong></td></tr>
+                    <tr><td><kbd>*</kbd>italic<kbd>*</kbd></td><td><em>italic</em></td></tr>
+                    <tr><td><kbd>~~</kbd>strike<kbd>~~</kbd></td><td><del>strikethrough</del></td></tr>
+                    <tr><td><kbd>==</kbd>highlight<kbd>==</kbd></td><td><mark>highlight</mark></td></tr>
+                    <tr><td><kbd>-</kbd> list item</td><td>Bullet list</td></tr>
+                    <tr><td><kbd>1.</kbd> item</td><td>Numbered list</td></tr>
+                    <tr><td><kbd>[ ]</kbd> / <kbd>[x]</kbd> task</td><td>Task checkbox</td></tr>
+                    <tr><td><kbd>&gt;</kbd> quote</td><td>Blockquote</td></tr>
+                    <tr><td><kbd>`</kbd>code<kbd>`</kbd></td><td><code>inline code</code></td></tr>
+                    <tr><td><kbd>```</kbd>code block<kbd>```</kbd></td><td>Code block</td></tr>
+                    <tr><td><kbd>---</kbd></td><td>Horizontal rule</td></tr>
+                  </table>
+                </div>
+              </div>
             </div>
-            <textarea id="notes-editor-content" class="notes-editor-content" placeholder="Write your note here...&#10;&#10;Link shortcuts:&#10;  @Name → NPC    #Place → Location&#10;  !Quest → Quest    $Item → Item&#10;  &amp;Faction    ~Lore    ^Event    %Session&#10;  [[Any Note]] → generic link" disabled></textarea>
+            <textarea id="notes-editor-content" class="notes-editor-content" placeholder="Write your note here...&#10;&#10;Link shortcuts:&#10;  @Name → NPC    #Place → Location&#10;  !Quest → Quest    $Item → Item&#10;  &amp;Faction    ~Lore    ^Event    %Session&#10;  [[Any Note]] → generic link&#10;&#10;Markdown:&#10;  # Heading    **bold**    *italic*&#10;  - list item    1. numbered    [ ] task&#10;  > quote    `code`    ~~strike~~    ==highlight==&#10;  --- horizontal rule    ```code block```" disabled></textarea>
+            <div id="notes-editor-rendered" class="notes-editor-rendered"></div>
             <div class="notes-link-preview" id="notes-link-preview"></div>
             <div class="notes-editor-meta" id="notes-editor-meta"></div>
           </div>

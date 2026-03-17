@@ -93,7 +93,6 @@ document.addEventListener('DOMContentLoaded', () => {
   initClassSelect();
   initSpeciesSelect();
   initBackgroundSelect();
-  initFeatSystem();
   recalcAll();
 
   // Load data from 5etools
@@ -128,7 +127,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initItemSearch();
     restoreSpells();
     restoreInventory();
-    restoreFeats();
+    Sheet.restoreFeats();
     applyClassSelection(lv('charClass', ''));
     applySpeciesSelection(lv('charSpecies', ''));
     applyBackgroundSelection(lv('charBackground', ''));
@@ -522,72 +521,7 @@ function applyBackgroundSelection(name) {
 }
 
 // ---- FEAT SYSTEM ----
-function initFeatSystem() {
-  const addBtn = $('btn-add-feat');
-  const searchInput = $('feat-search');
-  if (addBtn && searchInput) {
-    addBtn.addEventListener('click', () => {
-      const name = searchInput.value.trim();
-      if (!name) return;
-      addFeat(name);
-      searchInput.value = '';
-    });
-  }
-}
-
-function addFeat(name) {
-  const feats = lv('feats', []);
-  if (feats.includes(name)) return;
-  feats.push(name);
-  sv('feats', feats);
-  renderFeats();
-}
-
-function removeFeat(name) {
-  const feats = lv('feats', []).filter(f => f !== name);
-  sv('feats', feats);
-  renderFeats();
-}
-
-function restoreFeats() {
-  renderFeats();
-}
-
-function renderFeats() {
-  const container = $('feats-container');
-  const fullList = $('full-feats-list');
-  if (!container) return;
-  container.innerHTML = '';
-  if (fullList) fullList.innerHTML = '';
-
-  const feats = lv('feats', []);
-  feats.forEach(name => {
-    const info = getFeatInfo(name);
-    const card = document.createElement('div');
-    card.className = 'feat-card';
-    card.innerHTML = `
-      <div>
-        <div class="feat-card-name">${name}</div>
-        <div class="feat-card-cat">${info?.category || ''}</div>
-      </div>
-      <button class="feat-card-del" title="Remove">✕</button>`;
-    card.querySelector('.feat-card-del').addEventListener('click', () => removeFeat(name));
-    container.appendChild(card);
-
-    // Full tab
-    if (fullList && info) {
-      const entry = document.createElement('div');
-      entry.className = 'feature-entry';
-      entry.innerHTML = `
-        <div class="feature-entry-header">
-          <span class="feature-entry-name">${info.name}</span>
-          <span class="feature-entry-level">${info.category}</span>
-        </div>
-        <div class="feature-entry-text">${info.description || ''}</div>`;
-      fullList.appendChild(entry);
-    }
-  });
-}
+// Feat system is handled by Sheet.initFeatSystem() in sheet.js
 
 // ---- POPULATE DATALISTS ----
 function populateDataLists() {

@@ -38,8 +38,21 @@ window.CharStore = {
     }, 800);
   },
 
+  _flushPendingSnapshot() {
+    // Commit any pending snapshot immediately (before undo/redo)
+    clearTimeout(this._snapshotTimer);
+    if (this._pendingSnapshot) {
+      this._undoStack.push(this._pendingSnapshot);
+      if (this._undoStack.length > this._MAX_UNDO) this._undoStack.shift();
+      this._redoStack = [];
+      this._pendingSnapshot = null;
+    }
+  },
+
   undo() {
-    if (!this._undoStack.length || !this.activeId) return;
+    if (!this.activeId) return;
+    this._flushPendingSnapshot();
+    if (!this._undoStack.length) return;
     this._redoStack.push(JSON.stringify(this.activeData));
     const prev = JSON.parse(this._undoStack.pop());
     this._skipSnapshot = true;
@@ -71,29 +84,39 @@ window.CharStore = {
 
   _refreshSheet() {
     // Re-render the entire sheet with the restored data
-    if (typeof Sheet !== 'undefined' && this.activeId) {
-      // Restore all data-save fields
-      document.querySelectorAll('[data-save]').forEach(el => {
-        const key = el.dataset.save;
-        const val = this.activeData[key];
-        if (el.type === 'checkbox') el.checked = !!val;
-        else if (val !== undefined && val !== null) el.value = val;
-        else el.value = '';
-      });
-      // Update level display
-      const display = document.getElementById('charLevel-display');
-      if (display) display.textContent = this.activeData.charLevel || 1;
-      // Recalculate everything
-      Sheet.recalcAll();
-      Sheet.renderFeats();
-      Sheet.restoreSpells();
-      Sheet.restoreInventory();
-      if (typeof Sheet.restoreCharOptions === 'function') Sheet.restoreCharOptions();
-      const className = this.activeData.charClass;
-      if (className) Sheet.displayClassFeatures(className);
-      const titleEl = document.getElementById('topbar-title');
-      if (titleEl) titleEl.textContent = this.activeData.charName || 'Character Sheet';
-    }
+    if (typeof Sheet === 'undefined' || !this.activeId) return;
+
+    // Restore all data-save fields
+    document.querySelectorAll('[data-save]').forEach(el => {
+      const key = el.dataset.save;
+      const val = this.activeData[key];
+      if (el.type === 'checkbox') el.checked = !!val;
+      else if (val !== undefined && val !== null) el.value = val;
+      else el.value = '';
+    });
+
+    // Update level display
+    const display = document.getElementById('charLevel-display');
+    if (display) display.textContent = this.activeData.charLevel || 1;
+
+    // Recalculate everything
+    Sheet.recalcAll();
+    Sheet.buildAttacks();
+    Sheet.renderFeats();
+    Sheet.restoreSpells();
+    Sheet.restoreInventory();
+    if (typeof Sheet.restoreCharOptions === 'function') Sheet.restoreCharOptions();
+    if (typeof Sheet.restoreResources === 'function') Sheet.restoreResources();
+    if (typeof Sheet.initEquippedGear === 'function') Sheet.initEquippedGear();
+
+    // Restore class/species/background selections
+    const className = this.activeData.charClass;
+    if (className) Sheet.applyClassSelection(className);
+    const species = this.activeData.charSpecies;
+    if (species) Sheet.applySpeciesSelection(species);
+    const bg = this.activeData.charBackground;
+    if (bg) Sheet.applyBackgroundSelection(bg);
+
   },
 
   initUndo() {

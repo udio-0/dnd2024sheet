@@ -8,6 +8,126 @@
 window.ClassResources = {
 
   /* ================================================================
+     RESOURCE DESCRIPTIONS — level-aware tooltips for limited resources.
+     Each entry: { text, die?, dieAt? }
+       text    : base description
+       die     : if present, a die that scales with level
+       dieAt   : array of { level, die } for scaling
+     ================================================================ */
+  RESOURCE_DESCRIPTIONS: {
+    'Rage': {
+      text: 'You can enter a Rage as a Bonus Action. While raging you have advantage on Strength checks and saving throws, gain a bonus to melee damage, and have resistance to Bludgeoning, Piercing, and Slashing damage. Rage lasts for 1 minute.',
+      extra: [
+        { level: 1, note: 'Rage damage at current level: +2' }, { level: 9, note: 'Rage damage at current level: +3' }, { level: 17, note: 'Rage damage at current level: +4' },
+      ],
+    },
+    'Bardic Inspiration': {
+      text: 'You can use a Bonus Action to inspire a creature within 60 feet that can hear you. It gains a Bardic Inspiration die it can add to one ability check, attack roll, or saving throw in the next 10 minutes.',
+      extra: [
+        { level: 1, note: 'Inspiration die at current level: d6' }, { level: 5, note: 'Inspiration die at current level: d8' },
+        { level: 10, note: 'Inspiration die at current level: d10' }, { level: 15, note: 'Inspiration die at current level: d12' },
+      ],
+    },
+    'Channel Divinity': {
+      text: 'You can channel divine energy to fuel magical effects. You start with Turn Undead and gain additional options from your subclass.',
+    },
+    'Wild Shape': {
+      text: 'As a Bonus Action, you can magically assume the shape of a beast you have seen before. You can stay in beast shape for a number of hours equal to half your Druid level (rounded down).',
+    },
+    'Second Wind': {
+      text: 'On your turn, you can use a Bonus Action to regain Hit Points equal to 1d10 + your Fighter level.',
+    },
+    'Action Surge': {
+      text: 'On your turn, you can take one additional action. Once used, you must finish a Short or Long Rest before using it again.',
+    },
+    'Indomitable': {
+      text: 'You can reroll a saving throw that you fail. You must use the new roll.',
+    },
+    'Discipline Points': {
+      text: 'You have a pool of Discipline Points (formerly Ki Points) used to fuel various Monk features like Flurry of Blows, Patient Defense, and Step of the Wind.',
+    },
+    'Lay on Hands': {
+      text: 'You have a pool of healing power that replenishes on a Long Rest. As an action, you can touch a creature and restore Hit Points from this pool, or spend 5 points to cure a disease or neutralize a poison.',
+    },
+    'Sorcery Points': {
+      text: 'You have a pool of Sorcery Points used to create spell slots, fuel Metamagic options, and power other Sorcerer features.',
+    },
+    'Innate Sorcery': {
+      text: 'As a Bonus Action, you awaken your innate magic for 1 minute. While active, your spell save DC increases by 1 and you have Advantage on attack rolls of Sorcerer spells.',
+    },
+    'Superiority Dice': {
+      text: 'You have Superiority Dice (d8s, upgrading to d10s at 10th and d12s at 18th level) used to fuel Battle Master Maneuvers. You add the die roll to the maneuver effect.',
+      extra: [
+        { level: 3, note: 'Superiority die at current level: d8' }, { level: 10, note: 'Superiority die at current level: d10' }, { level: 18, note: 'Superiority die at current level: d12' },
+      ],
+    },
+    'Portent': {
+      text: 'After a Long Rest, roll two d20s and record the numbers. You can replace any attack roll, saving throw, or ability check made by you or a creature you can see with one of these foretelling rolls.',
+    },
+    'Arcane Recovery': {
+      text: 'During a Short Rest, you can recover expended spell slots with a combined level equal to no more than half your Wizard level (rounded up). None of the slots can be 6th level or higher.',
+    },
+    'Tides of Chaos': {
+      text: 'You can gain Advantage on one attack roll, ability check, or saving throw. Once used, you must finish a Long Rest before using again — unless you trigger a Wild Magic Surge.',
+    },
+    'Luck Points': {
+      text: 'You have Luck Points you can spend to roll an additional d20 on an attack roll, ability check, or saving throw — then choose which d20 to use. You can also spend a point when attacked to roll a d20; if higher than the attack roll, the attack misses.',
+    },
+    'Breath Weapon': {
+      text: 'You can use your Breath Weapon as an action. Each creature in the area must make a saving throw. The damage and area are determined by your Draconic Ancestry.',
+    },
+    'Relentless Endurance': {
+      text: 'When you are reduced to 0 Hit Points but not killed outright, you drop to 1 Hit Point instead.',
+    },
+    'Starlight Step': {
+      text: 'As a Bonus Action, you can magically teleport up to 30 feet to an unoccupied space you can see.',
+    },
+    'Astral Trance': {
+      text: "You don't need to sleep, and magic can't put you to sleep. You can finish a Long Rest in 4 hours in a trancelike meditation. After each trance, you gain proficiency in one skill and one weapon or tool of your choice until your next Long Rest.",
+    },
+    'Healing Hands': {
+      text: 'As an action, you can touch a creature and restore a number of Hit Points equal to your Proficiency Bonus. Once used, you must finish a Long Rest to use it again.',
+    },
+    "Stone's Endurance": {
+      text: 'When you take damage, you can use your Reaction to roll a d12 + your Constitution modifier and reduce the damage by that amount.',
+    },
+    'Fiendish Legacy': {
+      text: 'You can cast a spell granted by your Fiendish Legacy once without a spell slot. You regain this ability after a Long Rest.',
+    },
+    'Magic Initiate Spell': {
+      text: 'You can cast the 1st-level spell you chose from the Magic Initiate feat once without expending a spell slot. You regain the ability to cast it in this way after a Long Rest.',
+    },
+    'Fey-Touched: Misty Step': {
+      text: 'You can cast Misty Step once without expending a spell slot. You regain the ability after a Long Rest.',
+    },
+  },
+
+  /**
+   * Get a level-aware description for a resource.
+   * Returns a string (plain text) or null if no description is found.
+   */
+  getResourceDescription(resourceName, level) {
+    // Try exact match, then try base name without parenthetical
+    let desc = this.RESOURCE_DESCRIPTIONS[resourceName];
+    if (!desc) {
+      const baseName = resourceName.replace(/\s*\(.*\)$/, '').replace(/^.+?:\s*/, '').trim();
+      desc = this.RESOURCE_DESCRIPTIONS[baseName];
+    }
+    if (!desc) return null;
+
+    let text = desc.text;
+    // Find the highest applicable level note
+    if (desc.extra?.length && level) {
+      let best = null;
+      for (const e of desc.extra) {
+        if (level >= e.level) best = e;
+      }
+      if (best) text += `\n\n${best.note}`;
+    }
+    return text;
+  },
+
+  /* ================================================================
      WEAPON MASTERY TABLES — { level, count } per class
      ================================================================ */
   WEAPON_MASTERY_TABLE: {
@@ -53,7 +173,7 @@ window.ClassResources = {
       ], refresh: 'lr', startLevel: 1 },
     ],
     Bard: [
-      { name: 'Bardic Inspiration', maxAt: 'PB', refresh: 'lr', startLevel: 1 },
+      { name: 'Bardic Inspiration', maxAt: 'PB', refresh: 'lr', refreshAt: [{ level: 5, refresh: 'sr' }], startLevel: 1 },
     ],
     Cleric: [
       { name: 'Channel Divinity', maxAt: [
@@ -131,6 +251,10 @@ window.ClassResources = {
         { level: 2, max: 2 }, { level: 14, max: 3 },
       ], refresh: 'lr', startLevel: 2 },
     ],
+    'Bard:College of Spirits': [
+      { name: 'Spirit Guardians (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
+      { name: 'Modified Spirit Guardians', maxAt: [{ level: 6, max: 1 }], refresh: 'sr', startLevel: 6 },
+    ],
     'Paladin:Oath of Devotion': [],
     'Paladin:Oath of the Ancients': [],
   },
@@ -172,6 +296,12 @@ window.ClassResources = {
     ],
     'Githzerai': [
       { name: 'Psychic Resilience', maxAt: [{ level: 1, max: 1 }], refresh: 'lr' },
+    ],
+    'Astral Elf': [
+      { name: 'Starlight Step', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Elf': [
+      // Base elf has no tracked resources; subrace resources are added via subrace name match
     ],
   },
 
@@ -230,11 +360,7 @@ window.ClassResources = {
         { label: 'Level 1 Ritual Spells', count: 2, level: 1, filter: 'classAndRitual', classOptions: ['Cleric', 'Druid', 'Wizard'] },
       ],
     },
-    'Spell Sniper': {
-      picks: [
-        { label: 'Cantrip (attack roll)', count: 1, level: 0, filter: 'classAndAttackRoll', classOptions: ['Cleric', 'Druid', 'Wizard'] },
-      ],
-    },
+    // Spell Sniper: "Increased Range" applies to all attack roll spells automatically — no pick needed
   },
 
   /**
@@ -341,11 +467,18 @@ window.ClassResources = {
       if (level < startLevel) continue;
       const max = this._resolveMax(def.maxAt, level, className);
       if (max <= 0) continue;
+      // Resolve level-dependent refresh (e.g. Bardic Inspiration: LR at 1-4, SR at 5+)
+      let refresh = def.refresh;
+      if (def.refreshAt?.length) {
+        for (const ra of def.refreshAt) {
+          if (level >= ra.level) refresh = ra.refresh;
+        }
+      }
       resources.push({
         name: def.name,
         max,
         used: 0,
-        refresh: def.refresh,
+        refresh,
         ...(def.usableOnShortRest && { usableOnShortRest: true }),
       });
     }
@@ -371,9 +504,21 @@ window.ClassResources = {
   /**
    * Get species resources.
    */
-  getSpeciesResources(speciesName, level) {
-    // Try exact match, then try stripping suffixes
-    let defs = this.SPECIES_RESOURCES[speciesName];
+  getSpeciesResources(speciesName, level, subraceName) {
+    // Try subrace first (e.g. "Astral Elf"), then species name
+    let defs = null;
+    if (subraceName) {
+      defs = this.SPECIES_RESOURCES[subraceName];
+      if (!defs) {
+        for (const [key, val] of Object.entries(this.SPECIES_RESOURCES)) {
+          if (subraceName.toLowerCase().includes(key.toLowerCase()) ||
+              key.toLowerCase().includes(subraceName.toLowerCase())) {
+            defs = val; break;
+          }
+        }
+      }
+    }
+    if (!defs) defs = this.SPECIES_RESOURCES[speciesName];
     if (!defs) {
       // Try matching partial name (e.g. "Chromatic Dragonborn" from "Dragonborn (Chromatic)")
       for (const [key, val] of Object.entries(this.SPECIES_RESOURCES)) {
@@ -397,7 +542,9 @@ window.ClassResources = {
   /**
    * Get feat resources.
    */
-  getFeatResources(featName, level) {
+  getFeatResources(featNameOrObj, level) {
+    const featName = typeof featNameOrObj === 'string' ? featNameOrObj : featNameOrObj?.name || '';
+    const featObj = typeof featNameOrObj === 'object' ? featNameOrObj : null;
     const lvl = parseInt(level) || (typeof CharStore !== 'undefined' ? parseInt(CharStore.lv('charLevel', 1)) : 1);
     // Try exact match then partial
     let defs = this.FEAT_RESOURCES[featName];
@@ -410,12 +557,15 @@ window.ClassResources = {
       }
     }
     if (!defs) return [];
-    return defs.map(def => ({
-      name: def.name,
-      max: this._resolveMax(def.maxAt, lvl),
-      used: 0,
-      refresh: def.refresh,
-    }));
+    return defs.map(def => {
+      let name = def.name;
+      // Replace "Bonus Spell" with actual chosen spell name if available
+      if (name.includes('Bonus Spell') && featObj?.chosenSpells?.length) {
+        const chosenSpell = featObj.chosenSpells[featObj.chosenSpells.length - 1];
+        if (chosenSpell) name = name.replace('Bonus Spell', chosenSpell);
+      }
+      return { name, max: this._resolveMax(def.maxAt, lvl), used: 0, refresh: def.refresh };
+    });
   },
 
   /**
@@ -428,6 +578,7 @@ window.ClassResources = {
     const className = draft.charClass || '';
     const subclassName = draft.charSubclass || '';
     const speciesName = draft.charSpecies || '';
+    const subraceName = draft.charSubrace || '';
 
     // Class resources
     const classRes = this.getClassResources(className, level);
@@ -445,7 +596,7 @@ window.ClassResources = {
 
     // Species resources
     if (speciesName) {
-      const specRes = this.getSpeciesResources(speciesName, level);
+      const specRes = this.getSpeciesResources(speciesName, level, subraceName);
       specRes.forEach(r => {
         if (!draft.resources.some(x => x.name === r.name)) draft.resources.push(r);
       });
@@ -453,8 +604,7 @@ window.ClassResources = {
 
     // Feat resources (from feats array — supports string or {name} objects)
     (draft.feats || []).forEach(f => {
-      const fn = typeof f === 'string' ? f : f.name;
-      const featRes = this.getFeatResources(fn);
+      const featRes = this.getFeatResources(f);
       featRes.forEach(r => {
         if (!draft.resources.some(x => x.name === r.name)) draft.resources.push(r);
       });
@@ -475,14 +625,15 @@ window.ClassResources = {
     const className = CharStore.lv('charClass', '');
     const subclassName = CharStore.lv('charSubclass', '');
     const speciesName = CharStore.lv('charSpecies', '');
+    const subraceName = CharStore.lv('charSubrace', '');
     const resources = CharStore.lv('resources', []) || [];
 
     // Get what resources SHOULD exist at newLevel
     const targetClassRes = this.getClassResources(className, newLevel);
     const targetSubRes = subclassName ? this.getSubclassResources(className, subclassName, newLevel) : [];
-    const targetSpecRes = speciesName ? this.getSpeciesResources(speciesName, newLevel) : [];
+    const targetSpecRes = speciesName ? this.getSpeciesResources(speciesName, newLevel, subraceName) : [];
     const feats = CharStore.lv('feats', []) || [];
-    const targetFeatRes = feats.flatMap(f => this.getFeatResources(typeof f === 'string' ? f : f.name, newLevel));
+    const targetFeatRes = feats.flatMap(f => this.getFeatResources(f, newLevel));
     const allTarget = [...targetClassRes, ...targetSubRes, ...targetSpecRes, ...targetFeatRes];
 
     // Update existing or add new

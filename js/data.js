@@ -106,6 +106,13 @@ function parseEntryHtml(entry) {
   if (typeof entry === 'string') {
     const text = stripTags(entry);
     if (FILLER_PHRASES.test(text.trim())) return '';
+    // Split on double newlines into paragraphs; bold sub-feature names like "Name. text"
+    if (text.includes('\n\n')) {
+      return text.split(/\n\n+/).filter(p => p.trim()).map(p => {
+        const bolded = p.replace(/^([A-Z][A-Za-z' ]+(?: [A-Z][A-Za-z' ]+)*\.)(\s)/, '<strong>$1</strong>$2');
+        return `<p>${bolded}</p>`;
+      }).join('');
+    }
     return `<p>${text}</p>`;
   }
   if (!entry || typeof entry !== 'object') return '';
@@ -120,10 +127,8 @@ function parseEntryHtml(entry) {
   }
   if (entry.type === 'entries') {
     let out = '';
-    if (entry.name) out += `<p><strong>${addPunctHtml(entry.name)}</strong> `;
-    else out += '<p>';
-    if (entry.entries) out += entry.entries.map(e => typeof e === 'string' ? stripTags(e) : parseEntryHtml(e)).filter(Boolean).join(' ');
-    out += '</p>';
+    if (entry.name) out += `<p><strong>${addPunctHtml(entry.name)}</strong></p>`;
+    if (entry.entries) out += entry.entries.map(e => parseEntryHtml(e)).filter(Boolean).join('');
     return out;
   }
   if (entry.type === 'list') {
@@ -134,10 +139,16 @@ function parseEntryHtml(entry) {
     const headers = (entry.colLabels || []).map(h => `<th>${stripTags(typeof h === 'string' ? h : (h.label || ''))}</th>`).join('');
     const thead = headers ? `<thead><tr>${headers}</tr></thead>` : '';
     const renderCell = c => {
-      if (typeof c === 'string') return stripTags(c);
-      if (c && c.type === 'cell') return stripTags(typeof c.entry === 'string' ? c.entry : parseEntry(c.entry));
-      if (c && typeof c === 'object') return stripTags(c.entry || c.text || '');
-      return '';
+      let text = '';
+      if (typeof c === 'string') text = c;
+      else if (c && c.type === 'cell') text = typeof c.entry === 'string' ? c.entry : parseEntry(c.entry);
+      else if (c && typeof c === 'object') text = c.entry || c.text || '';
+      // Extract {@b ...} bold markers before stripTags removes them
+      const bolds = [];
+      text = text.replace(/\{@b ([^}]+)\}/g, (_, inner) => { const id = `__BOLD${bolds.length}__`; bolds.push(inner); return id; });
+      text = stripTags(text);
+      bolds.forEach((b, i) => { text = text.replace(`__BOLD${i}__`, `<strong>${b}</strong>`); });
+      return text;
     };
     const rows = (entry.rows || []).map(row => {
       const cells = (Array.isArray(row) ? row : (row.row || [])).map(c => `<td>${renderCell(c)}</td>`).join('');
@@ -582,7 +593,8 @@ async function loadAllData(progressCallback) {
         ];
         keysToTry.forEach(key => {
           if (DndData.classDetails[key]) {
-            const already = DndData.classDetails[key].subclasses.some(s => s.name === sc.name);
+            // Check for exact name+source match (allow same name from different sources, e.g. UA2024 vs VRGR)
+            const already = DndData.classDetails[key].subclasses.some(s => s.name === sc.name && s.source === sc.source);
             if (!already) DndData.classDetails[key].subclasses.push(scEntry);
           }
         });
@@ -835,6 +847,32 @@ function _parseClassToolProfChoices(toolsArr) {
   return groups.length ? groups : null;
 }
 
+const ALL_SKILL_KEYS = [
+  'Acrobatics', 'Animal Handling', 'Arcana', 'Athletics', 'Deception',
+  'History', 'Insight', 'Intimidation', 'Investigation', 'Medicine',
+  'Nature', 'Perception', 'Performance', 'Persuasion', 'Religion',
+  'Sleight of Hand', 'Stealth', 'Survival',
+];
+
+function _parseSkillChoices(skillsArr) {
+  if (!skillsArr?.length) return null;
+  const entry = skillsArr[0];
+  // Standard format: { choose: { from: [...], count: N } }
+  if (entry.choose) {
+    const choose = entry.choose;
+    // Handle "any" skill choice: from may be absent or contain "any"
+    if (!choose.from || (choose.from.length === 1 && choose.from[0] === 'any') || choose.from.length === 0) {
+      return { from: ALL_SKILL_KEYS, count: choose.count || 2 };
+    }
+    return choose;
+  }
+  // Alternative format: { any: N } — choose any N skills
+  if (entry.any) {
+    return { from: ALL_SKILL_KEYS, count: typeof entry.any === 'number' ? entry.any : 2 };
+  }
+  return null;
+}
+
 function getClassInfo(className) {
   const details = DndData.classDetails[className];
   if (!details) return null;
@@ -894,7 +932,7 @@ function getClassInfo(className) {
     savingThrows: cls.proficiency || [],
     armorProf: cls.startingProficiencies?.armor || [],
     weaponProf: cls.startingProficiencies?.weapons || [],
-    skillChoices: cls.startingProficiencies?.skills?.[0]?.choose || null,
+    skillChoices: _parseSkillChoices(cls.startingProficiencies?.skills),
     toolProfChoices,
     fixedToolProf,
     expertiseCount: expertiseFeature ? 2 : 0,
@@ -1262,8 +1300,10 @@ function getSpeciesInfo(name, source) {
     darkvision: race.darkvision || 0,
     traits: entriesToText(race.entries),
     traitsHtml: entriesToHtml(race.entries),
+    traitsRaw: race.entries || [],
     resist: race.resist || [],
     languageProf: race.languageProficiencies || [],
+    skillProficiencies: race.skillProficiencies || [],
     abilityBonus: formatAbilityBonus(race),
     subraces,
     hasLineage: !!race.lineage,
@@ -1273,21 +1313,47 @@ function getSpeciesInfo(name, source) {
 
 // Parse racial additionalSpells into a simple { cantrips, level3, level5 } structure.
 // subraceName is used to select the right entry when additionalSpells entries have a "name" field.
-function parseRacialSpells(additionalSpells, subraceName, subraceEntries) {
+function parseRacialSpells(additionalSpells, subraceName, subraceEntries, chosenBlockIndex) {
   const cleanSpellName = s => stripTags(s.replace(/#[a-z]$/i, '').replace(/\|[^|]*/g, '').trim());
 
-  const result = { cantrips: [], level3: [], level5: [], ability: null, abilityChoices: null };
+  const result = { cantrips: [], level3: [], level5: [], ability: null, abilityChoices: null, cantripChoices: null };
   if (!additionalSpells?.length) return result;
 
-  // Find the matching spell block — either no name (applies to all) or matches subrace
-  const block = additionalSpells.find(b => !b.name || b.name === subraceName)
-    || additionalSpells[0];
+  // Detect multi-block cantrip choice: multiple unnamed blocks each with a single known.1 cantrip
+  const isMultiChoice = additionalSpells.length > 1 && additionalSpells.every(b => {
+    if (b.name) return false;
+    const k1 = b.known?.['1'];
+    const k1arr = Array.isArray(k1) ? k1 : (k1?._ ? (Array.isArray(k1._) ? k1._ : [k1._]) : null);
+    return k1arr && k1arr.length === 1 && typeof k1arr[0] === 'string' && !b.innate;
+  });
+
+  if (isMultiChoice) {
+    // Extract the cantrip name from each block for the choice UI
+    result.cantripChoices = additionalSpells.map(b => {
+      const k1 = b.known['1'];
+      const spell = Array.isArray(k1) ? k1[0] : k1;
+      return cleanSpellName(spell);
+    });
+  }
+
+  // Find the matching spell block
+  let block;
+  if (isMultiChoice && chosenBlockIndex != null && additionalSpells[chosenBlockIndex]) {
+    block = additionalSpells[chosenBlockIndex];
+  } else {
+    block = additionalSpells.find(b => !b.name || b.name === subraceName)
+      || additionalSpells[0];
+  }
   if (!block) return result;
 
   // Spellcasting ability
   if (block.ability) {
     if (typeof block.ability === 'string') result.ability = block.ability;
-    else if (block.ability.choose) result.abilityChoices = block.ability.choose;
+    else if (block.ability.choose) {
+      const ch = block.ability.choose;
+      // Handle both formats: ["int","wis","cha"] or {from: ["int","wis","cha"]}
+      result.abilityChoices = Array.isArray(ch) ? ch : (ch.from || []);
+    }
   }
 
   // Cantrips / always-known spells (known.1)

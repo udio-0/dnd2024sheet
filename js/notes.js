@@ -48,6 +48,9 @@ window.NotesManager = {
   _acResults: [],        // current filtered results
   _dirty: false,         // true if notes changed since last export
   _saveTimer: null,      // reference to debounced save timer
+  _navHistory: [],       // note navigation history (array of note IDs)
+  _navIndex: -1,         // current position in navigation history
+  _navLock: false,       // prevent history push during back/forward
 
   // ---- STORAGE (independent from character data) ----
   STORAGE_KEY: 'dnd_campaign_notes_v1',
@@ -102,6 +105,25 @@ window.NotesManager = {
     this._bindUI();
     this.renderSidebar();
     this._openLastNote();
+
+    // Replace initial history entry so we have a baseline to return to
+    history.replaceState({ notesBase: true }, '', '');
+
+    // Listen for browser back/forward
+    window.addEventListener('popstate', (e) => {
+      if (e.state && e.state.noteId) {
+        // Navigate to the note from browser history
+        this._navLock = true;
+        // Sync internal nav index if possible
+        const idx = this._navHistory.lastIndexOf(e.state.noteId);
+        if (idx >= 0) this._navIndex = idx;
+        this.openNote(e.state.noteId);
+        this._navLock = false;
+      } else if (e.state && e.state.notesBase) {
+        // Returned to base — close editor if open on mobile, or just stay
+        this.$('notes-tab-root')?.classList.remove('note-open');
+      }
+    });
   },
 
   // teardown on character switch
@@ -210,10 +232,14 @@ window.NotesManager = {
           if (!this._acMouseDown) {
             this._acDismiss();
             this._renderPreviewLinks();
+            this._showRenderedView();
           }
         }, 150);
       });
-      editor.addEventListener('focus', () => this._showRawContent());
+      editor.addEventListener('focus', () => {
+        this._showRawContent();
+        this._hideRenderedView();
+      });
     }
     // Title editing
     const titleEl = this.$('notes-editor-title');
@@ -235,6 +261,25 @@ window.NotesManager = {
     this.$('notes-btn-back')?.addEventListener('click', () => {
       this.$('notes-tab-root')?.classList.remove('note-open');
     });
+    this.$('notes-nav-prev')?.addEventListener('click', () => this._navBack());
+    this.$('notes-nav-next')?.addEventListener('click', () => this._navForward());
+    // Help tooltip toggle
+    const helpBtn = this.$('notes-help-btn');
+    const helpTip = this.$('notes-help-tooltip');
+    if (helpBtn && helpTip) {
+      helpBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const show = !helpTip.classList.contains('visible');
+        helpTip.classList.toggle('visible', show);
+        helpBtn.classList.toggle('active', show);
+      });
+      document.addEventListener('click', (e) => {
+        if (!helpTip.contains(e.target) && e.target !== helpBtn) {
+          helpTip.classList.remove('visible');
+          helpBtn.classList.remove('active');
+        }
+      });
+    }
     // Export / Import
     this.$('notes-btn-export')?.addEventListener('click', () => this.exportNotes());
     this.$('notes-btn-import')?.addEventListener('click', () => this.$('notes-import-file')?.click());
@@ -317,6 +362,21 @@ window.NotesManager = {
   },
 
   openNote(id) {
+    // Push to navigation history (unless navigating via back/forward)
+    if (!this._navLock) {
+      // Truncate forward history if we branched
+      if (this._navIndex < this._navHistory.length - 1) {
+        this._navHistory = this._navHistory.slice(0, this._navIndex + 1);
+      }
+      // Don't push duplicate
+      if (this._navHistory[this._navHistory.length - 1] !== id) {
+        this._navHistory.push(id);
+      }
+      this._navIndex = this._navHistory.length - 1;
+      // Push browser history so back/forward buttons navigate notes
+      history.pushState({ noteId: id }, '', '');
+    }
+    this._updateNavButtons();
     this._activeNoteId = id;
     this._setLastOpen(id);
     const note = this.getNoteById(id);
@@ -339,10 +399,11 @@ window.NotesManager = {
     this._renderMeta(note);
     this.renderNoteList();
 
-    // Show wiki-link preview if not focused
-    if (contentEl && document.activeElement !== contentEl) {
-      this._renderPreviewLinks();
-    }
+    // Always show rendered view (blur editor if it has focus)
+    if (contentEl && document.activeElement === contentEl) contentEl.blur();
+    this._hideRenderedView();
+    this._renderPreviewLinks();
+    this._showRenderedView();
   },
 
   _showEmptyEditor() {
@@ -351,6 +412,7 @@ window.NotesManager = {
     const tagsEl = this.$('notes-editor-tags');
     const metaEl = this.$('notes-editor-meta');
     const previewEl = this.$('notes-link-preview');
+    this._hideRenderedView();
     if (titleEl) { titleEl.value = ''; titleEl.disabled = true; }
     if (contentEl) { contentEl.value = 'Select or create a note to begin.'; contentEl.disabled = true; }
     if (tagsEl) tagsEl.innerHTML = '';
@@ -462,7 +524,10 @@ window.NotesManager = {
       opt.className = 'notes-tag-dd-opt' + (note.tags.includes(key) ? ' active' : '');
       opt.innerHTML = `${def.icon} ${def.label}`;
       opt.addEventListener('click', () => {
-        if (note.tags.includes(key)) this.removeTag(this._activeNoteId, key);
+        // Always re-read the note to get fresh tag state
+        const fresh = this.getNoteById(this._activeNoteId);
+        if (!fresh) return;
+        if (fresh.tags.includes(key)) this.removeTag(this._activeNoteId, key);
         else this.addTag(this._activeNoteId, key);
         opt.classList.toggle('active');
       });
@@ -516,6 +581,24 @@ window.NotesManager = {
     }, 0);
   },
 
+  // ---- NOTE NAVIGATION (back/forward) ----
+  _navBack() {
+    if (this._navIndex <= 0) return;
+    history.back(); // triggers popstate which handles the navigation
+  },
+
+  _navForward() {
+    if (this._navIndex >= this._navHistory.length - 1) return;
+    history.forward(); // triggers popstate which handles the navigation
+  },
+
+  _updateNavButtons() {
+    const prev = this.$('notes-nav-prev');
+    const next = this.$('notes-nav-next');
+    if (prev) prev.disabled = this._navIndex <= 0;
+    if (next) next.disabled = this._navIndex >= this._navHistory.length - 1;
+  },
+
   _moveNote(noteId, folderId) {
     const notes = this.getNotes();
     const note = notes.find(n => n.id === noteId);
@@ -523,6 +606,15 @@ window.NotesManager = {
     note.folderId = folderId;
     note.modified = new Date().toISOString();
     this.saveNotes(notes);
+    this.renderSidebar();
+  },
+
+  _toggleFolderCollapse(folderId) {
+    const folders = this.getFolders();
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+    folder.collapsed = !folder.collapsed;
+    this.saveFolders(folders);
     this.renderSidebar();
   },
 
@@ -703,8 +795,10 @@ window.NotesManager = {
     // If autocomplete is active, update the query
     if (this._acActive) {
       const typed = text.slice(this._acStartPos + 1, pos);
-      // Dismiss if user backspaced past the symbol or typed whitespace at start
-      if (pos <= this._acStartPos) {
+      // Dismiss if user backspaced past the symbol or typed a space immediately after
+      // (e.g. "# " is a markdown heading, not a location link)
+      // Also dismiss if user typed the same symbol again (e.g. ~~ for strikethrough)
+      if (pos <= this._acStartPos || (typed.length === 1 && typed === ' ') || (typed.length === 1 && typed === this._acSymbol)) {
         this._acDismiss();
         return;
       }
@@ -1022,6 +1116,197 @@ window.NotesManager = {
     if (previewEl) previewEl.innerHTML = '';
   },
 
+  // ---- MARKDOWN PARSER ----
+  _markdownToHtml(text) {
+    const allNotes = this.getNotes();
+
+    // 1. Extract note links into placeholders so markdown doesn't mangle them
+    const placeholders = [];
+    const linkRe = /(?:(@|#|!|\$|&|~|\^|%)\[([^\]]+)\]|\[\[([^\]]+)\]\])/g;
+    let raw = text.replace(linkRe, (m, symbol, symTitle, wikiTitle) => {
+      const idx = placeholders.length;
+      placeholders.push({ symbol: symbol || null, title: symTitle || wikiTitle });
+      return `\x00LINK${idx}\x00`;
+    });
+
+    // 2. Escape HTML
+    raw = this._esc(raw);
+
+    // 3. Code blocks (``` ... ```) — must come before inline rules
+    raw = raw.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) =>
+      `<pre class="note-codeblock"><code>${code.trim()}</code></pre>`);
+
+    // 4. Inline code (`code`)
+    raw = raw.replace(/`([^`\n]+)`/g, '<code class="note-inline-code">$1</code>');
+
+    // 5. Process line-by-line for block elements
+    const lines = raw.split('\n');
+    let html = '';
+    let inList = false, listType = '';
+    let inBlockquote = false;
+
+    const flushList = () => { if (inList) { html += listType === 'ul' ? '</ul>' : '</ol>'; inList = false; } };
+    const flushBq = () => { if (inBlockquote) { html += '</blockquote>'; inBlockquote = false; } };
+
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i];
+
+      // Skip lines that are part of a code block (already handled)
+      if (line.includes('<pre class="note-codeblock">') || line.includes('</pre>')) {
+        flushList(); flushBq();
+        html += line + '\n';
+        continue;
+      }
+
+      // Horizontal rule
+      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim())) {
+        flushList(); flushBq();
+        html += '<hr class="note-hr">';
+        continue;
+      }
+
+      // Headers
+      const hMatch = line.match(/^(#{1,6})\s+(.+)$/);
+      if (hMatch) {
+        flushList(); flushBq();
+        const level = hMatch[1].length;
+        html += `<h${level} class="note-h">${this._inlineMarkdown(hMatch[2])}</h${level}>`;
+        continue;
+      }
+
+      // Blockquote
+      if (line.match(/^&gt;\s?/)) {
+        flushList();
+        const content = line.replace(/^&gt;\s?/, '');
+        if (!inBlockquote) { html += '<blockquote class="note-blockquote">'; inBlockquote = true; }
+        html += this._inlineMarkdown(content) + '<br>';
+        continue;
+      } else {
+        flushBq();
+      }
+
+      // Unordered list
+      const ulMatch = line.match(/^(\s*)[-*+]\s+(.+)$/);
+      if (ulMatch) {
+        if (!inList || listType !== 'ul') { flushList(); html += '<ul class="note-list">'; inList = true; listType = 'ul'; }
+        html += `<li>${this._inlineMarkdown(ulMatch[2])}</li>`;
+        continue;
+      }
+
+      // Ordered list
+      const olMatch = line.match(/^(\s*)\d+[.)]\s+(.+)$/);
+      if (olMatch) {
+        if (!inList || listType !== 'ol') { flushList(); html += '<ol class="note-list">'; inList = true; listType = 'ol'; }
+        html += `<li>${this._inlineMarkdown(olMatch[2])}</li>`;
+        continue;
+      }
+
+      flushList();
+
+      // Checkbox / task list
+      const cbMatch = line.match(/^\[( |x|X)\]\s+(.+)$/);
+      if (cbMatch) {
+        const checked = cbMatch[1] !== ' ';
+        html += `<div class="note-task"><span class="note-checkbox ${checked ? 'checked' : ''}">${checked ? '☑' : '☐'}</span> ${this._inlineMarkdown(cbMatch[2])}</div>`;
+        continue;
+      }
+
+      // Empty line → paragraph break
+      if (line.trim() === '') {
+        html += '<br>';
+        continue;
+      }
+
+      // Normal paragraph line
+      html += `<div>${this._inlineMarkdown(line)}</div>`;
+    }
+    flushList(); flushBq();
+
+    // 6. Restore note link placeholders as clickable spans
+    html = html.replace(/\x00LINK(\d+)\x00/g, (_, idx) => {
+      const p = placeholders[+idx];
+      if (!p) return '';
+      if (!p.symbol) {
+        // [[wiki link]]
+        const target = allNotes.find(n => n.title.toLowerCase() === p.title.toLowerCase());
+        return `<span class="note-inline-link${target ? '' : ' broken'}" data-note-title="${this._esc(p.title)}">[[${this._esc(p.title)}]]</span>`;
+      }
+      const tagType = this.SYMBOL_MAP[p.symbol];
+      const tagDef = tagType ? this.TAG_TYPES[tagType] : null;
+      const target = allNotes.find(n => n.title.toLowerCase() === p.title.toLowerCase());
+      const color = tagDef ? tagDef.color : '';
+      const escSym = this._esc(p.symbol);
+      return `<span class="note-inline-link${target ? '' : ' broken'}" style="--tag-color:${color}" data-note-title="${this._esc(p.title)}" data-symbol="${this._esc(p.symbol)}"><span class="note-link-sym">${escSym}</span>${this._esc(p.title)}</span>`;
+    });
+
+    return html;
+  },
+
+  _inlineMarkdown(text) {
+    return text
+      .replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>')   // ***bold italic***
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')                 // **bold**
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')                      // __bold__
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')                             // *italic*
+      .replace(/_(.+?)_/g, '<em>$1</em>')                               // _italic_
+      .replace(/~~(.+?)~~/g, '<del>$1</del>')                           // ~~strikethrough~~
+      .replace(/==(.+?)==/g, '<mark class="note-highlight">$1</mark>'); // ==highlight==
+  },
+
+  _showRenderedView() {
+    const editor = this.$('notes-editor-content');
+    const rendered = this.$('notes-editor-rendered');
+    if (!editor || !rendered || !editor.value.trim()) return;
+
+    const html = this._markdownToHtml(editor.value);
+
+    rendered.innerHTML = html;
+    rendered.style.display = 'block';
+    editor.style.display = 'none';
+
+    // Clicking a link opens the note
+    const allNotes = this.getNotes();
+    rendered.querySelectorAll('.note-inline-link').forEach(el => {
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const title = el.dataset.noteTitle;
+        const sym = el.dataset.symbol || null;
+        const target = allNotes.find(n => n.title.toLowerCase() === title.toLowerCase());
+        if (target) {
+          this.openNote(target.id);
+        } else {
+          const now = new Date().toISOString();
+          const notes = this.getNotes();
+          const tagType = sym ? this.SYMBOL_MAP[sym] : null;
+          const newNote = {
+            id: this._uid(), folderId: this._activeFolder,
+            title: title, content: '',
+            tags: tagType ? [tagType] : [],
+            pinned: false, created: now, modified: now,
+          };
+          notes.unshift(newNote);
+          this.saveNotes(notes);
+          this.openNote(newNote.id);
+          this.renderSidebar();
+        }
+      });
+    });
+
+    // Clicking anywhere else in the rendered view switches back to editing
+    rendered.addEventListener('click', (e) => {
+      if (e.target.closest('.note-inline-link')) return;
+      this._hideRenderedView();
+      editor.focus();
+    });
+  },
+
+  _hideRenderedView() {
+    const editor = this.$('notes-editor-content');
+    const rendered = this.$('notes-editor-rendered');
+    if (editor) editor.style.display = '';
+    if (rendered) { rendered.style.display = 'none'; rendered.innerHTML = ''; }
+  },
+
   // ---- META DISPLAY ----
   _renderMeta(note) {
     const el = this.$('notes-editor-meta');
@@ -1076,6 +1361,14 @@ window.NotesManager = {
     allBtn.className = 'notes-folder-item' + (this._activeFolder === null ? ' active' : '');
     allBtn.innerHTML = `<span class="notes-folder-icon">📋</span><span class="notes-folder-name">All Notes</span><span class="notes-folder-count">${this.getNotes().length}</span>`;
     allBtn.addEventListener('click', () => { this._activeFolder = null; this.renderSidebar(); });
+    // Drop target: move note to root (no folder)
+    allBtn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; allBtn.classList.add('drag-over'); });
+    allBtn.addEventListener('dragleave', () => allBtn.classList.remove('drag-over'));
+    allBtn.addEventListener('drop', (e) => {
+      e.preventDefault(); allBtn.classList.remove('drag-over');
+      const noteId = e.dataTransfer.getData('text/plain');
+      if (noteId) { this._moveNote(noteId, null); }
+    });
     container.appendChild(allBtn);
 
     // Render folders (flat for now, could be recursive for nesting)
@@ -1090,11 +1383,32 @@ window.NotesManager = {
     const item = document.createElement('div');
     item.className = 'notes-folder-item-wrap';
 
+    const hasChildren = subfolders.length > 0 || notes.length > 0;
+
     const btn = document.createElement('button');
     btn.className = 'notes-folder-item' + (this._activeFolder === folder.id ? ' active' : '');
     btn.style.paddingLeft = (12 + depth * 16) + 'px';
-    btn.innerHTML = `<span class="notes-folder-icon">${folder.collapsed ? '📁' : '📂'}</span><span class="notes-folder-name">${this._esc(folder.name)}</span><span class="notes-folder-count">${notes.length}</span>`;
-    btn.addEventListener('click', () => { this._activeFolder = folder.id; this.renderSidebar(); });
+    const chevron = hasChildren ? `<span class="notes-folder-chevron ${folder.collapsed ? '' : 'open'}">▶</span>` : '<span class="notes-folder-chevron-spacer"></span>';
+    btn.innerHTML = `${chevron}<span class="notes-folder-icon">${folder.collapsed ? '📁' : '📂'}</span><span class="notes-folder-name">${this._esc(folder.name)}</span><span class="notes-folder-count">${notes.length}</span>`;
+    // Click chevron to toggle collapse; click name to select folder
+    btn.addEventListener('click', (e) => {
+      if (e.target.closest('.notes-folder-chevron')) {
+        e.stopPropagation();
+        this._toggleFolderCollapse(folder.id);
+        return;
+      }
+      this._activeFolder = folder.id;
+      this.renderSidebar();
+    });
+
+    // Drop target: move note into this folder
+    btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); });
+    btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
+    btn.addEventListener('drop', (e) => {
+      e.preventDefault(); btn.classList.remove('drag-over');
+      const noteId = e.dataTransfer.getData('text/plain');
+      if (noteId) { this._moveNote(noteId, folder.id); }
+    });
 
     // Visible action buttons (rename / delete)
     const actions = document.createElement('span');
@@ -1211,6 +1525,16 @@ window.NotesManager = {
         <div class="notes-list-date">${this._relativeDate(note.modified)}</div>
       `;
       card.addEventListener('click', () => this.openNote(note.id));
+
+      // Drag & drop: make note cards draggable
+      card.draggable = true;
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', note.id);
+        e.dataTransfer.effectAllowed = 'move';
+        card.classList.add('dragging');
+      });
+      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+
       container.appendChild(card);
     });
   },

@@ -153,6 +153,12 @@ window.Sheet = {
         tab.classList.add('active');
         const panel = this.$(`tab-${tab.dataset.tab}`);
         if (panel) panel.classList.add('active');
+        // Hide undo/redo on Notes tab
+        const isNotes = tab.dataset.tab === 'notes';
+        const undoBtn = this.$('btn-undo');
+        const redoBtn = this.$('btn-redo');
+        if (undoBtn) undoBtn.style.display = isNotes ? 'none' : '';
+        if (redoBtn) redoBtn.style.display = isNotes ? 'none' : '';
       });
     });
   },
@@ -327,9 +333,14 @@ window.Sheet = {
     const profEl = this.$('profBonus');
     if (profEl) profEl.textContent = this.fmtMod(prof);
 
+    // Jack of All Trades: Bard level 2+ adds half proficiency (rounded down) to non-proficient ability checks
+    const _className = this.lv('charClass', '');
+    const _jackOfAllTrades = _className === 'Bard' && level >= 2;
+    const halfProf = Math.floor(prof / 2);
+
     const initEl = this.$('initiative');
     if (initEl) {
-      initEl.textContent = this.fmtMod(mods.dex);
+      initEl.textContent = this.fmtMod(mods.dex + (_jackOfAllTrades ? halfProf : 0));
       if (!initEl.dataset.rollBound) {
         initEl.dataset.rollBound = '1';
         initEl.style.cursor = 'pointer';
@@ -359,7 +370,7 @@ window.Sheet = {
       const state = parseInt(toggle?.dataset.state || '0');
       const isProficient = state >= 1;
       const isExpert = state === 2;
-      const bonus = isExpert ? prof * 2 : isProficient ? prof : 0;
+      const bonus = isExpert ? prof * 2 : isProficient ? prof : (_jackOfAllTrades ? halfProf : 0);
       const total = mods[s.ability] + bonus;
       const el = this.$(`skill-${s.key}`);
       if (el) el.textContent = this.fmtMod(total);
@@ -454,6 +465,58 @@ window.Sheet = {
   buildAttacks() {
     const saved = this.lv('attacks', []);
     saved.forEach(a => this.addAttackRow(a));
+    this._initAttackDragDrop();
+  },
+
+  _initAttackDragDrop() {
+    const tbody = this.$('attacks-body');
+    if (!tbody || tbody._dragInited) return;
+    tbody._dragInited = true;
+    let dragRow = null;
+
+    tbody.addEventListener('dragstart', e => {
+      const tr = e.target.closest('tr');
+      if (!tr || !tbody.contains(tr)) return;
+      dragRow = tr;
+      tr.classList.add('atk-dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    tbody.addEventListener('dragend', e => {
+      if (dragRow) dragRow.classList.remove('atk-dragging');
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('atk-drag-over'));
+      dragRow = null;
+    });
+
+    tbody.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const tr = e.target.closest('tr');
+      if (!tr || tr === dragRow || !tbody.contains(tr)) return;
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('atk-drag-over'));
+      tr.classList.add('atk-drag-over');
+    });
+
+    tbody.addEventListener('dragleave', e => {
+      const tr = e.target.closest('tr');
+      if (tr) tr.classList.remove('atk-drag-over');
+    });
+
+    tbody.addEventListener('drop', e => {
+      e.preventDefault();
+      const tr = e.target.closest('tr');
+      if (!tr || !dragRow || tr === dragRow || !tbody.contains(tr)) return;
+      // Determine if we should insert before or after
+      const rect = tr.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        tbody.insertBefore(dragRow, tr);
+      } else {
+        tbody.insertBefore(dragRow, tr.nextSibling);
+      }
+      tbody.querySelectorAll('tr').forEach(r => r.classList.remove('atk-drag-over'));
+      this.saveAttacks();
+    });
   },
 
   addAttackRow(data = {}) {
@@ -470,6 +533,7 @@ window.Sheet = {
     ).join('');
 
     tr.innerHTML = `
+      <td class="atk-drag-cell"><span class="atk-drag-handle" title="Drag to reorder">⠿</span></td>
       <td><input type="text" class="atk-name" placeholder="Weapon name" value="${data.name || ''}" list="attack-list"></td>
       <td class="atk-ability-cell"><select class="atk-ability">${abilityOpts}</select></td>
       <td class="atk-prof-cell"><span class="skill-state-toggle atk-prof-cb" data-state="${data.prof ? '1' : '0'}" title="Add proficiency bonus to attack roll"></span></td>
@@ -482,6 +546,11 @@ window.Sheet = {
       <td><input type="text" class="atk-mastery" placeholder="—" value="${data.mastery || ''}"></td>
       <td class="atk-ed-cell"><button class="atk-src-btn" title="Toggle edition"></button></td>`;
     tbody.appendChild(tr);
+
+    // Drag handle — only allow drag when grabbing the handle
+    const handle = tr.querySelector('.atk-drag-handle');
+    handle.addEventListener('mousedown', () => { tr.draggable = true; });
+    tr.addEventListener('dragend', () => { tr.draggable = false; });
 
     const nameInput    = tr.querySelector('.atk-name');
     const abilitySelect= tr.querySelector('.atk-ability');
@@ -1103,7 +1172,8 @@ window.Sheet = {
   _applyRacialSpells(info, subraceName) {
     if (!info.additionalSpells?.length) return;
     const subraceEntries = info.subraces?.find(sr => sr.name === subraceName)?.entries;
-    const racialSpells = parseRacialSpells(info.additionalSpells, subraceName, subraceEntries);
+    const cantripChoice = this.lv('racialCantripChoice', null);
+    const racialSpells = parseRacialSpells(info.additionalSpells, subraceName, subraceEntries, cantripChoice);
     const level = this.getLevel();
 
     // Clean up duplicate racial spells from saved data
@@ -1119,9 +1189,9 @@ window.Sheet = {
     });
     if (hadDupes) this.sv('charSpells', cleaned);
 
-    // Get existing racial spell names to avoid duplicates (normalised to lowercase)
+    // Get all existing spell names to avoid duplicates (normalised to lowercase)
     const existingRacial = new Set(
-      cleaned.filter(s => s.racial).map(s => s.name.toLowerCase())
+      cleaned.map(s => s.name.toLowerCase())
     );
 
     const capName = n => n ? n.replace(/\b\w/g, c => c.toUpperCase()) : n;
@@ -1226,13 +1296,45 @@ window.Sheet = {
       box.style.display = 'block';
       const titleEl = box.querySelector('.box-title');
       if (titleEl) titleEl.textContent = `Specie Traits - ${info.name}`;
-      let txt = `Size: ${info.size}`;
-      if (flySpeed) txt += `\nFly: ${flySpeed} ft.`;
-      if (swimSpeed) txt += `\nSwim: ${swimSpeed} ft.`;
-      if (darkvision) txt += `\nDarkvision: ${darkvision} ft.`;
-      if (resist.length) txt += `\nResistances: ${resist.join(', ')}`;
-      if (subraceInfo) txt += `\nLineage: ${subraceInfo.name}`;
-      textEl.textContent = txt;
+      let parts = [];
+      let statLine = `<strong class="trait-keyword">Size:</strong> ${info.size}`;
+      if (flySpeed) statLine += ` | <strong class="trait-keyword">Fly:</strong> ${flySpeed} ft.`;
+      if (swimSpeed) statLine += ` | <strong class="trait-keyword">Swim:</strong> ${swimSpeed} ft.`;
+      if (darkvision) statLine += ` | <strong class="trait-keyword">Darkvision:</strong> ${darkvision} ft.`;
+      parts.push(`<p>${statLine}</p>`);
+      if (resist.length) parts.push(`<p><strong class="trait-keyword">Resistances:</strong> ${resist.join(', ')}</p>`);
+      if (subraceInfo) parts.push(`<p><strong class="trait-keyword">Lineage:</strong> ${subraceInfo.name}</p>`);
+      // Extract trait names from race entries for the compact box
+      const traitEntries = [
+        ...(Array.isArray(info.traitsRaw) ? info.traitsRaw : (info._rawEntries || [])),
+        ...(subraceInfo?.entries || []),
+      ].filter(e => e && typeof e === 'object' && e.name);
+      if (!traitEntries.length && info.traitsHtml) {
+        // Fallback: parse trait names from entries on the actual race object
+        const raceObj = DndData?.races?.find(r => r.name === info.name);
+        if (raceObj?.entries) {
+          raceObj.entries.filter(e => e && typeof e === 'object' && e.name).forEach(e => traitEntries.push(e));
+        }
+        if (subraceInfo) {
+          // Also get subrace entries from the versions/subraces data
+          const srObj = raceObj?._versions?.find(v => v.name === subraceInfo.name)
+            || DndData?.subraces?.find(sr => sr.name === subraceInfo.name && sr.raceName === info.name);
+          if (srObj?.entries) srObj.entries.filter(e => e && typeof e === 'object' && e.name).forEach(e => traitEntries.push(e));
+        }
+      }
+      // Skip traits that are already represented by stats above
+      const skipNames = /^(creature type|size|darkvision|speed)$/i;
+      const shownTraits = traitEntries.filter(e => e.name && !skipNames.test(e.name));
+      if (shownTraits.length) {
+        shownTraits.forEach(e => {
+          // Show trait name + first sentence as summary
+          const entryText = (e.entries || []).map(x => typeof x === 'string' ? stripTags(x) : '').join(' ').trim();
+          const firstSentence = entryText.match(/^[^.]+\./)?.[0] || entryText.slice(0, 80);
+          if (firstSentence) parts.push(`<p><strong class="trait-keyword">${e.name}.</strong> ${firstSentence}</p>`);
+          else parts.push(`<p><strong class="trait-keyword">${e.name}.</strong></p>`);
+        });
+      }
+      textEl.innerHTML = parts.join('');
     }
 
     const fullEl = this.$('full-species-traits');
@@ -1360,7 +1462,7 @@ window.Sheet = {
       f.name === bgBaseName && f.source === rawBg?.source
     );
     const flavorHtml = (fluff?.entries || [])
-      .map(e => typeof e === 'string' ? `<p>${e}</p>` : '')
+      .map(e => typeof e === 'string' ? `<p>${stripTags(e)}</p>` : '')
       .join('');
 
     // Chronicle tab: flavor text only
@@ -1568,10 +1670,284 @@ window.Sheet = {
       addBtn.addEventListener('click', () => {
         const name = searchInput.value.trim();
         if (!name) return;
-        this.addFeat(name);
-        searchInput.value = '';
+        const info = typeof getFeatInfo === 'function' ? getFeatInfo(name) : null;
+        const canonical = info?.name || name;
+        const allowed = info?.ability?.length && typeof LevelUp !== 'undefined'
+          ? LevelUp._parseFeatAbilities(info.ability) : [];
+        const spellConfig = typeof ClassResources !== 'undefined'
+          ? ClassResources.FEAT_SPELL_CHOICES?.[canonical] : null;
+        if (allowed.length > 0 || spellConfig) {
+          this._showFeatOptionsPicker(canonical, info, allowed, spellConfig, () => { searchInput.value = ''; });
+        } else {
+          this.addFeat(name);
+          searchInput.value = '';
+        }
       });
     }
+  },
+
+  _showFeatOptionsPicker(featName, featInfo, abilities, spellConfig, onDone) {
+    document.querySelector('.feat-opts-overlay')?.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'feat-opts-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'feat-opts-modal';
+
+    // State
+    let selectedAbility = null;
+    let selectedClass = '';
+    const chosenSpells = [];
+
+    const abNames = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+
+    // --- Build header ---
+    const header = document.createElement('div');
+    header.className = 'feat-opts-header';
+    header.innerHTML = `<div class="feat-opts-title">${featName}</div>`;
+    if (featInfo?.category) header.innerHTML += `<span class="feat-opts-cat">${featInfo.category}</span>`;
+    modal.appendChild(header);
+
+    if (featInfo?.description) {
+      const desc = document.createElement('div');
+      desc.className = 'feat-opts-desc';
+      desc.innerHTML = featInfo.description;
+      modal.appendChild(desc);
+    }
+
+    // --- Ability score section ---
+    let abilitySection = null;
+    if (abilities.length > 0) {
+      abilitySection = document.createElement('div');
+      abilitySection.className = 'feat-opts-section';
+      abilitySection.innerHTML = `<div class="feat-opts-section-title">Ability Score Increase <span class="feat-opts-section-hint">Choose one (+1)</span></div>`;
+      const grid = document.createElement('div');
+      grid.className = 'feat-opts-ab-grid';
+
+      const nonCapped = abilities.filter(ab => this.getAbilityScore(ab) < 20);
+
+      abilities.forEach(ab => {
+        const score = this.getAbilityScore(ab);
+        const atCap = score >= 20;
+        const card = document.createElement('div');
+        card.className = 'feat-opts-ab-card' + (atCap ? ' capped' : '');
+        card.dataset.ab = ab;
+        card.innerHTML = `
+          <div class="feat-opts-ab-name">${ab.toUpperCase()}</div>
+          <div class="feat-opts-ab-label">${abNames[ab] || ab}</div>
+          <div class="feat-opts-ab-score">${atCap
+            ? `<span class="feat-opts-ab-current">${score}</span> <span class="feat-opts-ab-max">max</span>`
+            : `<span class="feat-opts-ab-current">${score}</span> <span class="feat-opts-ab-arrow">→</span> <span class="feat-opts-ab-new">${score + 1}</span>`
+          }</div>`;
+        if (!atCap) {
+          card.addEventListener('click', () => {
+            grid.querySelectorAll('.feat-opts-ab-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            selectedAbility = ab;
+            updateConfirm();
+          });
+        }
+        grid.appendChild(card);
+      });
+
+      // Auto-select if only one non-capped
+      if (nonCapped.length === 1) {
+        selectedAbility = nonCapped[0];
+        setTimeout(() => grid.querySelector(`.feat-opts-ab-card[data-ab="${nonCapped[0]}"]`)?.classList.add('selected'), 0);
+      }
+
+      abilitySection.appendChild(grid);
+      modal.appendChild(abilitySection);
+    }
+
+    // --- Spell choices section ---
+    let spellSection = null;
+    if (spellConfig) {
+      spellSection = document.createElement('div');
+      spellSection.className = 'feat-opts-section';
+      spellSection.innerHTML = `<div class="feat-opts-section-title">Spell Choices</div>`;
+      const spellContent = document.createElement('div');
+      spellContent.className = 'feat-opts-spell-content';
+      spellSection.appendChild(spellContent);
+      modal.appendChild(spellSection);
+
+      const buildSpellPickers = (cls) => {
+        spellContent.innerHTML = '';
+
+        // Class picker
+        if (spellConfig.requireClassPick) {
+          const classRow = document.createElement('div');
+          classRow.className = 'feat-opts-class-row';
+          classRow.innerHTML = `<label class="feat-opts-label">Spellcasting Class:</label>`;
+          const select = document.createElement('select');
+          select.className = 'feat-opts-class-select';
+          select.innerHTML = `<option value="">Choose class...</option>` +
+            spellConfig.classOptions.map(c => `<option value="${c}" ${c === cls ? 'selected' : ''}>${c}</option>`).join('');
+          select.addEventListener('change', () => {
+            selectedClass = select.value;
+            chosenSpells.length = 0;
+            buildSpellPickers(select.value);
+            updateConfirm();
+          });
+          classRow.appendChild(select);
+          spellContent.appendChild(classRow);
+        }
+
+        // Auto-spells
+        if (spellConfig.autoSpells?.length) {
+          const autoDiv = document.createElement('div');
+          autoDiv.className = 'feat-opts-auto-spells';
+          autoDiv.innerHTML = `<span class="feat-opts-label">Always prepared:</span> ${
+            spellConfig.autoSpells.map(s => `<span class="feat-opts-spell-tag auto">${s}</span>`).join('')}`;
+          spellContent.appendChild(autoDiv);
+        }
+
+        // Spell pick sections
+        spellConfig.picks.forEach((pickDef, pickIdx) => {
+          const pool = typeof ClassResources !== 'undefined'
+            ? ClassResources.getFeatSpellPool(pickDef, cls) : [];
+          const pickSection = document.createElement('div');
+          pickSection.className = 'feat-opts-pick-section';
+
+          const pickLabel = document.createElement('div');
+          pickLabel.className = 'feat-opts-pick-label';
+          pickLabel.textContent = `${pickDef.label || 'Choose spell(s)'} (${pickDef.count})`;
+          pickSection.appendChild(pickLabel);
+
+          // Figure out which spells belong to this pick
+          const prevCount = spellConfig.picks.slice(0, pickIdx).reduce((s, p) => s + p.count, 0);
+          const mySpells = chosenSpells.slice(prevCount, prevCount + pickDef.count);
+
+          // Show chosen spell tags
+          const tagsDiv = document.createElement('div');
+          tagsDiv.className = 'feat-opts-spell-tags';
+          mySpells.forEach((spellName, i) => {
+            const tag = document.createElement('span');
+            tag.className = 'feat-opts-spell-tag chosen';
+            tag.innerHTML = `${spellName} <button class="feat-opts-spell-remove" title="Remove">&times;</button>`;
+            tag.querySelector('.feat-opts-spell-remove').addEventListener('click', () => {
+              chosenSpells.splice(prevCount + i, 1);
+              buildSpellPickers(cls);
+              updateConfirm();
+            });
+            tagsDiv.appendChild(tag);
+          });
+          pickSection.appendChild(tagsDiv);
+
+          // Search input if still need more picks
+          if (mySpells.length < pickDef.count && pool.length) {
+            const searchWrap = document.createElement('div');
+            searchWrap.className = 'feat-opts-spell-search-wrap';
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'feat-opts-spell-search';
+            input.placeholder = `Search ${pickDef.label || 'spells'}...`;
+            const dropdown = document.createElement('div');
+            dropdown.className = 'feat-opts-spell-dropdown';
+
+            const renderDropdown = (filter) => {
+              const query = (filter || '').toLowerCase();
+              const filtered = pool.filter(s =>
+                s.name.toLowerCase().includes(query) &&
+                !chosenSpells.some(c => c.toLowerCase() === s.name.toLowerCase())
+              ).slice(0, 30);
+              dropdown.innerHTML = '';
+              if (!filtered.length) {
+                dropdown.innerHTML = '<div class="feat-opts-dd-empty">No matches</div>';
+                return;
+              }
+              filtered.forEach(spell => {
+                const item = document.createElement('div');
+                item.className = 'feat-opts-dd-item';
+                item.innerHTML = `<span class="feat-opts-dd-name">${spell.name}</span>
+                  <span class="feat-opts-dd-meta">${spell._schoolName || ''} · ${spell._src || ''}</span>`;
+                item.addEventListener('click', () => {
+                  dropdown.style.display = 'none';
+                  chosenSpells.splice(prevCount + mySpells.length, 0, spell.name);
+                  buildSpellPickers(cls);
+                  updateConfirm();
+                });
+                dropdown.appendChild(item);
+              });
+            };
+
+            const positionDropdown = () => {
+              const rect = input.getBoundingClientRect();
+              dropdown.style.left = rect.left + 'px';
+              dropdown.style.top = rect.bottom + 'px';
+              dropdown.style.width = rect.width + 'px';
+            };
+            const showDropdown = () => { dropdown.style.display = 'block'; positionDropdown(); renderDropdown(input.value); };
+            input.addEventListener('input', showDropdown);
+            input.addEventListener('focus', showDropdown);
+            modal.addEventListener('scroll', () => { if (dropdown.style.display === 'block') positionDropdown(); });
+            document.addEventListener('click', e => { if (!searchWrap.contains(e.target) && !dropdown.contains(e.target)) dropdown.style.display = 'none'; });
+
+            searchWrap.appendChild(input);
+            document.body.appendChild(dropdown);
+            // Clean up dropdown when overlay is removed
+            const obs = new MutationObserver(() => { if (!document.body.contains(overlay)) { dropdown.remove(); obs.disconnect(); } });
+            obs.observe(document.body, { childList: true });
+            pickSection.appendChild(searchWrap);
+          }
+
+          spellContent.appendChild(pickSection);
+        });
+      };
+
+      buildSpellPickers(selectedClass);
+    }
+
+    // --- Actions ---
+    const actions = document.createElement('div');
+    actions.className = 'feat-opts-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'feat-opts-btn cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'feat-opts-btn confirm';
+    confirmBtn.textContent = 'Add Feat';
+    confirmBtn.disabled = true;
+
+    const updateConfirm = () => {
+      let ready = true;
+      // Need ability selected if half-feat
+      if (abilities.length > 0 && !selectedAbility) ready = false;
+      // Need spell choices filled if spell feat
+      if (spellConfig) {
+        const totalNeeded = spellConfig.picks.reduce((s, p) => s + p.count, 0);
+        if (chosenSpells.length < totalNeeded) ready = false;
+        if (spellConfig.requireClassPick && !selectedClass) ready = false;
+      }
+      confirmBtn.disabled = !ready;
+    };
+    updateConfirm();
+
+    confirmBtn.addEventListener('click', () => {
+      if (confirmBtn.disabled) return;
+      // Apply ability increase
+      if (selectedAbility) {
+        const scoreEl = this.$(selectedAbility);
+        if (scoreEl) scoreEl.value = parseInt(scoreEl.value || 10) + 1;
+        this.recalcAll();
+      }
+      // Build feat object
+      const featObj = { name: featName };
+      if (selectedAbility) featObj.spellAbility = selectedAbility;
+      if (spellConfig && chosenSpells.length) featObj.chosenSpells = [...chosenSpells];
+      if (selectedClass) featObj.spellClass = selectedClass;
+      this.addFeat(featObj);
+      overlay.remove();
+      if (onDone) onDone();
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    modal.appendChild(actions);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
   },
 
   // Helper: extract feat name from string or object
@@ -1595,7 +1971,8 @@ window.Sheet = {
     // Auto-add any limited resources from this feat
     if (typeof ClassResources !== 'undefined') {
       const level = parseInt(this.lv('charLevel', 1)) || 1;
-      const featRes = ClassResources.getFeatResources(canonical, level);
+      const storedEntry = feats.find(f => this._featName(f).toLowerCase() === canonical.toLowerCase());
+      const featRes = ClassResources.getFeatResources(storedEntry || canonical, level);
       if (featRes.length) {
         const resources = this.lv('resources', []);
         let added = false;
@@ -1732,6 +2109,7 @@ window.Sheet = {
             level: spellData.level,
             prepared: true,
             featSource: f.name,
+            ...(f.spellAbility && { featSpellAbility: f.spellAbility }),
           });
         }
       });
@@ -2118,7 +2496,7 @@ window.Sheet = {
 
   // 2024 PHB prepared spell tables for fixed-list casters
   _PREPARED_TABLES: {
-    bard:     [0, 4, 5, 6, 7, 9, 9, 10, 10, 12, 14, 15, 15, 16, 18, 19, 19, 20, 22, 22, 22],
+    bard:     [0, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
     sorcerer: [0, 2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
     warlock:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15],
   },
@@ -2161,7 +2539,7 @@ window.Sheet = {
     const el = this.$('spellPreparedCount');
     if (!el) return;
     const spells = this.lv('charSpells', []);
-    const count = spells.filter(s => s.prepared || s.racial).length;
+    const count = spells.filter(s => (s.prepared || s.racial) && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass).length;
     el.textContent = count;
     const maxEl = this.$('spellPreparedMax');
     const display = el.closest('.spell-prepared-display');
@@ -2234,13 +2612,35 @@ window.Sheet = {
     let badges = '';
     if (isConc) badges += `<span class="spell-badge spell-badge-conc" title="Concentration">C</span>`;
     if (isRitual) badges += `<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>`;
-    if (isRacial) badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
+    if (isRacial) {
+      badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
+      // Show which ability this racial spell uses
+      const racialAb = (this.lv('racialSpellAbility', '') || '').toLowerCase();
+      const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
+      const abNames = { int: 'INT', wis: 'WIS', cha: 'CHA', str: 'STR', dex: 'DEX', con: 'CON' };
+      if (racialAb && classAb && racialAb !== classAb) {
+        badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[racialAb] || racialAb} (species) instead of ${abNames[classAb] || classAb} (class)">${abNames[racialAb] || racialAb}</span>`;
+      }
+    }
+    if (saved?.featSource && saved?.featSpellAbility) {
+      const featAb = saved.featSpellAbility.toLowerCase();
+      const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
+      const abNames = { int: 'INT', wis: 'WIS', cha: 'CHA', str: 'STR', dex: 'DEX', con: 'CON' };
+      if (featAb && classAb && featAb !== classAb) {
+        badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[featAb] || featAb} (${saved.featSource}) instead of ${abNames[classAb] || classAb} (class)">${abNames[featAb] || featAb}</span>`;
+      }
+    }
 
     // Dice roll buttons
     let diceHtml = '';
     if (diceExprs.length > 0) {
       diceHtml = `<span class="spell-card-dice">${diceExprs.map(d => `<button class="spell-dice-btn" data-dice="${d}" title="Roll ${d}">${d}</button>`).join('')}</span>`;
     }
+
+    // Apply subclass spell modifications for display
+    const _spellMods = this.lv('spellMods', {}) || {};
+    const _sMod = _spellMods[spell.name];
+    if (_sMod?.rangeOverride) spell = { ...spell, _rangeStr: _sMod.rangeOverride };
 
     // Tooltip content
     const tooltipParts = [];
@@ -2295,11 +2695,11 @@ window.Sheet = {
 
     if (!isRacial) {
       card.querySelector('input[type="checkbox"]').addEventListener('change', function () {
-        // Block preparing if at max
-        if (this.checked) {
+        // Block preparing if at max (cantrips are exempt from the limit)
+        if (this.checked && spell.level > 0) {
           const max = parseInt(CharStore.lv('spellPreparedMax', '')) || 0;
           if (max > 0) {
-            const current = CharStore.lv('charSpells', []).filter(s => s.prepared || s.racial).length;
+            const current = CharStore.lv('charSpells', []).filter(s => (s.prepared || s.racial) && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass).length;
             if (current >= max) {
               this.checked = false;
               const rect = this.getBoundingClientRect();
@@ -2494,6 +2894,13 @@ window.Sheet = {
       ? entriesToHtml(spell.entries)
       : (spell.entries ? spell.entries.map(e => typeof e === 'string' ? `<p>${e}</p>` : `<p><strong>${e.name}:</strong> ${(e.entries || []).join(' ')}</p>`).join('') : '<p>No description available.</p>');
 
+    // Check for subclass spell modifications (e.g. range overrides)
+    const spellMods = this.lv('spellMods', {}) || {};
+    const mod = spellMods[spell.name];
+    if (mod?.rangeOverride && spell._rangeStr) {
+      spell = { ...spell, _rangeStr: mod.rangeOverride + ' (modified by subclass)' };
+    }
+
     const isConc = this._isConcentration(spell);
     const isRitual = this._isRitual(spell);
     const actionClass = this._actionColorClass(spell);
@@ -2515,6 +2922,26 @@ window.Sheet = {
       concBtn = `<button class="btn btn-sm spell-detail-conc-btn spell-hover-conc-btn">Concentrate on this spell</button>`;
     }
 
+    // Racial spell ability warning
+    const saved = this.lv('charSpells', []).find(s => s.name.toLowerCase() === spell.name.toLowerCase());
+    let racialAbNote = '';
+    if (saved?.racial) {
+      const racialAb = (this.lv('racialSpellAbility', '') || '').toLowerCase();
+      const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
+      const abNames = { int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', str: 'Strength', dex: 'Dexterity', con: 'Constitution' };
+      if (racialAb && classAb && racialAb !== classAb) {
+        racialAbNote = `<div style="background:rgba(218,165,32,0.15);border:1px solid var(--gold);border-radius:4px;padding:4px 8px;margin-top:6px;font-size:0.78rem"><strong>Note:</strong> This racial spell uses <strong>${abNames[racialAb] || racialAb}</strong> as its spellcasting ability, not your class ability (${abNames[classAb] || classAb}).</div>`;
+      }
+    }
+    if (saved?.featSource && saved?.featSpellAbility) {
+      const featAb = saved.featSpellAbility.toLowerCase();
+      const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
+      const abNames = { int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma', str: 'Strength', dex: 'Dexterity', con: 'Constitution' };
+      if (featAb && classAb && featAb !== classAb) {
+        racialAbNote = `<div style="background:rgba(218,165,32,0.15);border:1px solid var(--gold);border-radius:4px;padding:4px 8px;margin-top:6px;font-size:0.78rem"><strong>Note:</strong> This feat spell (${saved.featSource}) uses <strong>${abNames[featAb] || featAb}</strong> as its spellcasting ability, not your class ability (${abNames[classAb] || classAb}).</div>`;
+      }
+    }
+
     return `
       <div class="spell-hover-header"><strong>${spell.name}</strong></div>
       <div class="spell-detail-tags">${tagsHtml}</div>
@@ -2526,6 +2953,7 @@ window.Sheet = {
       </div>
       ${diceSection}
       <div class="spell-detail-body">${this._highlightSpellText(bodyHtml)}</div>
+      ${racialAbNote}
       ${concBtn}`;
   },
 
@@ -3795,6 +4223,77 @@ window.Sheet = {
     this.renderResources();
   },
 
+  // Look up a feature description by name from class features, race entries, subclass features
+  _getResourceTooltip(resourceName) {
+    const lowerName = resourceName.toLowerCase().replace(/\s*\(.*\)$/, '').trim();
+    const level = this.getLevel();
+
+    // 1. Check curated resource descriptions (level-aware, with scaling info)
+    if (ClassResources?.getResourceDescription) {
+      const curated = ClassResources.getResourceDescription(resourceName, level);
+      if (curated) return curated;
+    }
+
+    // 2. Check race entries (base + subrace)
+    const speciesName = this.lv('charSpecies', '');
+    const subraceName = this.lv('charSubrace', '');
+    if (speciesName && typeof getSpeciesInfo === 'function') {
+      const info = getSpeciesInfo(speciesName);
+      if (info) {
+        const allEntries = [...(info.traitsRaw || [])];
+        if (subraceName) {
+          const sr = info.subraces?.find(s => s.name === subraceName);
+          if (sr?.entries) allEntries.push(...sr.entries);
+        }
+        for (const e of allEntries) {
+          if (e && typeof e === 'object' && e.name && e.name.toLowerCase() === lowerName) {
+            const text = (e.entries || []).map(x => typeof x === 'string' ? stripTags(x) : '').join(' ').trim();
+            if (text) return text;
+          }
+        }
+      }
+    }
+
+    // 3. Check class features from loaded data
+    const className = this.lv('charClass', '');
+    const details = DndData?.classDetails?.[className];
+    if (details?.features) {
+      for (const feat of details.features) {
+        if (feat?.name?.toLowerCase() === lowerName) {
+          const text = (feat.entries || []).map(x => typeof x === 'string' ? stripTags(x) : '').join(' ').trim();
+          if (text) return text;
+        }
+      }
+    }
+
+    // 4. Check subclass features
+    const subclassName = this.lv('charSubclass', '');
+    if (details?.subclassFeatures) {
+      for (const feat of details.subclassFeatures) {
+        if (feat?.name?.toLowerCase() === lowerName) {
+          const text = (feat.entries || []).map(x => typeof x === 'string' ? stripTags(x) : '').join(' ').trim();
+          if (text) return text;
+        }
+      }
+    }
+
+    // 5. Check notes field from resource definitions
+    const allDefs = [
+      ...(ClassResources?.CLASS_RESOURCES?.[className] || []),
+      ...(ClassResources?.SUBCLASS_RESOURCES?.[`${className}:${subclassName}`] || []),
+      ...(ClassResources?.SPECIES_RESOURCES?.[subraceName] || ClassResources?.SPECIES_RESOURCES?.[speciesName] || []),
+    ];
+    for (const def of allDefs) {
+      if (def.name === resourceName && def.notes) return def.notes;
+    }
+
+    // 5. Fallback: stored resource notes
+    const res = this.lv('resources', []).find(r => r.name === resourceName);
+    if (res?.notes) return res.notes;
+
+    return null;
+  },
+
   renderResources() {
     const list = this.$('resources-list');
     if (!list) return;
@@ -3844,6 +4343,41 @@ window.Sheet = {
         this.sv('resources', r);
         this.renderResources();
       });
+      // Tooltip on hover over resource name
+      const nameEl = row.querySelector('.resource-name');
+      if (nameEl) {
+        nameEl.style.cursor = 'help';
+        nameEl.addEventListener('mouseenter', (e) => {
+          const desc = this._getResourceTooltip(res.name);
+          if (!desc) return;
+          let tip = document.getElementById('resource-tooltip');
+          if (!tip) {
+            tip = document.createElement('div');
+            tip.id = 'resource-tooltip';
+            tip.style.cssText = 'position:fixed;z-index:9999;max-width:min(400px,85vw);background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:10px 14px;font-size:0.8rem;color:var(--ink-light,#3D2B18);line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,0.35);pointer-events:none';
+            document.body.appendChild(tip);
+          }
+          tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid var(--border,#C4A87A);padding-bottom:3px">${res.name}</div><div>${desc.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}</div>`;
+          tip.style.display = 'block';
+          const x = e.clientX + 12, y = e.clientY + 12;
+          tip.style.left = x + 'px';
+          tip.style.top = y + 'px';
+          requestAnimationFrame(() => {
+            const tr = tip.getBoundingClientRect();
+            if (x + tr.width > window.innerWidth - 8) tip.style.left = (e.clientX - tr.width - 8) + 'px';
+            if (y + tr.height > window.innerHeight - 8) tip.style.top = (e.clientY - tr.height - 8) + 'px';
+          });
+        });
+        nameEl.addEventListener('mousemove', (e) => {
+          const tip = document.getElementById('resource-tooltip');
+          if (tip) { tip.style.left = (e.clientX + 12) + 'px'; tip.style.top = (e.clientY + 12) + 'px'; }
+        });
+        nameEl.addEventListener('mouseleave', () => {
+          const tip = document.getElementById('resource-tooltip');
+          if (tip) tip.style.display = 'none';
+        });
+      }
+
       list.appendChild(row);
     });
   },
@@ -5553,6 +6087,12 @@ window.Sheet = {
   _isHeldFocus(item) {
     const tc   = (item.typeCode || '').toUpperCase();
     const name = (item.name || '').toLowerCase();
+
+    // College of Spirits: Playing Cards, Crystal, Orb, Candle, Ink Pen as arcane focus
+    if (this.lv('charSubclass', '') === 'College of Spirits') {
+      if (/gaming set|playing card|crystal|^orb$|orb\b|candle|ink pen/i.test(item.name || '')) return true;
+    }
+
     if (tc !== 'SCF') return false;
     if (/amulet/i.test(name)) return false;  // worn, goes in Neck
     if (this._isEmblemItem(item)) return false; // on shield, not hand directly
