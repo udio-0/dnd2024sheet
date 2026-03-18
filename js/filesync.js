@@ -251,7 +251,11 @@ window.FileSync = {
   _updateSaveButton() {
     const btn = document.getElementById('btn-save-char');
     if (!btn) return;
-    const dirty = this._dirty.size > 0 || this._notesDirty;
+    // Only reflect the active character's state — other characters being dirty
+    // shouldn't show a dot while you're editing a different one
+    const activeId = typeof CharStore !== 'undefined' ? CharStore.activeId : null;
+    const charDirty = activeId ? this._dirty.has(activeId) : this._dirty.size > 0;
+    const dirty = charDirty || this._notesDirty;
     btn.classList.toggle('has-changes', dirty);
     btn.title = dirty ? 'Unsaved changes — click to save' : 'Save to folder';
   },
@@ -268,7 +272,16 @@ window.FileSync = {
       // Warn if there are unsaved changes (characters or notes)
       if (this._dirty.size > 0 || this._notesDirty) {
         e.preventDefault();
-        e.returnValue = 'You have unsaved changes. Click "Save" before leaving.';
+        const names = [];
+        for (const id of this._dirty) {
+          try {
+            const data = CharStore.loadCharacter(id);
+            if (data?.charName) names.push(data.charName);
+          } catch (e) { /* ignore */ }
+        }
+        if (this._notesDirty) names.push('Campaign Notes');
+        const nameList = names.length ? ' (' + names.join(', ') + ')' : '';
+        e.returnValue = `Unsaved changes${nameList} — click "Save" before leaving.`;
         return e.returnValue;
       }
     });

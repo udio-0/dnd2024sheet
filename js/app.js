@@ -502,6 +502,7 @@ document.addEventListener('change', e => {
   function setupRouter() {
     // Home page
     Router.register('home', () => {
+      Router._guard = null;
       Router.showView('view-home');
       const titleEl = document.getElementById('topbar-title');
       if (titleEl) titleEl.textContent = '';
@@ -514,6 +515,7 @@ document.addEventListener('change', e => {
 
     // Wizard
     Router.register('wizard', () => {
+      Router._guard = null;
       Router.showView('view-wizard');
       const titleEl = document.getElementById('topbar-title');
       if (titleEl) titleEl.textContent = '';
@@ -533,6 +535,14 @@ document.addEventListener('change', e => {
       if (saveBtn) saveBtn.style.display = 'inline-flex';
       Sheet.teardown();
       Sheet.init(params.id);
+      // Guard: intercept in-app navigation away from a dirty sheet
+      Router._guard = () => {
+        if (typeof FileSync !== 'undefined' && FileSync.isDirty(params.id)) {
+          const name = (CharStore.activeData && CharStore.activeData.charName) || 'this character';
+          return confirm(`"${name}" has unsaved changes.\n\nLeave without saving to file?`);
+        }
+        return true;
+      };
 
       // If data is ready, notify sheet
       if (dataReady) {

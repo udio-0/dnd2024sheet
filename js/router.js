@@ -6,6 +6,7 @@
 window.Router = {
   routes: {},
   currentView: null,
+  _guard: null,  // function() → true to proceed, false to cancel
 
   register(pattern, handler) {
     this.routes[pattern] = handler;
@@ -16,7 +17,19 @@ window.Router = {
   },
 
   init() {
-    window.addEventListener('hashchange', () => this._resolve());
+    window.addEventListener('hashchange', (e) => {
+      if (this._guard) {
+        const ok = this._guard();
+        if (ok === false) {
+          // Revert to previous hash without triggering another hashchange
+          const prev = (e.oldURL || '').split('#')[1] || 'home';
+          history.replaceState(null, '', '#' + prev);
+          return;
+        }
+        this._guard = null;
+      }
+      this._resolve();
+    });
     this._resolve();
   },
 

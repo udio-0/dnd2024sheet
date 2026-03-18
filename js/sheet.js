@@ -126,6 +126,8 @@ window.Sheet = {
     this.applyClassSelection(this.lv('charClass', ''));
     this.applySpeciesSelection(this.lv('charSpecies', ''));
     this.applyBackgroundSelection(this.lv('charBackground', ''));
+    // All init writes are done — clear the loading flag so user edits mark dirty normally
+    CharStore.finishLoading();
   },
 
   teardown() {
@@ -892,28 +894,7 @@ window.Sheet = {
         ).join('')}</div>`;
         // JS-driven tooltips with keyword highlighting
         let tip = null;
-        const _highlightTooltip = (raw) => {
-          // Highlight dice rolls (e.g. 1d6, 2d8+3)
-          let out = raw.replace(/\b(\d*d\d+(?:\s*[+\-]\s*\d+)?)\b/g, '<span class="cf-tip-dice">$1</span>');
-          // Highlight key D&D terms
-          const keywords = [
-            'Advantage', 'Disadvantage', 'Proficiency Bonus',
-            'Saving Throw', 'Saving Throws', 'Attack Roll', 'Attack Rolls',
-            'Ability Check', 'Ability Checks', 'D20 Test',
-            'Short Rest', 'Long Rest',
-            'Hit Points', 'Hit Point', 'Hit Point Die', 'Hit Point Dice',
-            'Bonus Action', 'Reaction', 'Action',
-            'Resistance', 'Immunity', 'Vulnerable',
-            'Bludgeoning', 'Piercing', 'Slashing', 'Fire', 'Cold', 'Lightning',
-            'Thunder', 'Acid', 'Poison', 'Necrotic', 'Radiant', 'Force', 'Psychic',
-            'Bloodied', 'Construct', 'Undead',
-            'Concentration', 'Cantrip',
-            'Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
-          ];
-          const kwPattern = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
-          out = out.replace(kwPattern, '<span class="cf-tip-kw">$1</span>');
-          return out;
-        };
+        const _highlightTooltip = this._highlightKeywords.bind(this);
         textEl.querySelectorAll('.cf-item').forEach(el => {
           const idx = parseInt(el.dataset.cfIdx);
           const rawHtml = items[idx]?.html;
@@ -1680,8 +1661,10 @@ window.Sheet = {
           ? LevelUp._parseFeatAbilities(info.ability) : [];
         const spellConfig = typeof ClassResources !== 'undefined'
           ? ClassResources.FEAT_SPELL_CHOICES?.[canonical] : null;
-        if (allowed.length > 0 || spellConfig) {
-          this._showFeatOptionsPicker(canonical, info, allowed, spellConfig, () => { searchInput.value = ''; });
+        const customConfig = typeof ClassResources !== 'undefined'
+          ? ClassResources.FEAT_CUSTOM_CHOICES?.[canonical] : null;
+        if (allowed.length > 0 || spellConfig || customConfig) {
+          this._showFeatOptionsPicker(canonical, info, allowed, spellConfig, () => { searchInput.value = ''; }, customConfig);
         } else {
           this.addFeat(name);
           searchInput.value = '';
@@ -1690,7 +1673,7 @@ window.Sheet = {
     }
   },
 
-  _showFeatOptionsPicker(featName, featInfo, abilities, spellConfig, onDone) {
+  _showFeatOptionsPicker(featName, featInfo, abilities, spellConfig, onDone, customConfig) {
     document.querySelector('.feat-opts-overlay')?.remove();
 
     const overlay = document.createElement('div');
@@ -1702,6 +1685,7 @@ window.Sheet = {
     let selectedAbility = null;
     let selectedClass = '';
     const chosenSpells = [];
+    const chosenCustom = [];
 
     const abNames = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
 
@@ -1902,6 +1886,55 @@ window.Sheet = {
       buildSpellPickers(selectedClass);
     }
 
+    // --- Custom choices section (e.g. Metamagic) ---
+    let customSection = null;
+    if (customConfig && customConfig.type === 'metamagic') {
+      customSection = document.createElement('div');
+      customSection.className = 'feat-opts-section';
+      customSection.innerHTML = `<div class="feat-opts-section-title">${customConfig.label} <span class="feat-opts-section-hint">Choose ${customConfig.count}</span></div>`;
+      if (customConfig.hint) {
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:0.82rem;color:var(--ink-faint);margin-bottom:8px;';
+        hint.textContent = customConfig.hint;
+        customSection.appendChild(hint);
+      }
+      const mmList = document.createElement('div');
+      mmList.className = 'feat-opts-mm-list';
+
+      const renderMmOptions = () => {
+        mmList.innerHTML = '';
+        const options = ClassResources?.METAMAGIC_OPTIONS || [];
+        options.forEach(opt => {
+          const isSelected = chosenCustom.includes(opt.name);
+          const atMax = !isSelected && chosenCustom.length >= customConfig.count;
+          const card = document.createElement('div');
+          card.className = 'feat-opts-mm-card' + (isSelected ? ' selected' : '') + (atMax ? ' disabled' : '');
+          card.innerHTML = `
+            <div class="feat-opts-mm-header">
+              <span class="feat-opts-mm-name">${opt.name}</span>
+              <span class="feat-opts-mm-cost">${opt.cost} SP</span>
+            </div>
+            <div class="feat-opts-mm-text">${this._highlightKeywords(opt.text)}</div>`;
+          if (!atMax || isSelected) {
+            card.addEventListener('click', () => {
+              if (isSelected) {
+                chosenCustom.splice(chosenCustom.indexOf(opt.name), 1);
+              } else if (chosenCustom.length < customConfig.count) {
+                chosenCustom.push(opt.name);
+              }
+              renderMmOptions();
+              updateConfirm();
+            });
+          }
+          mmList.appendChild(card);
+        });
+      };
+
+      customSection.appendChild(mmList);
+      modal.appendChild(customSection);
+      renderMmOptions();
+    }
+
     // --- Actions ---
     const actions = document.createElement('div');
     actions.className = 'feat-opts-actions';
@@ -1924,6 +1957,8 @@ window.Sheet = {
         if (chosenSpells.length < totalNeeded) ready = false;
         if (spellConfig.requireClassPick && !selectedClass) ready = false;
       }
+      // Need custom choices filled
+      if (customConfig && chosenCustom.length < customConfig.count) ready = false;
       confirmBtn.disabled = !ready;
     };
     updateConfirm();
@@ -1941,6 +1976,7 @@ window.Sheet = {
       if (selectedAbility) featObj.spellAbility = selectedAbility;
       if (spellConfig && chosenSpells.length) featObj.chosenSpells = [...chosenSpells];
       if (selectedClass) featObj.spellClass = selectedClass;
+      if (customConfig && chosenCustom.length) featObj.customChoices = [...chosenCustom];
       this.addFeat(featObj);
       overlay.remove();
       if (onDone) onDone();
@@ -2043,6 +2079,25 @@ window.Sheet = {
         </div>`;
       }
 
+      // Build custom choices display (e.g. Metamagic)
+      let customHtml = '';
+      const customConfig = ClassResources?.FEAT_CUSTOM_CHOICES?.[name];
+      if (customConfig && customConfig.type === 'metamagic') {
+        const chosen = featObj?.customChoices || [];
+        const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+        const tags = chosen.map(c => {
+          const opt = mmOptions.find(o => o.name === c);
+          return `<span class="feat-spell-tag" title="${opt?.text || ''}">${c}${opt ? ` (${opt.cost} SP)` : ''}</span>`;
+        }).join('');
+        const needsPick = chosen.length < customConfig.count;
+        customHtml = `<div class="feat-spell-choices">
+          <span class="feat-spell-label">Metamagic:</span>
+          ${tags}
+          ${needsPick ? `<span class="feat-spell-needed">Choose ${customConfig.count - chosen.length} more</span>` : ''}
+          <button class="feat-custom-edit-btn" title="Edit metamagic choices">${needsPick ? 'Pick' : 'Edit'}</button>
+        </div>`;
+      }
+
       card.innerHTML = `
         <div class="feat-card-header">
           <div class="feat-card-meta">
@@ -2055,6 +2110,7 @@ window.Sheet = {
           </div>
         </div>
         ${spellsHtml}
+        ${customHtml}
         ${desc ? `<div class="feat-card-body" style="display:none"><div class="feat-card-desc">${desc}</div></div>` : ''}`;
       if (desc) {
         const toggle = card.querySelector('.feat-card-toggle');
@@ -2073,6 +2129,14 @@ window.Sheet = {
       if (editBtn && spellConfig) {
         editBtn.addEventListener('click', () => {
           this._openFeatSpellEditor(idx, name, featObj, spellConfig, card);
+        });
+      }
+
+      // Metamagic edit button
+      const customEditBtn = card.querySelector('.feat-custom-edit-btn');
+      if (customEditBtn && customConfig) {
+        customEditBtn.addEventListener('click', () => {
+          this._openFeatCustomEditor(idx, name, featObj, customConfig);
         });
       }
 
@@ -2289,6 +2353,85 @@ window.Sheet = {
     else cardEl.appendChild(editor);
   },
 
+  _openFeatCustomEditor(featIdx, featName, featObj, customConfig) {
+    // Use the feat options modal approach — show an overlay picker
+    document.querySelector('.feat-opts-overlay')?.remove();
+    const overlay = document.createElement('div');
+    overlay.className = 'feat-opts-overlay';
+    const modal = document.createElement('div');
+    modal.className = 'feat-opts-modal';
+
+    const header = document.createElement('div');
+    header.className = 'feat-opts-header';
+    header.innerHTML = `<div class="feat-opts-title">${featName} — ${customConfig.label}</div>`;
+    modal.appendChild(header);
+
+    if (customConfig.hint) {
+      const hint = document.createElement('div');
+      hint.style.cssText = 'font-size:0.82rem;color:var(--ink-faint);margin-bottom:8px;';
+      hint.textContent = customConfig.hint;
+      modal.appendChild(hint);
+    }
+
+    const chosen = [...(featObj?.customChoices || [])];
+
+    const mmList = document.createElement('div');
+    mmList.className = 'feat-opts-mm-list';
+    modal.appendChild(mmList);
+
+    const renderMmOptions = () => {
+      mmList.innerHTML = '';
+      const options = ClassResources?.METAMAGIC_OPTIONS || [];
+      options.forEach(opt => {
+        const isSelected = chosen.includes(opt.name);
+        const atMax = !isSelected && chosen.length >= customConfig.count;
+        const card = document.createElement('div');
+        card.className = 'feat-opts-mm-card' + (isSelected ? ' selected' : '') + (atMax ? ' disabled' : '');
+        card.innerHTML = `
+          <div class="feat-opts-mm-header">
+            <span class="feat-opts-mm-name">${opt.name}</span>
+            <span class="feat-opts-mm-cost">${opt.cost} SP</span>
+          </div>
+          <div class="feat-opts-mm-text">${this._highlightKeywords(opt.text)}</div>`;
+        if (!atMax || isSelected) {
+          card.addEventListener('click', () => {
+            if (isSelected) chosen.splice(chosen.indexOf(opt.name), 1);
+            else if (chosen.length < customConfig.count) chosen.push(opt.name);
+            renderMmOptions();
+            saveBtn.disabled = chosen.length < customConfig.count;
+          });
+        }
+        mmList.appendChild(card);
+      });
+    };
+    renderMmOptions();
+
+    const actions = document.createElement('div');
+    actions.className = 'feat-opts-actions';
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'feat-opts-btn cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'feat-opts-btn confirm';
+    saveBtn.textContent = 'Save';
+    saveBtn.disabled = chosen.length < customConfig.count;
+    saveBtn.addEventListener('click', () => {
+      const feats = this.lv('feats', []);
+      const newObj = { ...(featObj || { name: featName }), customChoices: [...chosen] };
+      feats[featIdx] = newObj;
+      this.sv('feats', feats);
+      this.renderFeats();
+      overlay.remove();
+    });
+    actions.appendChild(cancelBtn);
+    actions.appendChild(saveBtn);
+    modal.appendChild(actions);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  },
+
   // ---- POPULATE DATALISTS ----
   // Global datalists (class-list, species-list, bg-list, feat-list, charopt-list, weapon-list)
   // are populated by app.js once data loads. This is a no-op kept for compatibility.
@@ -2489,6 +2632,29 @@ window.Sheet = {
     return '';
   },
 
+  // Short format helpers — try formatter function first, then derive from precomputed string
+  _shortCastTime(spell) {
+    if (typeof formatCastTimeShort === 'function' && spell.time) return formatCastTimeShort(spell.time);
+    const ct = (spell._castTime || '').toLowerCase();
+    if (ct.includes('bonus')) return '●';
+    if (ct.includes('reaction')) return '●';
+    if (ct.includes('action')) return '●';
+    return spell._castTime || '';
+  },
+  _shortRange(spell) {
+    if (typeof formatRangeShort === 'function' && spell.range) return formatRangeShort(spell.range);
+    return (spell._rangeStr || '').replace(/\s*feet?\b/gi, ' ft').replace(/\s*miles?\b/gi, ' mi');
+  },
+  _shortComp(spell) {
+    if (typeof formatComponentsShort === 'function' && spell.components) return formatComponentsShort(spell.components);
+    return (spell._componentsStr || '').replace(/\s*\(.*\)/, '');
+  },
+  _shortDur(spell) {
+    if (typeof formatDurationShort === 'function' && spell.duration) return formatDurationShort(spell.duration);
+    const d = spell._durationStr || '';
+    return d.replace(/^Conc\.\,\s*/i, '').replace('Instantaneous', 'Inst.').replace(/\bminutes?\b/gi, 'm').replace(/\bhours?\b/gi, 'h').replace(/\brounds?\b/gi, 'rd');
+  },
+
   _extractDice(spell) {
     // Extract dice expressions from spell entries text
     if (!spell.entries) return [];
@@ -2597,7 +2763,6 @@ window.Sheet = {
     const isRitual = this._isRitual(spell);
     const actionType = this._getActionType(spell);
     const actionClass = this._actionColorClass(spell);
-    const diceExprs = this._extractDice(spell);
 
     // Check if this spell is currently being concentrated on
     const concSpell = this.lv('combat_concSpell', '');
@@ -2613,9 +2778,13 @@ window.Sheet = {
     card.dataset.isPrepared = isPrepared ? '1' : '';
 
     // Build badges
+    const svgBadge = (letter, fill, stroke, textFill, title) =>
+      `<svg class="spell-badge" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="${title}"><title>${title}</title>` +
+      `<circle cx="9" cy="9" r="8" fill="${fill}" stroke="${stroke}" stroke-width="1"/>` +
+      `<text x="9" y="8" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="700" fill="${textFill}">${letter}</text></svg>`;
     let badges = '';
-    if (isConc) badges += `<span class="spell-badge spell-badge-conc" title="Concentration">C</span>`;
-    if (isRitual) badges += `<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>`;
+    if (isConc) badges += svgBadge('C', 'rgba(155,89,182,0.15)', 'rgba(155,89,182,0.3)', '#8e44ad', 'Concentration');
+    if (isRitual) badges += svgBadge('R', 'rgba(39,174,96,0.15)', 'rgba(39,174,96,0.3)', '#27ae60', 'Ritual');
     if (isRacial) {
       badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
       // Show which ability this racial spell uses
@@ -2635,12 +2804,6 @@ window.Sheet = {
       }
     }
 
-    // Dice roll buttons
-    let diceHtml = '';
-    if (diceExprs.length > 0) {
-      diceHtml = `<span class="spell-card-dice">${diceExprs.map(d => `<button class="spell-dice-btn" data-dice="${d}" title="Roll ${d}">${d}</button>`).join('')}</span>`;
-    }
-
     // Apply subclass spell modifications for display
     const _spellMods = this.lv('spellMods', {}) || {};
     const _sMod = _spellMods[spell.name];
@@ -2657,9 +2820,10 @@ window.Sheet = {
       <input type="checkbox" title="Prepared" ${isPrepared ? 'checked' : ''} ${isRacial ? 'disabled' : ''}>
       <span class="spell-card-name spell-card-name-clickable" title="${tooltipText}">${spell.name}<span class="spell-card-school">${spell._schoolName || ''}</span></span>
       <span class="spell-card-badges">${badges}</span>
-      <span class="spell-card-meta"><span class="spell-cast-time ${actionClass}">${spell._castTime || ''}</span></span>
-      ${diceHtml || '<span class="spell-card-dice"></span>'}
-      <span></span>
+      <span class="spell-card-meta"><span class="spell-cast-time ${actionClass}" title="${spell._castTime || ''}">${this._shortCastTime(spell)}</span></span>
+      <span class="spell-card-range" title="${spell._rangeStr || ''}">${this._shortRange(spell)}</span>
+      <span class="spell-card-comp" title="${spell._componentsStr || ''}">${this._shortComp(spell)}</span>
+      <span class="spell-card-dur" title="${spell._durationStr || ''}">${this._shortDur(spell)}</span>
       ${isRacial ? '<span></span>' : '<button class="del-btn" title="Remove spell">✕</button>'}`;
 
     // Concentration click — set this spell as concentration target
@@ -2731,6 +2895,11 @@ window.Sheet = {
   },
 
   restoreSpells() {
+    // Clear all existing spell cards to prevent duplicates
+    for (let i = 0; i <= 9; i++) {
+      const container = this.$(`spell-cards-${i}`);
+      if (container) container.innerHTML = '';
+    }
     const spells = this.lv('charSpells', []);
     spells.forEach(s => {
       const spell = DndData.spells.find(sp => sp.name.toLowerCase() === s.name.toLowerCase())
@@ -4361,7 +4530,7 @@ window.Sheet = {
             tip.style.cssText = 'position:fixed;z-index:9999;max-width:min(400px,85vw);background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:10px 14px;font-size:0.8rem;color:var(--ink-light,#3D2B18);line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,0.35);pointer-events:none';
             document.body.appendChild(tip);
           }
-          tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid var(--border,#C4A87A);padding-bottom:3px">${res.name}</div><div>${desc.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>')}</div>`;
+          tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid var(--border,#C4A87A);padding-bottom:3px">${res.name}</div><div>${this._highlightKeywords(desc.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>'))}</div>`;
           tip.style.display = 'block';
           const x = e.clientX + 12, y = e.clientY + 12;
           tip.style.left = x + 'px';
@@ -4410,6 +4579,29 @@ window.Sheet = {
         input.dispatchEvent(new Event('input'));
       });
     });
+  },
+
+  // Highlight D&D keywords and dice in tooltip text
+  _highlightKeywords(raw) {
+    let out = raw.replace(/\b(\d*d\d+(?:\s*[+\-]\s*\d+)?)\b/g, '<span class="cf-tip-dice">$1</span>');
+    const keywords = [
+      'Advantage', 'Disadvantage', 'Proficiency Bonus',
+      'Saving Throw', 'Saving Throws', 'Attack Roll', 'Attack Rolls',
+      'Ability Check', 'Ability Checks', 'D20 Test',
+      'Short Rest', 'Long Rest',
+      'Hit Points', 'Hit Point', 'Hit Point Die', 'Hit Point Dice',
+      'Bonus Action', 'Reaction', 'Action',
+      'Temporary Hit Points',
+      'Resistance', 'Immunity', 'Vulnerable',
+      'Bludgeoning', 'Piercing', 'Slashing', 'Fire', 'Cold', 'Lightning',
+      'Thunder', 'Acid', 'Poison', 'Necrotic', 'Radiant', 'Force', 'Psychic',
+      'Bloodied', 'Construct', 'Undead',
+      'Concentration', 'Cantrip',
+      'Strength', 'Dexterity', 'Constitution', 'Intelligence', 'Wisdom', 'Charisma',
+    ];
+    const kwPattern = new RegExp(`\\b(${keywords.join('|')})\\b`, 'g');
+    out = out.replace(kwPattern, '<span class="cf-tip-kw">$1</span>');
+    return out;
   },
 
   // ---- SHEET BUTTONS ----

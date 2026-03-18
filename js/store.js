@@ -10,6 +10,7 @@ window.CharStore = {
 
   activeId: null,
   activeData: {},
+  _loading: false,  // true while sheet is initializing — suppresses markDirty
 
   // ---- UNDO / REDO ----
   _undoStack: [],
@@ -187,8 +188,8 @@ window.CharStore = {
       this.saveIndex(index);
     }
 
-    // Mark as dirty for file sync
-    if (typeof FileSync !== 'undefined') FileSync.markDirty(id);
+    // Mark as dirty for file sync (skip during sheet initialization)
+    if (!this._loading && typeof FileSync !== 'undefined') FileSync.markDirty(id);
   },
 
   deleteCharacter(id) {
@@ -201,6 +202,9 @@ window.CharStore = {
 
   // ---- ACTIVE CHARACTER ----
   openCharacter(id) {
+    this._loading = true;
+    // Remember if this character already had unsaved changes before we opened it
+    this._wasAlreadyDirty = typeof FileSync !== 'undefined' && FileSync.isDirty(id);
     this.activeId = id;
     this.activeData = this.loadCharacter(id);
     this._undoStack = [];
@@ -209,6 +213,15 @@ window.CharStore = {
     const index = this.getIndex();
     index.lastOpenedId = id;
     this.saveIndex(index);
+  },
+
+  finishLoading() {
+    this._loading = false;
+    // Only mark clean if the character had no unsaved changes before being opened
+    if (this.activeId && typeof FileSync !== 'undefined' && !this._wasAlreadyDirty) {
+      FileSync.markClean(this.activeId);
+    }
+    this._wasAlreadyDirty = false;
   },
 
   sv(key, val) {
@@ -222,7 +235,13 @@ window.CharStore = {
   },
 
   closeCharacter() {
-    if (this.activeId) this.saveCharacter(this.activeId, this.activeData);
+    if (this.activeId) {
+      // Preserve the existing dirty state — closeCharacter is called on navigation
+      // and shouldn't re-mark a character dirty if it was already saved to file
+      const wasDirty = typeof FileSync !== 'undefined' && FileSync.isDirty(this.activeId);
+      this.saveCharacter(this.activeId, this.activeData);
+      if (!wasDirty && typeof FileSync !== 'undefined') FileSync.markClean(this.activeId);
+    }
     this.activeId = null;
     this.activeData = {};
   },

@@ -106,6 +106,7 @@
             <button id="btn-new-char" class="btn btn-primary btn-lg">+ Create New Character</button>
             <button id="btn-import-home" class="btn btn-lg">Import Character</button>
             <input type="file" id="import-file-home" accept=".json" hidden>
+            <button id="btn-save-all" class="btn btn-lg btn-save-all" title="Save all characters with unsaved changes">Save All</button>
             <button id="btn-open-folder" class="btn btn-lg btn-folder" title="Open a local folder to load and save characters">Open Folder</button>
           </div>
           <div id="folder-status" class="folder-status">
@@ -338,11 +339,13 @@
             <div class="sheet-box">
               <div class="box-title">Inventory</div>
               <div class="currency-bar">
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp" title="Copper Pieces"><button class="spin-btn spin-minus">−</button><label for="cp">CP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp" title="Silver Pieces"><button class="spin-btn spin-minus">−</button><label for="sp">SP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep" title="Electrum Pieces"><button class="spin-btn spin-minus">−</button><label for="ep">EP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp" title="Gold Pieces"><button class="spin-btn spin-minus">−</button><label for="gp">GP</label></div>
-                <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp" title="Platinum Pieces"><button class="spin-btn spin-minus">−</button><label for="pp">PP</label></div>
+                <div class="currency-coins">
+                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp" title="Copper Pieces"><button class="spin-btn spin-minus">−</button><label for="cp">CP</label></div>
+                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp" title="Silver Pieces"><button class="spin-btn spin-minus">−</button><label for="sp">SP</label></div>
+                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep" title="Electrum Pieces"><button class="spin-btn spin-minus">−</button><label for="ep">EP</label></div>
+                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp" title="Gold Pieces"><button class="spin-btn spin-minus">−</button><label for="gp">GP</label></div>
+                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp" title="Platinum Pieces"><button class="spin-btn spin-minus">−</button><label for="pp">PP</label></div>
+                </div>
               </div>
               <div class="item-search-bar" id="inv-search-bar"><input type="text" id="item-search" placeholder="Search items to add..." class="item-search-input" autocomplete="off"><div id="item-search-results" class="autocomplete-dropdown"></div></div>
               <div class="inventory-grid">
@@ -561,8 +564,9 @@
             <!-- Folder tree -->
             <div class="notes-folder-tree" id="notes-folder-tree"></div>
 
-            <!-- Note list -->
-            <div class="notes-list" id="notes-list"></div>
+            <!-- Trash drop zone -->
+            <div id="notes-trash" class="notes-trash">🗑️ Drop to delete</div>
+
           </div>
 
           <!-- EDITOR -->

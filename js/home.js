@@ -7,6 +7,23 @@ window.Home = {
   init() {
     document.getElementById('btn-new-char')?.addEventListener('click', () => Router.navigate('#wizard'));
     document.getElementById('btn-import-home')?.addEventListener('click', () => document.getElementById('import-file-home')?.click());
+
+    const saveAllBtn = document.getElementById('btn-save-all');
+    if (saveAllBtn) {
+      saveAllBtn.addEventListener('click', async () => {
+        if (typeof FileSync === 'undefined') return;
+        saveAllBtn.disabled = true;
+        saveAllBtn.textContent = 'Saving...';
+        try {
+          await FileSync.saveAllDirty();
+        } catch (e) {
+          console.warn('Save all error:', e);
+        }
+        saveAllBtn.disabled = false;
+        saveAllBtn.textContent = 'Save All';
+        this.render();
+      });
+    }
     document.getElementById('import-file-home')?.addEventListener('change', function () {
       const file = this.files?.[0];
       if (!file) return;
@@ -65,6 +82,14 @@ window.Home = {
     }
   },
 
+  _updateSaveAllButton() {
+    const btn = document.getElementById('btn-save-all');
+    if (!btn || typeof FileSync === 'undefined') return;
+    const hasDirty = FileSync._dirty.size > 0 || FileSync._notesDirty;
+    btn.style.display = hasDirty ? '' : 'none';
+    btn.classList.toggle('has-changes', hasDirty);
+  },
+
   _updateFolderStatus() {
     const status = document.getElementById('folder-status');
     const folderBtn = document.getElementById('btn-open-folder');
@@ -93,6 +118,7 @@ window.Home = {
       }
     }
     this._updateFolderStatus();
+    this._updateSaveAllButton();
     const chars = CharStore.listCharacters();
     const grid = document.getElementById('character-cards');
     const empty = document.getElementById('empty-state');
@@ -107,7 +133,8 @@ window.Home = {
 
     chars.forEach(c => {
       const card = document.createElement('div');
-      card.className = 'char-card';
+      const isDirty = typeof FileSync !== 'undefined' && FileSync.isDirty(c.id);
+      card.className = 'char-card' + (isDirty ? ' char-card--dirty' : '');
       const classIcon = this._classIcon(c.class);
       const timeAgo = this._timeAgo(c.updatedAt);
 
@@ -119,6 +146,7 @@ window.Home = {
             Level ${c.level || 1} ${c.species || ''} ${c.class || ''}
           </div>
           <div class="char-card-time">${timeAgo}</div>
+          ${isDirty ? '<div class="char-card-unsaved">Unsaved changes</div>' : ''}
         </div>
         <div class="char-card-actions">
           <button class="btn btn-primary btn-sm card-edit" title="Edit">Edit</button>
