@@ -4468,7 +4468,20 @@ window.Sheet = {
       if (def.name === resourceName && def.notes) return def.notes;
     }
 
-    // 5. Fallback: stored resource notes
+    // 6. Look up the feat that owns this resource and return its description
+    if (ClassResources?.FEAT_RESOURCES && typeof getFeatInfo === 'function') {
+      for (const [featName, defs] of Object.entries(ClassResources.FEAT_RESOURCES)) {
+        // exact match OR prefix match (e.g. "Fey-Touched: Silvery Barbs" → feat "Fey-Touched")
+        const owned = defs.some(d => d.name === resourceName)
+          || resourceName.toLowerCase().startsWith(featName.toLowerCase() + ':');
+        if (owned) {
+          const info = getFeatInfo(featName);
+          if (info?.description) return stripTags(info.description);
+        }
+      }
+    }
+
+    // 7. Fallback: stored resource notes
     const res = this.lv('resources', []).find(r => r.name === resourceName);
     if (res?.notes) return res.notes;
 

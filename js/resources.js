@@ -274,8 +274,8 @@ window.ClassResources = {
       ], refresh: 'lr', startLevel: 2 },
     ],
     'Bard:College of Spirits': [
-      { name: 'Spirit Guardians (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
-      { name: 'Modified Spirit Guardians', maxAt: [{ level: 6, max: 1 }], refresh: 'sr', startLevel: 6 },
+      { name: 'Spirit Session (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6, notes: 'Spirit Session: Spend 1 Bardic Inspiration during a Short Rest in a ritual. You and a number of willing creatures equal to your Charisma modifier (min 1) can add half your Bard level to their next D20 Test within 24 hours. This use casts Spirit Guardians for free (no spell slot).' },
+      { name: 'Spirit Session (Modified)', maxAt: [{ level: 6, max: 1 }], refresh: 'sr', startLevel: 6, notes: 'Spirit Session: Spend 1 Bardic Inspiration during a Short Rest in a ritual. You and a number of willing creatures equal to your Charisma modifier (min 1) can add half your Bard level to their next D20 Test within 24 hours. This use casts a modified version of Spirit Guardians (refreshes on Short Rest).' },
     ],
     'Paladin:Oath of Devotion': [],
     'Paladin:Oath of the Ancients': [],

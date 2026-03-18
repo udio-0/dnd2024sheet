@@ -591,11 +591,30 @@ async function loadAllData(progressCallback) {
           `${sc.className} (${sourceName(sc.classSource)})`,
           `${sc.className} (UA 2024)`,
         ];
+        // Extract named feature entries from the nested UA subclass structure,
+        // stripping level prefixes like "6th Level: " so they can be looked up by clean name.
+        const extractedFeatures = [];
+        const flattenEntries = (arr) => {
+          for (const e of (arr || [])) {
+            if (e && typeof e === 'object' && e.name && e.entries) {
+              const cleanName = e.name.replace(/^\d+\w*\s+Level:\s*/i, '').trim();
+              extractedFeatures.push({ name: cleanName, entries: e.entries });
+              flattenEntries(e.entries);
+            }
+          }
+        };
+        flattenEntries(sc.entries);
         keysToTry.forEach(key => {
           if (DndData.classDetails[key]) {
             // Check for exact name+source match (allow same name from different sources, e.g. UA2024 vs VRGR)
             const already = DndData.classDetails[key].subclasses.some(s => s.name === sc.name && s.source === sc.source);
             if (!already) DndData.classDetails[key].subclasses.push(scEntry);
+            // Merge extracted features into subclassFeatures (avoid duplicates)
+            for (const f of extractedFeatures) {
+              if (!DndData.classDetails[key].subclassFeatures.some(x => x.name === f.name)) {
+                DndData.classDetails[key].subclassFeatures.push(f);
+              }
+            }
           }
         });
       });
