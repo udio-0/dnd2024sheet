@@ -1606,9 +1606,9 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .col-atk-prof    { width: 8%; }
 .col-atk-bonus   { width: 7%; }
 .col-atk-dice    { width: 10%; }
-.col-atk-type    { width: 16%; }
+.col-atk-type    { width: 18%; }
 .col-atk-mastery { width: 13%; }
-.col-atk-ed      { width: 9%; }
+.col-atk-ed      { width: 7%; }
 .attack-table th:nth-child(3),
 .attack-table th:nth-child(4),
 .attack-table th:nth-child(5) { text-align: center; }
@@ -3589,6 +3589,7 @@ textarea::placeholder { color: var(--ink-faint); }
   color: var(--ink-faint);
   cursor: default;
   transition: background 0.15s, border-color 0.15s, color 0.15s;
+  -webkit-user-select: none;
   user-select: none;
 }
 .notes-trash:hover { border-color: #b03; color: #b03; background: rgba(180,30,30,0.05); }

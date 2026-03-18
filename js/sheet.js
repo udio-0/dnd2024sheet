@@ -2094,7 +2094,7 @@ window.Sheet = {
           <span class="feat-spell-label">Metamagic:</span>
           ${tags}
           ${needsPick ? `<span class="feat-spell-needed">Choose ${customConfig.count - chosen.length} more</span>` : ''}
-          <button class="feat-custom-edit-btn" title="Edit metamagic choices">${needsPick ? 'Pick' : 'Edit'}</button>
+          <button class="feat-spell-edit-btn" data-custom-edit title="Edit metamagic choices">${needsPick ? 'Pick' : 'Edit'}</button>
         </div>`;
       }
 
@@ -2133,7 +2133,7 @@ window.Sheet = {
       }
 
       // Metamagic edit button
-      const customEditBtn = card.querySelector('.feat-custom-edit-btn');
+      const customEditBtn = card.querySelector('[data-custom-edit]');
       if (customEditBtn && customConfig) {
         customEditBtn.addEventListener('click', () => {
           this._openFeatCustomEditor(idx, name, featObj, customConfig);
@@ -2757,7 +2757,7 @@ window.Sheet = {
     const container = this.$(`spell-cards-${level}`);
     if (!container) return;
     const saved = this.lv('charSpells', []).find(s => s.name.toLowerCase() === spell.name.toLowerCase());
-    const isRacial = saved?.racial || false;
+    const isRacial = saved?.racial || !!saved?.featSource;
     const isPrepared = isRacial || saved?.prepared;
     const isConc = this._isConcentration(spell);
     const isRitual = this._isRitual(spell);
@@ -2785,7 +2785,7 @@ window.Sheet = {
     let badges = '';
     if (isConc) badges += svgBadge('C', 'rgba(155,89,182,0.15)', 'rgba(155,89,182,0.3)', '#8e44ad', 'Concentration');
     if (isRitual) badges += svgBadge('R', 'rgba(39,174,96,0.15)', 'rgba(39,174,96,0.3)', '#27ae60', 'Ritual');
-    if (isRacial) {
+    if (isRacial && !saved?.featSource) {
       badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
       // Show which ability this racial spell uses
       const racialAb = (this.lv('racialSpellAbility', '') || '').toLowerCase();
@@ -2795,12 +2795,15 @@ window.Sheet = {
         badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[racialAb] || racialAb} (species) instead of ${abNames[classAb] || classAb} (class)">${abNames[racialAb] || racialAb}</span>`;
       }
     }
-    if (saved?.featSource && saved?.featSpellAbility) {
-      const featAb = saved.featSpellAbility.toLowerCase();
-      const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
-      const abNames = { int: 'INT', wis: 'WIS', cha: 'CHA', str: 'STR', dex: 'DEX', con: 'CON' };
-      if (featAb && classAb && featAb !== classAb) {
-        badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[featAb] || featAb} (${saved.featSource}) instead of ${abNames[classAb] || classAb} (class)">${abNames[featAb] || featAb}</span>`;
+    if (saved?.featSource) {
+      badges += `<span class="spell-badge spell-badge-racial" title="${saved.featSource} — always prepared">✦</span>`;
+      if (saved.featSpellAbility) {
+        const featAb = saved.featSpellAbility.toLowerCase();
+        const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
+        const abNames = { int: 'INT', wis: 'WIS', cha: 'CHA', str: 'STR', dex: 'DEX', con: 'CON' };
+        if (featAb && classAb && featAb !== classAb) {
+          badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[featAb] || featAb} (${saved.featSource}) instead of ${abNames[classAb] || classAb} (class)">${abNames[featAb] || featAb}</span>`;
+        }
       }
     }
 
@@ -4404,7 +4407,12 @@ window.Sheet = {
     // 1. Check curated resource descriptions (level-aware, with scaling info)
     if (ClassResources?.getResourceDescription) {
       const curated = ClassResources.getResourceDescription(resourceName, level);
-      if (curated) return curated;
+      if (curated) {
+        const cfg = ClassResources?.FEAT_CUSTOM_CHOICES?.[resourceName]
+          || (resourceName.toLowerCase().includes('metamagic') ? { type: 'metamagic' } : null);
+        if (cfg?.type === 'metamagic') return this._appendMetamagicChoices(curated, resourceName);
+        return curated;
+      }
     }
 
     // 2. Check race entries (base + subrace)
@@ -4465,6 +4473,26 @@ window.Sheet = {
     if (res?.notes) return res.notes;
 
     return null;
+  },
+
+  _appendMetamagicChoices(baseText, resourceName) {
+    // Collect all chosen metamagic options across feats
+    const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+    const feats = this.lv('feats', []);
+    const allChosen = [];
+    for (const f of feats) {
+      const featName = typeof f === 'string' ? f : f?.name;
+      const cfg = ClassResources?.FEAT_CUSTOM_CHOICES?.[featName];
+      if (cfg?.type === 'metamagic' && f?.customChoices?.length) {
+        allChosen.push(...f.customChoices);
+      }
+    }
+    if (!allChosen.length) return baseText;
+    const lines = allChosen.map(name => {
+      const opt = mmOptions.find(o => o.name === name);
+      return opt ? `<span style="color:var(--red);font-weight:600">${opt.name}</span> (${opt.cost} SP): ${opt.text}` : name;
+    });
+    return baseText + '\n\nChosen options:\n' + lines.join('\n');
   },
 
   renderResources() {

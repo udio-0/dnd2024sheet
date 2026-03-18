@@ -100,6 +100,12 @@ window.ClassResources = {
     'Fey-Touched: Misty Step': {
       text: 'You can cast Misty Step once without expending a spell slot. You regain the ability after a Long Rest.',
     },
+    'Fey-Touched': {
+      text: 'You can cast this spell once without expending a spell slot (chosen from Divination or Enchantment when you took the feat). You regain the ability after a Long Rest.',
+    },
+    'Metamagic Sorcery Points': {
+      text: 'You have a pool of Sorcery Points used to fuel Metamagic options. You can spend these points to modify your spells in various ways (e.g. Twinned Spell, Quickened Spell, Subtle Spell).',
+    },
     'Phantasmal Creatures (Free Cast)': {
       text: 'Once per Long Rest, you can cast Summon Beast or Summon Fey without expending a spell slot. The spell automatically uses an Illusion version of the creature.',
     },
@@ -116,8 +122,12 @@ window.ClassResources = {
     // Try exact match, then try base name without parenthetical
     let desc = this.RESOURCE_DESCRIPTIONS[resourceName];
     if (!desc) {
-      const baseName = resourceName.replace(/\s*\(.*\)$/, '').replace(/^.+?:\s*/, '').trim();
-      desc = this.RESOURCE_DESCRIPTIONS[baseName];
+      const noParens = resourceName.replace(/\s*\(.*\)$/, '').trim();
+      const afterColon = noParens.replace(/^.+?:\s*/, '').trim();
+      const beforeColon = noParens.includes(':') ? noParens.split(':')[0].trim() : null;
+      desc = this.RESOURCE_DESCRIPTIONS[afterColon]
+          || (beforeColon && this.RESOURCE_DESCRIPTIONS[beforeColon])
+          || null;
     }
     if (!desc) return null;
 
@@ -382,6 +392,36 @@ window.ClassResources = {
     },
     // Spell Sniper: "Increased Range" applies to all attack roll spells automatically — no pick needed
   },
+
+  /* ================================================================
+     FEAT CUSTOM CHOICES — non-spell picks (e.g. Metamagic Adept).
+     Each entry: { type, label, count, hint }
+     ================================================================ */
+  FEAT_CUSTOM_CHOICES: {
+    'Metamagic Adept': {
+      type: 'metamagic',
+      label: 'Choose Metamagic Options',
+      count: 2,
+      hint: 'Choose 2 Metamagic options. You can use them with your Sorcery Points.',
+    },
+  },
+
+  /* ================================================================
+     METAMAGIC OPTIONS — used by Sorcerer and Metamagic Adept feat.
+     Each entry: { name, cost, text }
+     ================================================================ */
+  METAMAGIC_OPTIONS: [
+    { name: 'Careful Spell',    cost: 1, text: 'When you cast a spell that forces others to make a saving throw, you can protect some of those creatures. Choose up to your Spellcasting modifier (minimum 1) — they automatically succeed.' },
+    { name: 'Distant Spell',    cost: 1, text: 'When you cast a spell with a range of 5+ feet, double its range. When you cast a touch spell, its range becomes 30 feet.' },
+    { name: 'Empowered Spell',  cost: 1, text: 'When you roll damage for a spell, reroll up to your Spellcasting modifier (minimum 1) damage dice. You must use the new rolls. Can be used with other Metamagic.' },
+    { name: 'Extended Spell',   cost: 1, text: 'When you cast a spell with a duration of 1 minute or longer, double its duration (max 24 hours).' },
+    { name: 'Heightened Spell', cost: 2, text: 'When you cast a spell that forces a creature to make a saving throw, one target has Disadvantage on its first save against the spell.' },
+    { name: 'Quickened Spell',  cost: 2, text: 'When you cast a spell with a casting time of 1 action, change its casting time to 1 Bonus Action for this casting.' },
+    { name: 'Seeking Spell',    cost: 2, text: 'If you make an attack roll for a spell and miss, reroll the d20 and use the new roll. You can use Seeking Spell even if you already used a different Metamagic this turn.' },
+    { name: 'Subtle Spell',     cost: 1, text: 'When you cast a spell, you can do so without any somatic or verbal components.' },
+    { name: 'Transmuted Spell', cost: 1, text: 'When you cast a spell that deals a type of damage from the following list, change it to one of the other listed types: Acid, Cold, Fire, Lightning, Poison, Thunder.' },
+    { name: 'Twinned Spell',    cost: 1, text: 'When you cast a spell targeting only one creature and not already targeting max creatures, spend SP equal to the spell\'s level (min 1) to target a second creature within range.' },
+  ],
 
   /**
    * Get the filtered spell pool for a feat pick definition.
