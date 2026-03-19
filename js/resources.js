@@ -97,6 +97,27 @@ window.ClassResources = {
     'Magic Initiate Spell': {
       text: 'You can cast the 1st-level spell you chose from the Magic Initiate feat once without expending a spell slot. You regain the ability to cast it in this way after a Long Rest.',
     },
+    'Bend Life Energy': {
+      text: 'When a spell you cast restores Hit Points to a creature, you can roll 1d4 and add the number rolled to the total Hit Points restored.',
+    },
+    'Minor Foreknowledge': {
+      text: 'When you take the Search action, you can give yourself Advantage on any ability check made as part of that action.',
+    },
+    'Emotional Sense': {
+      text: 'When you take the Influence action, you can give yourself Advantage on any ability check made as part of that action.',
+    },
+    'Flexible Flesh': {
+      text: 'When you make a Dexterity (Acrobatics or Sleight of Hand) check, you gain a bonus equal to your Intelligence modifier (minimum of +1).',
+    },
+    'Limited Telepathy': {
+      text: 'As a Magic action, choose one creature you can see within 120 feet. You form a telepathic connection to that creature for 1 hour, allowing telepathic communication while within 120 feet of each other. Refreshes on Short or Long Rest.',
+    },
+    'Cunning Mind': {
+      text: 'When you make a Charisma (Deception or Persuasion) check, you gain a bonus equal to your Intelligence modifier (minimum of +1).',
+    },
+    'Psi Boost': {
+      text: 'When you take the Dash action, you can increase your Speed by 10 feet until the start of your next turn.',
+    },
     'Fey-Touched: Misty Step': {
       text: 'You can cast Misty Step once without expending a spell slot. You regain the ability after a Long Rest.',
     },
@@ -111,6 +132,20 @@ window.ClassResources = {
     },
     'Illusory Self': {
       text: 'When a creature makes an attack roll against you, you can use your Reaction to interpose an illusory duplicate. The attack automatically misses. Once used, you must finish a Short or Long Rest before using it again.',
+    },
+    'Psionic Energy Dice': {
+      text: 'You harbor a wellspring of psionic energy represented by Psionic Energy Dice. You expend these dice to fuel Telekinetic Propel, Telepathic Connection, Psionic Disciplines, and other Psion features. You regain 1 die on a Short Rest and all dice on a Long Rest.\n\nAt level 5, Psionic Restoration lets you regain all dice via 1-minute meditation (once per Long Rest).\n\nAt level 18, Psionic Reserves restores dice to 4 whenever you roll Initiative.',
+      extra: [
+        { level: 1,  note: 'Current: 4d6'  },
+        { level: 5,  note: 'Current: 6d8'  },
+        { level: 9,  note: 'Current: 8d8'  },
+        { level: 11, note: 'Current: 8d10' },
+        { level: 13, note: 'Current: 10d10' },
+        { level: 17, note: 'Current: 12d12' },
+      ],
+    },
+    'Psionic Restoration': {
+      text: 'You perform a meditation that focuses the mind for 1 minute. At the end of it, you regain all expended Psionic Energy Dice. Once you use this feature, you can\'t do so again until you finish a Long Rest.',
     },
   },
 
@@ -240,6 +275,17 @@ window.ClassResources = {
       { name: 'Arcane Recovery', maxAt: [{ level: 2, max: 1 }], refresh: 'lr', startLevel: 2,
         usableOnShortRest: true },
     ],
+    Psion: [
+      { name: 'Psionic Energy Dice', maxAt: [
+        { level: 1,  max: 4  },
+        { level: 5,  max: 6  },
+        { level: 9,  max: 8  },
+        { level: 13, max: 10 },
+        { level: 17, max: 12 },
+      ], refresh: 'lr', startLevel: 1,
+        notes: 'Short Rest: regain 1 expended die. Level 5: Psionic Restoration lets you regain all dice (1× per Long Rest). Level 18: On Initiative, regain dice until you have 4.' },
+      { name: 'Psionic Restoration', maxAt: [{ level: 5, max: 1 }], refresh: 'lr', startLevel: 5 },
+    ],
   },
 
   /* ================================================================
@@ -338,6 +384,14 @@ window.ClassResources = {
   /* ================================================================
      ORIGIN FEAT RESOURCE DEFINITIONS
      ================================================================ */
+  /*
+   * Cantrips granted automatically by class features (not chosen by the player).
+   * These are excluded from cantrip pick counts and blocked in the level-up picker.
+   */
+  CLASS_AUTO_CANTRIPS: {
+    'Psion': ['Mage Hand'],
+  },
+
   FEAT_RESOURCES: {
     'Lucky': [
       { name: 'Luck Points', maxAt: 'PB', refresh: 'lr' },
@@ -357,6 +411,28 @@ window.ClassResources = {
     ],
     'Delicious Pain': [
       { name: 'Toughened Flesh', maxAt: [{ level: 1, max: 1 }], refresh: 'sr' },
+    ],
+    // Wild Talent Feats
+    'Biokinesis': [
+      { name: 'Bend Life Energy', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Clairsentience': [
+      { name: 'Minor Foreknowledge', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Empath': [
+      { name: 'Emotional Sense', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Flesh Morpher': [
+      { name: 'Flexible Flesh', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Mind Whisperer': [
+      { name: 'Limited Telepathy', maxAt: [{ level: 1, max: 1 }], refresh: 'sr' },
+    ],
+    'Psi Trickster': [
+      { name: 'Cunning Mind', maxAt: 'PB', refresh: 'lr' },
+    ],
+    'Psykineticist': [
+      { name: 'Psi Boost', maxAt: 'PB', refresh: 'lr' },
     ],
   },
 
@@ -391,6 +467,43 @@ window.ClassResources = {
       ],
     },
     // Spell Sniper: "Increased Range" applies to all attack roll spells automatically — no pick needed
+    // Wild Talent Feats — all spells are auto-granted (no picks), ability chosen via customConfig
+    'Atmokinesis': {
+      autoSpells: ['Shocking Grasp', 'Fog Cloud'],
+      levelSpells: [{ minLevel: 3, spells: ['Gust of Wind'] }],
+    },
+    'Biokinesis': {
+      autoSpells: ['Spare the Dying', 'Healing Word'],
+      levelSpells: [{ minLevel: 3, spells: ['Arcane Vigor'] }],
+    },
+    'Clairsentience': {
+      autoSpells: ['Guidance', 'Detect Evil and Good'],
+      levelSpells: [{ minLevel: 3, spells: ['See Invisibility'] }],
+    },
+    'Cryokinesis': {
+      autoSpells: ['Ray of Frost', 'Armor of Agathys', 'Ice Knife'],
+    },
+    'Empath': {
+      autoSpells: ['Charm Person'],
+      levelSpells: [{ minLevel: 3, spells: ['Calm Emotions'] }],
+    },
+    'Flesh Morpher': {
+      autoSpells: ['Longstrider'],
+      levelSpells: [{ minLevel: 3, spells: ['Alter Self'] }],
+    },
+    'Mind Whisperer': {
+      autoSpells: ['Mind Sliver', 'Dissonant Whispers'],
+    },
+    'Psi Trickster': {
+      autoSpells: ['Minor Illusion', 'Disguise Self'],
+    },
+    'Psykineticist': {
+      autoSpells: ['Telekinetic Fling', 'Thunderwave'],
+    },
+    'Pyrokinesis': {
+      autoSpells: ['Produce Flame', 'Burning Hands'],
+      levelSpells: [{ minLevel: 3, spells: ['Scorching Ray'] }],
+    },
   },
 
   /* ================================================================
@@ -404,12 +517,40 @@ window.ClassResources = {
       count: 2,
       hint: 'Choose 2 Metamagic options. You can use them with your Sorcery Points.',
     },
+    // Wild Talent Feats — spellcasting ability choice (INT / WIS / CHA)
+    'Atmokinesis':    { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Shocking Grasp, Fog Cloud, Gust of Wind).' },
+    'Biokinesis':     { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Spare the Dying, Healing Word, Arcane Vigor).' },
+    'Clairsentience': { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Guidance, Detect Evil and Good, See Invisibility).' },
+    'Cryokinesis':    { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Ray of Frost, Armor of Agathys, Ice Knife).' },
+    'Empath':         { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Charm Person, Calm Emotions).' },
+    'Flesh Morpher':  { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Longstrider, Alter Self).' },
+    'Mind Whisperer': { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Mind Sliver, Dissonant Whispers).' },
+    'Psi Trickster':  { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Minor Illusion, Disguise Self).' },
+    'Psykineticist':  { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Telekinetic Fling, Thunderwave).' },
+    'Pyrokinesis':    { type: 'spellAbility', label: 'Psionic Spellcasting Ability', hint: 'Choose the ability score used for your psionic spells (Produce Flame, Burning Hands, Scorching Ray).' },
   },
 
   /* ================================================================
      METAMAGIC OPTIONS — used by Sorcerer and Metamagic Adept feat.
      Each entry: { name, cost, text }
      ================================================================ */
+  /* ================================================================
+     PSIONIC DISCIPLINE OPTIONS — used by Psion class (level 2+)
+     ================================================================ */
+  PSIONIC_DISCIPLINE_OPTIONS: [
+    { name: 'Biofeedback',           text: 'When you cast a Psion spell from the Necromancy or Transmutation school, you can expend a number of Psionic Energy Dice up to your Intelligence modifier, roll them, and gain Temporary Hit Points equal to the total rolled plus your Intelligence modifier (minimum 1).' },
+    { name: 'Bolstering Precognition', text: 'When you cast a Psion spell from the Abjuration or Divination school, you can expend one Psionic Energy Die. Roll the die and choose a creature you can see within 60 feet (including yourself). Until the end of your next turn, the creature gains a bonus to the next D20 Test it makes equal to the number rolled.' },
+    { name: 'Destructive Thoughts',  text: 'When you cast a Psion spell from the Conjuration or Evocation school that forces a creature you can see to make a saving throw, you can expend a number of Psionic Energy Dice up to your Intelligence modifier and roll them. The creature takes Psychic damage equal to the total rolled plus your Intelligence modifier (minimum 1), regardless of the saving throw result.' },
+    { name: 'Devilish Tongue',       text: 'When you take the Influence action, you can roll one Psionic Energy Die and add the number rolled to the ability check. If this causes you to succeed on the ability check, the die is expended.' },
+    { name: 'Expanded Awareness',    text: 'When you take the Search action, you can roll one Psionic Energy Die and add the number rolled to the ability check. If this causes you to succeed on the ability check, the die is expended.' },
+    { name: 'Id Insinuation',        text: 'When you cast a Psion spell from the Enchantment or Illusion school that forces a creature to make a saving throw, you can expend one Psionic Energy Die and roll it. One target of the spell you can see subtracts half the number rolled (round up) from its saving throw against the spell.' },
+    { name: 'Inerrant Aim',          text: 'When you make an attack roll against a creature and miss, you can roll one Psionic Energy Die and add the number rolled to the attack roll, potentially turning the miss into a hit. If this causes the attack to hit, the die is expended.' },
+    { name: 'Observant Mind',        text: 'When you take the Study action, you can roll one Psionic Energy Die and add the number rolled to the ability check. If this causes you to succeed on the ability check, the die is expended.' },
+    { name: 'Psionic Backlash',      text: 'Immediately after a creature you can see hits you with an attack roll, you can take a Reaction to expend one Psionic Energy Die, roll it, and reduce the damage you take equal to two times the number rolled plus your Intelligence modifier (minimum 2). You can also force the attacker to make a Wisdom saving throw; on a failure, the target takes Psychic damage equal to the damage you reduced.' },
+    { name: 'Psionic Guards',        text: 'At the start of your turn, you can expend one Psionic Energy Die. Until the start of your next turn, you have Immunity to the Charmed and Frightened conditions and Advantage on Intelligence saving throws. If you are Charmed or Frightened when you use this discipline, the condition ends on you. When you use Psionic Guards, you can also use a different Psionic Discipline this turn.' },
+    { name: 'Sharpened Mind',        text: 'At the start of your turn, you can expend one Psionic Energy Die to hone your destructive psionics. Roll the die and record the number. For 1 minute or until Incapacitated: your weapon attacks, Psion spells, and Psion features ignore Resistance to Psychic damage; and once per turn when you deal Psychic damage, you can replace one damage die with the recorded number. When you use Sharpened Mind, you can also use a different Psionic Discipline this turn.' },
+  ],
+
   METAMAGIC_OPTIONS: [
     { name: 'Careful Spell',    cost: 1, text: 'When you cast a spell that forces others to make a saving throw, you can protect some of those creatures. Choose up to your Spellcasting modifier (minimum 1) — they automatically succeed.' },
     { name: 'Distant Spell',    cost: 1, text: 'When you cast a spell with a range of 5+ feet, double its range. When you cast a touch spell, its range becomes 30 feet.' },

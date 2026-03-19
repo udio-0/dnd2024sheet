@@ -861,6 +861,156 @@ window.UA2024_DATA = {
       ],
       "_src": "UA 2024",
       "_catName": "Epic Boon"
+    },
+    {
+      "name": "Atmokinesis",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Lightning Jolt", "entries": ["Once per turn when you cast a spell or hit with an attack roll and deal Bludgeoning, Piercing, Slashing, or Psychic damage, you can change the damage type to Lightning damage."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Shocking Grasp cantrip. You also always have the Fog Cloud spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat). When you reach character level 3, you also always have the Gust of Wind spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Biokinesis",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Bend Life Energy", "entries": ["When a spell you cast restores Hit Points to a creature, you can roll 1d4 and add the number rolled to the total Hit Points restored. You can use this benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Spare the Dying cantrip. You also always have the Healing Word spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat). When you reach character level 3, you also always have the Arcane Vigor spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Clairsentience",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Minor Foreknowledge", "entries": ["When you take the Search action, you can give yourself Advantage on any ability check made as part of that action. You can use this benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Guidance cantrip. You also always have the Detect Evil and Good spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for these spells (choose when you select this feat). When you reach character level 3, you also always have the See Invisibility spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Cryokinesis",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Ice Manipulation", "entries": ["Once per turn when you cast a spell or hit with an attack roll and deal Bludgeoning, Piercing, Slashing, or Psychic damage, you can change the damage type to Cold damage."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Ray of Frost cantrip. You also always have the Armor of Agathys and Ice Knife spells prepared. You can cast each spell once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast these spells using any spell slots you have. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat)."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Empath",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Emotional Sense", "entries": ["When you take the Influence action, you can give yourself Advantage on any ability check made as part of that action. You can use this benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You always have the Charm Person spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast the spell, it requires no Verbal components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for this spell (choose when you select this feat). When you reach character level 3, you also always have the Calm Emotions spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Flesh Morpher",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Flexible Flesh", "entries": ["When you make a Dexterity (Acrobatics or Sleight of Hand) check, you gain a bonus equal to your Intelligence modifier (minimum of +1). You can use this benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You always have the Longstrider spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast the spell, it requires no Verbal components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for this spell (choose when you select this feat). When you reach character level 3, you also always have the Alter Self spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Mind Whisperer",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Limited Telepathy", "entries": ["As a Magic action, choose one creature you can see within 120 feet of yourself. You form a telepathic connection to that creature. For 1 hour, you and the chosen creature can communicate telepathically with each other while within 120 feet of each other. To understand each other, you each must mentally use a language the other knows. Once you use this benefit, you can't do so again until you finish a Short or Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Mind Sliver cantrip. You also always have the Dissonant Whispers spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat)."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Psi Trickster",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Cunning Mind", "entries": ["When you make a Charisma (Deception or Persuasion) check, you gain a bonus equal to your Intelligence modifier (minimum bonus of +1). You can use this benefit a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Minor Illusion cantrip. You also always have the Disguise Self spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat)."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Psykineticist",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Psi Boost", "entries": ["When you take the Dash action, you can increase your Speed by 10 feet until the start of your next turn. You can do this a number of times equal to your Proficiency Bonus, and you regain all expended uses when you finish a Long Rest."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Telekinetic Fling cantrip. You also always have the Thunderwave spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have. When you cast these spells, they require no Verbal components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat)."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
+    },
+    {
+      "name": "Pyrokinesis",
+      "source": "UA2024",
+      "page": 1,
+      "category": "WT",
+      "prerequisite": [{ "wildTalent": true }],
+      "entries": [
+        "Wild Talent Feat (Prerequisite: Can't Have Another Wild Talent Feat)",
+        "You gain the following benefits:",
+        { "type": "entries", "name": "Firestarter", "entries": ["Once per turn when you cast a spell or hit with an attack roll and deal Bludgeoning, Piercing, Slashing, or Psychic damage, you can change the damage type to Fire damage."] },
+        { "type": "entries", "name": "Psionic Talent", "entries": ["You know the Produce Flame cantrip. You also always have the Burning Hands spell prepared. You can cast it once without a spell slot, and you regain the ability to cast it in that way when you finish a Long Rest. You can also cast it using any spell slots you have of the appropriate level. When you cast these spells, they require no Verbal or Material components, and Intelligence, Wisdom, or Charisma is your spellcasting ability for them (choose when you select this feat). When you reach character level 3, you also always have the Scorching Ray spell prepared and can cast it the same way."] }
+      ],
+      "_src": "UA 2024",
+      "_catName": "Wild Talent"
     }
   ],
   "spell": [
@@ -1144,6 +1294,177 @@ window.UA2024_DATA = {
       "_src": "UA 2024"
     },
     {
+      "name": "Enemies Abound",
+      "source": "UA2024",
+      "page": 12,
+      "level": 3,
+      "school": "E",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 120 } },
+      "components": { "v": true, "s": true },
+      "duration": [{ "type": "timed", "duration": { "type": "minute", "amount": 1 }, "concentration": true }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }, { "name": "Sorcerer", "source": "XPHB" }, { "name": "Warlock", "source": "XPHB" }, { "name": "Wizard", "source": "XPHB" }] },
+      "entries": [
+        "You reach into the mind of one creature you can see within range and force it to believe it is surrounded by enemies. The target must succeed on an Intelligence saving throw or lose the ability to distinguish friend from foe for the duration. Each time the target takes damage, it can repeat the saving throw, ending the effect on a success.",
+        "While affected, the target chooses its targets randomly from among all creatures it can see, including its allies. It can't maintain Concentration on spells. If no valid target is visible, the creature is Incapacitated."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Mental Prison",
+      "source": "UA2024",
+      "page": 12,
+      "level": 6,
+      "school": "I",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "components": { "s": true },
+      "duration": [{ "type": "timed", "duration": { "type": "minute", "amount": 1 }, "concentration": true }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }, { "name": "Sorcerer", "source": "XPHB" }, { "name": "Warlock", "source": "XPHB" }, { "name": "Wizard", "source": "XPHB" }] },
+      "entries": [
+        "You attempt to bind a creature within an illusory cell that only it perceives. One creature you can see within range must succeed on an Intelligence saving throw or become trapped. On a failed save, the target is surrounded by an illusory wall or barrier it cannot see past or move through.",
+        "While imprisoned: the target is Restrained; if it tries to move or reach beyond the barrier, it takes 5d10 Psychic damage; any teleportation or planar travel out of the prison also deals 5d10 Psychic damage.",
+        "At the end of each of its turns, the target repeats the saving throw, ending the effect on a success."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Abi-Dalzim's Horrid Wilting",
+      "source": "UA2024",
+      "page": 12,
+      "level": 8,
+      "school": "N",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 150 } },
+      "components": { "v": true, "s": true, "m": "a bit of sponge" },
+      "duration": [{ "type": "instant" }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }, { "name": "Sorcerer", "source": "XPHB" }, { "name": "Wizard", "source": "XPHB" }] },
+      "entries": [
+        "You draw the moisture from every creature in a 30-foot Cube centered on a point you choose within range. Each creature in that area must make a Constitution saving throw. Constructs and undead aren't affected. Plants and water elementals have Disadvantage on the saving throw.",
+        "On a failed save, a creature takes 12d8 Necrotic damage. On a successful save, a creature takes half as much damage."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Life Siphon",
+      "source": "UA2024",
+      "page": 12,
+      "level": 1,
+      "school": "V",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "components": { "v": true },
+      "duration": [{ "type": "instant" }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You drain the life force of a creature you can see within range. The target must make a Constitution saving throw. On a failed save, the target takes 2d6 Necrotic damage, and you regain Hit Points equal to half the damage dealt. On a successful save, the target takes half as much damage, and you don't regain Hit Points.",
+        "Using a Higher-Level Spell Slot. The damage increases by 1d6 for each spell slot level above 1."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Ego Whip",
+      "source": "UA2024",
+      "page": 12,
+      "level": 2,
+      "school": "E",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 30 } },
+      "components": { "v": true },
+      "duration": [{ "type": "timed", "duration": { "type": "round", "amount": 1 } }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You assail the mind of one creature you can see within range, filling it with self-doubt. The target must succeed on an Intelligence saving throw. On a failed save, the target takes 3d8 Psychic damage and has the Frightened condition until the start of your next turn. While Frightened by this spell, the target can't benefit from any bonus to its attack rolls. On a successful save, the target takes half as much damage only.",
+        "Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 2."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Ectoplasmic Trail",
+      "source": "UA2024",
+      "page": 12,
+      "level": 2,
+      "school": "N",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "components": { "v": true, "s": true },
+      "duration": [{ "type": "instant" }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You create a trail of ectoplasmic slime connecting two points within range that you can see. The trail is 5 feet wide and up to 30 feet long. The trail is Difficult Terrain for all creatures except you. The first time a creature other than you enters the trail on a turn or starts its turn there, it must succeed on a Dexterity saving throw or have the Restrained condition until the start of its next turn.",
+        "Using a Higher-Level Spell Slot. The length of the trail increases by 10 feet for each spell slot level above 2."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Bleeding Darkness",
+      "source": "UA2024",
+      "page": 12,
+      "level": 3,
+      "school": "V",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "components": { "v": true, "m": "a vial of blood" },
+      "duration": [{ "type": "timed", "duration": { "type": "minute", "amount": 1 }, "concentration": true }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You create a sphere of bleeding psionic darkness at a point you can see within range. The sphere is 20 feet in radius and heavily obscures the area. Any creature that starts its turn inside the sphere or enters it for the first time on a turn must make a Constitution saving throw, taking 3d8 Necrotic damage on a failed save or half as much on a success.",
+        "Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 3."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Life Inversion Field",
+      "source": "UA2024",
+      "page": 12,
+      "level": 4,
+      "school": "A",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "point", "distance": { "type": "feet", "amount": 60 } },
+      "components": { "v": true, "s": true },
+      "duration": [{ "type": "timed", "duration": { "type": "minute", "amount": 1 }, "concentration": true }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You create a 20-foot-radius sphere of inverting life energy centered on a point within range. Each creature that starts its turn inside the sphere must make a Constitution saving throw. On a failed save, the target takes 4d8 Necrotic damage and you regain Hit Points equal to half the damage dealt. On a successful save, the target takes half as much damage and you don't regain Hit Points.",
+        "Using a Higher-Level Spell Slot. The damage increases by 1d8 for each spell slot level above 4."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Psionic Blast",
+      "source": "UA2024",
+      "page": 12,
+      "level": 6,
+      "school": "V",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "special" },
+      "components": { "v": true },
+      "duration": [{ "type": "instant" }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You unleash a devastating cone of psionic force. Each creature in a 60-foot Cone originating from you must make an Intelligence saving throw. On a failed save, a creature takes 10d6 Psychic damage and has the Stunned condition until the start of your next turn. On a successful save, a creature takes half as much damage only.",
+        "Using a Higher-Level Spell Slot. The damage increases by 2d6 for each spell slot level above 6."
+      ],
+      "_src": "UA 2024"
+    },
+    {
+      "name": "Thought Form",
+      "source": "UA2024",
+      "page": 12,
+      "level": 6,
+      "school": "T",
+      "time": [{ "number": 1, "unit": "action" }],
+      "range": { "type": "self" },
+      "components": { "v": true, "s": true, "m": "a crystal or gem worth at least 100 GP" },
+      "duration": [{ "type": "timed", "duration": { "type": "minute", "amount": 10 }, "concentration": true }],
+      "classes": { "fromClassList": [{ "name": "Psion", "source": "UA2024" }] },
+      "entries": [
+        "You transform your body into pure psionic thought energy. For the duration: you gain a Fly Speed of 60 feet and can hover; you are immune to the Prone condition and to nonmagical Bludgeoning, Piercing, and Slashing damage; you can move through other creatures and objects as if they were Difficult Terrain (you take 5 Force damage if you end your turn inside a solid object); and you can't speak or cast spells with Verbal components.",
+        "Using a Higher-Level Spell Slot. The duration increases to 1 hour for a level 7 slot or higher."
+      ],
+      "_src": "UA 2024"
+    },
+    {
       "name": "Psychic Scream",
       "source": "UA2024",
       "page": 10,
@@ -1169,8 +1490,8 @@ window.UA2024_DATA = {
       "proficiency": ["int", "wis"],
       "spellcastingAbility": "int",
       "casterProgression": "full",
-      "cantripProgression": [2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4],
-      "preparedSpells": "<$level$> + <$int_mod$>",
+      "cantripProgression": [2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+      "preparedSpellsProgression": [4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
       "startingProficiencies": {
         "armor": [],
         "weapons": ["simple"],
@@ -1196,28 +1517,42 @@ window.UA2024_DATA = {
       "_src": "UA 2024",
       "spellListNames": [
         "Blade Ward","Dancing Lights","Friends","Light","Mage Hand","Mending","Message","Mind Sliver","Minor Illusion","Prestidigitation","Telekinetic Fling","True Strike",
-        "Animal Friendship","Charm Person","Command","Comprehend Languages","Detect Magic","Dissonant Whispers","Feather Fall","Identify","Jump","Longstrider","Mage Armor","Silent Image","Sleep","Speak with Animals","Tasha's Hideous Laughter","Tenser's Floating Disk",
-        "Animal Messenger","Blindness/Deafness","Calm Emotions","Crown of Madness","Detect Thoughts","Enhance Ability","Enlarge/Reduce","Enthrall","Heat Metal","Hold Person","Invisibility","Knock","Locate Animals or Plants","Locate Object","Magic Mouth","Mind Spike","Mirror Image","Phantasmal Force","See Invisibility","Shatter","Silence","Suggestion","Tasha's Mind Whip","Zone of Truth",
-        "Animate Dead","Bestow Curse","Clairvoyance","Dispel Magic","Fear","Fly","Hypnotic Pattern","Intellect Fortress","Major Image","Nondetection","Sending","Summon Astral Entity","Telekinetic Crush","Tongues",
-        "Arcane Eye","Banishment","Charm Monster","Compulsion","Confusion","Dimension Door","Freedom of Movement","Greater Invisibility","Hallucinatory Terrain","Locate Creature","Phantasmal Killer","Polymorph","Raulothim's Psychic Lance","Summon Aberration",
+        "Animal Friendship","Charm Person","Command","Comprehend Languages","Detect Magic","Dissonant Whispers","Feather Fall","Identify","Jump","Life Siphon","Longstrider","Mage Armor","Sanctuary","Shield","Silent Image","Sleep","Speak with Animals","Tasha's Hideous Laughter","Tenser's Floating Disk","Thunderwave",
+        "Animal Messenger","Blindness/Deafness","Calm Emotions","Crown of Madness","Detect Thoughts","Ectoplasmic Trail","Ego Whip","Enhance Ability","Enlarge/Reduce","Enthrall","Heat Metal","Hold Person","Invisibility","Knock","Levitate","Locate Animals or Plants","Locate Object","Magic Mouth","Mind Spike","Mirror Image","Phantasmal Force","See Invisibility","Shatter","Silence","Suggestion","Tasha's Mind Whip","Zone of Truth",
+        "Bestow Curse","Bleeding Darkness","Clairvoyance","Dispel Magic","Enemies Abound","Fear","Fly","Hypnotic Pattern","Intellect Fortress","Major Image","Nondetection","Sending","Summon Astral Entity","Telekinetic Crush","Tongues",
+        "Arcane Eye","Banishment","Charm Monster","Compulsion","Confusion","Dimension Door","Freedom of Movement","Greater Invisibility","Hallucinatory Terrain","Life Inversion Field","Locate Creature","Phantasmal Killer","Polymorph","Raulothim's Psychic Lance","Summon Aberration",
         "Animate Objects","Awaken","Contact Other Plane","Dominate Person","Dream","Geas","Hold Monster","Legend Lore","Mislead","Modify Memory","Rary's Telepathic Bond","Scrying","Seeming","Synaptic Static","Telekinesis","Teleportation Circle",
-        "Blade Barrier","Disintegrate","Eyebite","Find the Path","Mass Suggestion","Move Earth","Otto's Irresistible Dance","Programmed Illusion","True Seeing",
+        "Blade Barrier","Disintegrate","Eyebite","Find the Path","Mass Suggestion","Mental Prison","Move Earth","Otto's Irresistible Dance","Programmed Illusion","Psionic Blast","Thought Form","True Seeing",
         "Etherealness","Forcecage","Mirage Arcane","Plane Shift","Power Word Fortify","Project Image","Reverse Gravity","Teleport",
-        "Antipathy/Sympathy","Befuddlement","Dominate Monster","Glibness","Maze","Mind Blank","Power Word Stun","Telepathy",
+        "Abi-Dalzim's Horrid Wilting","Antimagic Field","Antipathy/Sympathy","Befuddlement","Dominate Monster","Glibness","Maze","Mind Blank","Power Word Stun","Telepathy",
         "Astral Projection","Foresight","Power Word Heal","Power Word Kill","Psychic Scream","Shapechange","Time Stop","Weird"
       ],
       "entries": [
-        { "level": 1, "type": "entries", "name": "Spellcasting", "entries": ["You channel magical energy through the power of your mind. Intelligence is your spellcasting ability. When you cast a Psion spell, it doesn't require a Verbal or Material component, except for Material components consumed by the spell or with a specified cost. You know 2 cantrips at level 1, gaining more at levels 10 and 14. You prepare spells from the Psion spell list (4 at level 1, increasing each level). Spell slots are regained on a Long Rest."] },
-        { "level": 1, "type": "entries", "name": "Psionic Power", "entries": ["You harbor a wellspring of psionic energy represented by Psionic Energy Dice. Your die size and count are determined by your level (d6×4 at level 1, scaling to d12×12 at level 17+). You regain one die on a Short Rest and all dice on a Long Rest.", "Telekinetic Propel (Bonus Action): Expend one die; a Large or smaller creature within 30 ft must make a Strength save or be pushed/pulled up to 5×roll feet.", "Telepathic Connection (Bonus Action): Expend one die; for a number of minutes equal to your Psion level, your natural 5 ft telepathy increases by 10×roll feet."] },
+        { "level": 1, "type": "entries", "name": "Spellcasting", "entries": [
+          "You have learned how to channel magical energy using the power of your mind. Intelligence is your spellcasting ability for your Psion spells.",
+          "Cantrips. You know two Psion cantrips of your choice. Whenever you gain a Psion level, you can replace one cantrip from this feature with another Psion cantrip. You gain additional cantrips at Psion levels 4 and 10.",
+          "Spell Slots. The Psion Features table shows how many spell slots you have. You regain all expended spell slots when you finish a Long Rest.",
+          "Prepared Spells. Choose four level 1 Psion spells to start. The number increases as you gain Psion levels (see the Prepared Spells column). Whenever that number increases, choose additional Psion spells. Whenever you gain a Psion level, you can replace one spell on your list with another eligible Psion spell.",
+          "Psionic Spellcasting. When you cast a Psion spell, it doesn't require a Verbal or Material component, except Material components that are consumed by the spell or have a cost specified in the spell."
+        ]},
+        { "level": 1, "type": "entries", "name": "Psionic Power", "entries": [
+          "You harbor a wellspring of psionic energy within yourself, represented by your Psionic Energy Dice. Your Psion level determines the die size and number of Psionic Energy Dice you have (see the Energy Dice column of the Psion Features table): 4d6 at levels 1–4, 6d8 at levels 5–8, 8d8 at levels 9–10, 8d10 at levels 11–12, 10d10 at levels 13–16, 12d12 at levels 17–20.",
+          "You regain one expended Psionic Energy Die when you finish a Short Rest, and you regain all of them when you finish a Long Rest.",
+          "Telekinetic Propel (Bonus Action): Choose one Large or smaller creature other than you that you can see within 30 feet. The target must succeed on a Strength saving throw or be moved 5 feet straight toward or away from you. Alternatively, roll one Psionic Energy Die — the distance is 5 times the number rolled. The die is expended only if the target fails the save.",
+          "Telepathic Connection (Bonus Action): You have telepathy with a range of 30 feet. You can roll one Psionic Energy Die. For the next hour, your telepathy range increases by 10 times the number rolled. The first time you use this after each Long Rest, you don't expend the die. All other times, the die is expended."
+        ]},
         { "level": 1, "type": "entries", "name": "Subtle Telekinesis", "entries": ["You know the Mage Hand cantrip. You can cast it without Somatic components, and you can make the spectral hand Invisible when you cast it."] },
-        { "level": 2, "type": "entries", "name": "Psionic Discipline", "entries": ["You gain 2 Psionic Discipline options of your choice. You can use only one Discipline per turn. Gain 2 more at level 10 and 2 more at level 17. Options include: Biofeedback, Destructive Thoughts, Devilish Tongue, Ego Whip, Expanded Awareness, Id Insinuation, Inerrant Aim, Psionic Backlash, Psionic Guards, Swift Precognition, Tactical Mind."] },
-        { "level": 2, "type": "entries", "name": "Psionic Modes", "entries": ["As a Bonus Action, choose a mode lasting 1 minute (2 uses, regain on Long Rest).", "Attack Mode: Ignore Psychic damage Resistance; expend one die to reroll up to INT mod damage dice.", "Defense Mode: Resistance to Psychic damage; as a Reaction on a failed INT/WIS/CHA save, expend one die and add the roll to the save."] },
-        { "level": 3, "type": "entries", "name": "Psion Subclass", "entries": ["Choose a subclass: Metamorph, Psi Warper, Psykinetic, or Telepath. You gain subclass features at levels 3, 6, 10, and 14."] },
-        { "level": 4, "type": "entries", "name": "Ability Score Improvement", "entries": ["You gain the Ability Score Improvement feat or another feat of your choice. Gained again at levels 8, 12, and 16."] },
-        { "level": 5, "type": "entries", "name": "Psionic Restoration", "entries": ["When you finish a Short Rest, you can regain expended Psionic Energy Dice, up to half your total (round down). Once used, not again until a Long Rest."] },
-        { "level": 7, "type": "entries", "name": "Psionic Surge", "entries": ["When you roll Initiative, you can expend one Hit Point Die to regain one use of Psionic Modes. Also, after rolling Psionic Energy Dice, you can expend one Hit Point Die to treat any roll of 1–3 as a 4."] },
-        { "level": 19, "type": "entries", "name": "Epic Boon", "entries": ["You gain an Epic Boon feat of your choice. Boon of Energy Resistance is recommended."] },
-        { "level": 20, "type": "entries", "name": "Enkindled Lifeforce", "entries": ["Once per turn, when you expend one Psionic Energy Die for a feature or Discipline, you can expend two Hit Point Dice to roll two additional Psionic Energy Dice and add the results to the total."] }
+        { "level": 2, "type": "entries", "name": "Psionic Discipline", "entries": [
+          "You learn further psionic techniques fueled by your Psionic Energy Dice. You gain two disciplines of your choice (such as Expanded Awareness and Id Insinuation). You can use only one Discipline each turn and only once per turn, unless otherwise noted.",
+          "Whenever you gain a Psion level, you can replace one of your Psionic Discipline options with one you don't know. You gain one additional option at Psion levels 5, 10, 13, and 17 (6 total)."
+        ]},
+        { "level": 3, "type": "entries", "name": "Psion Subclass", "entries": ["You gain a Psion subclass of your choice: Metamorph, Psykinetic, or Telepath. You gain subclass features at Psion levels 3, 6, 10, and 14."] },
+        { "level": 4, "type": "entries", "name": "Ability Score Improvement", "entries": ["You gain the Ability Score Improvement feat or another feat of your choice for which you qualify. You gain this feature again at Psion levels 8, 12, and 16."] },
+        { "level": 5, "type": "entries", "name": "Psionic Restoration", "entries": ["You can perform a meditation that focuses the mind for 1 minute. At the end of it, you regain all expended Psionic Energy Dice. Once you use this feature, you can't do so again until you finish a Long Rest."] },
+        { "level": 7, "type": "entries", "name": "Psionic Surge", "entries": ["You can push your psionic powers using your life force. After you roll one or more Psionic Energy Dice, you can expend one of your Hit Point Dice and treat any roll of 1, 2, or 3 on those Psionic Energy Dice as a 4."] },
+        { "level": 18, "type": "entries", "name": "Psionic Reserves", "entries": ["When you roll Initiative, you regain expended Psionic Energy Dice until you have four, if you have fewer than that."] },
+        { "level": 19, "type": "entries", "name": "Epic Boon", "entries": ["You gain an Epic Boon feat or another feat of your choice for which you qualify. Boon of Energy Resistance is recommended."] },
+        { "level": 20, "type": "entries", "name": "Enkindled Life Force", "entries": ["Once per turn, when you roll one or more Psionic Energy Dice for a Psion feature or Psionic Discipline, you can expend one or two of your Hit Point Dice. For each Hit Point Die expended, roll an additional Psionic Energy Die and add the number rolled to the total. This roll does not expend the Psionic Energy Die."] }
       ]
     }
   ],
@@ -1232,12 +1567,12 @@ window.UA2024_DATA = {
       "entries": [{ "type": "entries", "name": "Metamorph", "entries": [
         "Your mastery of psionic powers turns inward, molding your own flesh as the perfect vessel of psionic power.",
         { "type": "entries", "name": "Level 3: Metamorph Spells", "entries": ["Always prepared — Level 3: Alter Self, Cure Wounds, Inflict Wounds, Lesser Restoration. Level 5: Aura of Vitality, Haste. Level 7: Polymorph, Stoneskin. Level 9: Contagion, Mass Cure Wounds."] },
-        { "type": "entries", "name": "Level 3: Organic Weapons", "entries": ["When you take the Attack action or make an Opportunity Attack, you can reform a free hand into one of: Bone Blade (1d8 Piercing, Finesse, advantage when ally is adjacent), Flesh Maul (1d10 Bludgeoning, target has Disadvantage on next STR/CON save), or Viscera Launcher (1d6 Acid, 30/90 ft range, deals extra 1d6 Acid once per turn on hit). You can use INT for attack and damage rolls, and deal Psychic damage instead."] },
-        { "type": "entries", "name": "Level 3: Extend Limbs", "entries": ["Bonus Action: Expend one Psionic Energy Die. For 1 minute: reach +5 ft, Speed +5 ft, Touch spells cast as action gain 10 ft range."] },
-        { "type": "entries", "name": "Level 6: Extra Attack", "entries": ["You can attack twice when you take the Attack action. You can substitute one attack for a Psion cantrip with a casting time of an action."] },
-        { "type": "entries", "name": "Level 6: Quickened Healing", "entries": ["When you cast Cure Wounds, expend 2 Psionic Energy Dice to change its casting time to a Bonus Action and roll one die to add to the total HP restored."] },
-        { "type": "entries", "name": "Level 10: Mutable Form", "entries": ["When you use Extend Limbs, duration becomes 10 minutes and you choose one benefit: Stony Epidermis (Advantage on CON saves for Concentration, Resistance to one damage type), Superior Stride (Dash as Bonus Action, Climb/Swim Speed equal to Speed while unarmored), or Unnatural Flexibility (+2 AC, move through 1-inch spaces, escape nonmagical restraints for 5 ft of movement)."] },
-        { "type": "entries", "name": "Level 14: Life-Bending Weapons", "entries": ["Once per turn when you hit with an Organic Weapon, expend one die: creatures of your choice in a 10-foot Emanation from you regain HP equal to roll + INT mod; one creature in the area takes Necrotic damage equal to the roll."] }
+        { "type": "entries", "name": "Level 3: Mutable Form", "entries": ["Bonus Action: Expend one Psionic Energy Die to psionically stretch your limbs for 1 minute. Roll the die and gain Temporary Hit Points equal to the number rolled plus your Intelligence modifier (minimum 1). While active: your Reach increases by 5 feet; your Speed increases by 5 feet; when you cast a Touch spell with a casting time of an action, the range becomes 10 feet."] },
+        { "type": "entries", "name": "Level 3: Organic Weapons", "entries": ["Magic action: Reform your free hand into one of the following. You can use your Intelligence modifier for attack and damage rolls.\nBone Blade: Simple Melee, Finesse, 1d8 Piercing. Advantage on attack rolls if an ally within 5 ft of the target isn't Incapacitated.\nFlesh Maul: Simple Melee, 1d10 Bludgeoning. Target has Disadvantage on the next Strength or Constitution saving throw it makes before the start of its next turn.\nViscera Launcher: Simple Ranged, 30/90 ft, 1d6 Acid. Once per turn on a hit, deal an extra 1d6 Acid damage."] },
+        { "type": "entries", "name": "Level 6: Extra Attack", "entries": ["You can attack twice instead of once whenever you take the Attack action. You can cast one Psion cantrip with a casting time of an action in place of one of those attacks."] },
+        { "type": "entries", "name": "Level 6: Flesh Warper", "entries": ["When you use Mutable Form, you can expend an additional Psionic Energy Die to gain these benefits while the feature is active:\nOrganic Defense: You gain a +2 bonus to AC.\nEmpowered Healing: When you cast a spell with a spell slot that restores Hit Points to one or more creatures, you can expend one Psionic Energy Die, roll it, and add the number rolled to the Hit Points regained."] },
+        { "type": "entries", "name": "Level 10: Improved Mutable Form", "entries": ["When you use Mutable Form, the duration increases to 10 minutes and you choose one benefit:\nStony Epidermis: Advantage on Constitution saving throws to maintain Concentration, and Resistance to one damage type of your choice (Acid, Bludgeoning, Cold, Fire, Lightning, Piercing, Poison, Slashing, or Thunder).\nSuperior Stride: While unarmored, you can Dash as a Bonus Action, and you gain a Climb Speed and Swim Speed equal to your Speed.\nUnnatural Flexibility: +1 bonus to AC, you can move through spaces as narrow as 1 inch, and you can spend 5 feet of movement to escape nonmagical restraints or end the Grappled condition."] },
+        { "type": "entries", "name": "Level 14: Life-Bending Weapons", "entries": ["When you hit a target with an Organic Weapon, roll one Psionic Energy Die — the target takes extra Necrotic damage equal to the roll. This roll doesn't expend the die.\nAlternatively, when you hit with an Organic Weapon, you can expend one Psionic Energy Die and roll it. The target takes extra Necrotic damage equal to the roll, and each creature of your choice in a 30-foot Emanation from you regains Hit Points equal to the roll plus your Intelligence modifier. Once you use this alternative, you can't do so again until the start of your next turn."] }
       ]}]
     },
     {
@@ -1250,12 +1585,12 @@ window.UA2024_DATA = {
       "entries": [{ "type": "entries", "name": "Psi Warper", "entries": [
         "Psi Warpers tune their psionic powers to manipulating the space between objects, teleporting across the battlefield and creating vacuums.",
         { "type": "entries", "name": "Level 3: Psi Warper Spells", "entries": ["Always prepared — Level 3: Expeditious Retreat, Feather Fall, Misty Step, Shatter. Level 5: Blink, Haste. Level 7: Banishment, Dimension Door. Level 9: Steel Wind Strike, Teleportation Circle."] },
-        { "type": "entries", "name": "Level 3: Teleportation", "entries": ["You can cast Misty Step without expending a spell slot (once per Long Rest, or restore by expending one Psionic Energy Die, no action required)."] },
-        { "type": "entries", "name": "Level 3: Warp Propel", "entries": ["When a target fails its saving throw against Telekinetic Propel, instead of pushing it you can teleport the target to an unoccupied space you can see within 30 ft of you that is horizontal to you."] },
-        { "type": "entries", "name": "Level 6: Warp Space", "entries": ["When you cast Shatter, expend one die to expand its Sphere to 20 ft radius and pull failing creatures toward the center."] },
-        { "type": "entries", "name": "Level 6: Teleporter Combat", "entries": ["Immediately after casting Misty Step, you can cast one Psion cantrip with a casting time of an action as part of the same Bonus Action."] },
-        { "type": "entries", "name": "Level 10: Duplicitous Target", "entries": ["Reaction: When a creature makes an attack roll against you, expend one die and choose a willing creature within 30 ft. You and that creature swap places; the willing creature becomes the target of the attack."] },
-        { "type": "entries", "name": "Level 14: Mass Teleportation", "entries": ["Magic Action: Expend 4 dice. Teleport up to INT mod creatures (minimum 1) within 30 ft to unoccupied spaces you can see within 150 ft of you. Unwilling creatures can resist with a Wisdom save."] }
+        { "type": "entries", "name": "Level 3: Teleportation", "entries": ["You can cast Misty Step without expending a spell slot, and you must finish a Long Rest before you can cast it this way again. You can also restore your use of it by expending one Psionic Energy Die (no action required)."] },
+        { "type": "entries", "name": "Level 3: Warp Propel", "entries": ["When a target fails its saving throw against your Telekinetic Propel, instead of pushing it, you can teleport the target to an unoccupied space you can see within 30 feet of you that is horizontal to you."] },
+        { "type": "entries", "name": "Level 6: Warp Space", "entries": ["When you cast Shatter, you can expend one Psionic Energy Die to modify the spell so that the radius of the spell's Sphere becomes 20 feet. In addition, creatures that fail the saving throw against the spell are pulled straight toward the center of the Sphere, ending in an unoccupied space as close to the center as possible."] },
+        { "type": "entries", "name": "Level 6: Teleporter Combat", "entries": ["Immediately after you cast Misty Step, you can cast one of your Psion cantrips that has a casting time of an action as part of the Bonus Action."] },
+        { "type": "entries", "name": "Level 10: Duplicitous Target", "entries": ["Reaction: When a creature you can see makes an attack roll against you, you can expend one Psionic Energy Die and choose a willing creature you can see within 30 feet of yourself that doesn't have the Incapacitated condition. You and the willing creature teleport, swapping places. The creature then becomes the target of the attack roll."] },
+        { "type": "entries", "name": "Level 14: Mass Teleportation", "entries": ["Magic Action: Expend four Psionic Energy Dice and choose Huge or smaller creatures within 30 feet of yourself, up to a number equal to your Intelligence modifier (minimum 1). Each chosen creature is teleported to an unoccupied space you can see within 150 feet of you. An unwilling creature that succeeds on a Wisdom saving throw against your spell save DC is unaffected."] }
       ]}]
     },
     {
@@ -1268,11 +1603,12 @@ window.UA2024_DATA = {
       "entries": [{ "type": "entries", "name": "Psykinetic", "entries": [
         "A Psykinetic bends telekinetic energies into sturdy barriers and strikes with the force of a battering ram.",
         { "type": "entries", "name": "Level 3: Psykinetic Spells", "entries": ["Always prepared — Level 3: Cloud of Daggers, Levitate, Shield, Thunderwave. Level 5: Slow, Telekinetic Crush. Level 7: Otiluke's Resilient Sphere, Stone Shape. Level 9: Telekinesis, Wall of Force."] },
-        { "type": "entries", "name": "Level 3: Telekinetic Techniques", "entries": ["When you use Telekinetic Propel you can impose one effect on the target: Boost (Speed +10 ft until your next turn), Disorient (can't make Opportunity Attacks until its next turn), or Telekinetic Bolt (on failed save, takes Force damage equal to the die rolled)."] },
-        { "type": "entries", "name": "Level 6: Empowered Attack Mode", "entries": ["While Attack Mode is active, you gain a Fly Speed of 60 ft (hover), and when you cast a Psion spell you can add your INT modifier to one damage roll of that spell."] },
-        { "type": "entries", "name": "Level 6: Rebounding Field", "entries": ["When you cast Shield in response to being hit and cause the attack to miss, expend one die to launch force back at the attacker (DEX save). On a failed save: attacker takes Force damage equal to 2 dice rolled and you gain that many Temporary Hit Points. On a success: half damage only."] },
-        { "type": "entries", "name": "Level 10: Enhanced Telekinetic Crush", "entries": ["When you cast Telekinetic Crush, expend one die to halve the Speed of every creature in the area (fail or succeed) until the start of your next turn."] },
-        { "type": "entries", "name": "Level 14: Heightened Telekinesis", "entries": ["When you cast Telekinesis, expend 4 dice to make the spell not require Concentration. Its duration becomes 1 minute, and you can target Gargantuan creatures and objects."] }
+        { "type": "entries", "name": "Level 3: Stronger Telekinesis", "entries": ["When you cast Mage Hand, its range increases by 30 feet and the hand can carry up to 20 pounds."] },
+        { "type": "entries", "name": "Level 3: Telekinetic Techniques", "entries": ["When you use Telekinetic Propel, you can roll 1d4 and use the number rolled instead of expending a Psionic Energy Die.\nIn addition, when a target fails the saving throw against your Telekinetic Propel, you can impose one of the following effects:\nBoost: The target's Speed increases by 10 feet until the start of your next turn.\nDisorient: The target can't make Opportunity Attacks until the start of its next turn.\nTelekinetic Bolt: The target takes Force damage equal to the number rolled on the Psionic Energy Die."] },
+        { "type": "entries", "name": "Level 6: Destructive Trance", "entries": ["At the start of your turn, you can expend one Psionic Energy Die to enter a destructive state. For the next 10 minutes, you gain a Fly Speed of 20 feet and can hover, and when you cast a Psion spell that expends a spell slot, you can roll your Psionic Energy Die and add the number rolled to one damage roll of that spell. This roll doesn't expend the Psionic Energy Die."] },
+        { "type": "entries", "name": "Level 6: Rebounding Field", "entries": ["When you cast Shield in response to being hit by an attack roll and cause the triggering attack to miss, you can expend one Psionic Energy Die to launch the force back at the attacker. The attacker makes a Dexterity saving throw. Roll one Psionic Energy Die.\nOn a failed save: the attacker takes Force damage equal to the roll + your Intelligence modifier.\nOn a successful save: the attacker takes half as much damage only.\nWhether the target fails or succeeds, you gain Temporary Hit Points equal to the amount of damage dealt."] },
+        { "type": "entries", "name": "Level 10: Enhanced Telekinetic Crush", "entries": ["When you cast Telekinetic Crush, you can expend one Psionic Energy Die to modify the spell so that whether a creature fails or succeeds on the saving throw, its Speed is halved until the start of your next turn. You also roll the expended die and add the number rolled to one damage roll of the spell."] },
+        { "type": "entries", "name": "Level 14: Heightened Telekinesis", "entries": ["You can cast Telekinesis without expending a spell slot by instead expending four Psionic Energy Dice. When you do, you can modify the spell so that it doesn't require Concentration — if you do, the spell's duration becomes 1 minute and you can target Gargantuan creatures and objects."] }
       ]}]
     },
     {
@@ -1284,13 +1620,13 @@ window.UA2024_DATA = {
       "page": 9,
       "entries": [{ "type": "entries", "name": "Telepath", "entries": [
         "Telepaths are masters of mind magic, bolstering mental defenses of allies or probing the thoughts of others undetected.",
-        { "type": "entries", "name": "Level 3: Telepath Spells", "entries": ["Always prepared — Level 3: Bane, Command, Detect Thoughts, Mind Spike. Level 5: Counterspell, Speak with Plants. Level 7: Compulsion, Confusion. Level 9: Awaken, Modify Memory."] },
-        { "type": "entries", "name": "Level 3: Mind Infiltrator", "entries": ["When you cast Detect Thoughts, expend 2 dice to make it require no components or Concentration, and the target doesn't know you're probing its mind if it fails the Wisdom save."] },
-        { "type": "entries", "name": "Level 3: Telepathic Hub", "entries": ["You have 10 ft telepathy. When you use Telepathic Connection, for the duration you can simultaneously contact a number of creatures equal to 1 plus the number rolled on the die."] },
-        { "type": "entries", "name": "Level 6: Empowered Defense Mode", "entries": ["While Defense Mode is active, you add 1d4 to all saving throws. You can extend this benefit to creatures you are telepathically connected with via Telepathic Connection."] },
-        { "type": "entries", "name": "Level 6: Potent Thoughts", "entries": ["You add your Intelligence modifier to the damage you deal with any Psion cantrip."] },
-        { "type": "entries", "name": "Level 10: Telepathic Bolstering", "entries": ["Telepathy out to 30 ft. Reaction: When you or a creature within range fails an ability check or misses an attack, expend one die, roll it, and add it to the d20, potentially turning a fail into a success. Die is expended only if the check succeeds or the attack hits."] },
-        { "type": "entries", "name": "Level 14: Scramble Minds", "entries": ["When you cast Confusion, expend 4 dice to expand its Sphere to 30 ft radius. Affected creatures roll two d10s and you choose which result determines their behavior."] }
+        { "type": "entries", "name": "Level 3: Telepath Spells", "entries": ["Always prepared — Level 3: Bane, Command, Detect Thoughts, Mind Spike. Level 5: Counterspell, Slow. Level 7: Compulsion, Confusion. Level 9: Modify Memory, Yolande's Regal Presence."] },
+        { "type": "entries", "name": "Level 3: Mind Infiltrator", "entries": ["When you cast Detect Thoughts, you can expend one Psionic Energy Die to modify the spell so that it doesn't require spell components or Concentration. In addition, when you use the Read Thoughts effect of the spell, the target doesn't know you're probing its mind if it fails the Wisdom saving throw."] },
+        { "type": "entries", "name": "Level 3: Telepathic Distraction", "entries": ["When a creature you can see within range of your telepathy hits with an attack roll, you can take a Reaction to roll one Psionic Energy Die and subtract the number rolled from the attack roll, potentially causing the attack to miss. The die is expended only if the target misses the attack."] },
+        { "type": "entries", "name": "Level 6: Bulwark Mind", "entries": ["At the start of your turn, you can expend one Psionic Energy Die to enter a fortified state for 10 minutes. While in this state: you have Resistance to Psychic damage; and whenever you make an Intelligence, Wisdom, or Charisma saving throw, you add a roll of your Psionic Energy Die to the save (this roll doesn't expend the die). You can't use this benefit while Incapacitated."] },
+        { "type": "entries", "name": "Level 6: Potent Thoughts", "entries": ["You have telepathy with a range of 60 feet. In addition, you add your Intelligence modifier to the damage you deal with any Psion cantrip."] },
+        { "type": "entries", "name": "Level 10: Telepathic Bolstering", "entries": ["When you or a creature you can see within range of your telepathy fails an ability check or misses with an attack roll, you can take a Reaction to expend one Psionic Energy Die. Roll the die and add the number rolled to the d20, potentially turning a failed check into a success or a miss into a hit. The die is expended only if the check succeeds or the attack hits."] },
+        { "type": "entries", "name": "Level 14: Scramble Minds", "entries": ["You can cast Confusion without expending a spell slot by instead expending four Psionic Energy Dice. When you do, you can modify the spell so that its Sphere becomes 30 feet in radius, and you can choose one creature you can see in the area to automatically succeed on their saving throw against the spell.\nIn addition, when a creature under the effect of the spell starts its turn, you choose their behavior from the table for that turn instead of the creature rolling to determine its behavior."] }
       ]}]
     },
     {

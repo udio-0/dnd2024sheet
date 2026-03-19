@@ -4,6 +4,51 @@
    ============================================= */
 'use strict';
 
+// Attaches a fast custom tooltip to a .subclass-spell-warn badge inside a spell row.
+// Hides the spell tooltip while the badge tooltip is visible to avoid conflicts.
+function _attachSubclassWarnTooltip(row) {
+  const badge = row.querySelector('.subclass-spell-warn');
+  if (!badge) return;
+  const label = badge.dataset.warnLabel || '';
+  badge.addEventListener('mouseenter', (e) => {
+    e.stopPropagation();
+    // Hide spell tooltip so both don't show at once
+    const spellTip = document.getElementById('wiz-spell-tooltip');
+    if (spellTip) spellTip.style.display = 'none';
+    let tip = document.getElementById('subclass-warn-tooltip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'subclass-warn-tooltip';
+      tip.className = 'subclass-warn-tooltip';
+      document.body.appendChild(tip);
+    }
+    tip.textContent = label;
+    tip.style.display = 'block';
+    _positionSubclassWarnTooltip(tip, e);
+  });
+  badge.addEventListener('mousemove', (e) => {
+    e.stopPropagation();
+    const tip = document.getElementById('subclass-warn-tooltip');
+    if (tip) _positionSubclassWarnTooltip(tip, e);
+  });
+  badge.addEventListener('mouseleave', () => {
+    const tip = document.getElementById('subclass-warn-tooltip');
+    if (tip) tip.style.display = 'none';
+  });
+}
+
+function _positionSubclassWarnTooltip(tip, e) {
+  const margin = 12;
+  const w = tip.offsetWidth || 220;
+  const h = tip.offsetHeight || 40;
+  let x = e.clientX + margin;
+  let y = e.clientY + margin;
+  if (x + w > window.innerWidth - 8) x = e.clientX - w - margin;
+  if (y + h > window.innerHeight - 8) y = e.clientY - h - margin;
+  tip.style.left = x + 'px';
+  tip.style.top  = y + 'px';
+}
+
 // Attaches the spell tooltip (shared with wizard.js) to a spell row element.
 // Reuses .wiz-spell-tooltip CSS, _highlightSpellKeywords, _positionSpellTooltip (wizard.js globals).
 function _luAttachSpellTooltip(row, spell) {
@@ -143,6 +188,86 @@ window.LevelUp = {
       15: { spellPicks: { count: 1, school: 'I', minLevel: 8, maxLevel: 8, label: 'Illusion Savant' } },
       17: { spellPicks: { count: 1, school: 'I', minLevel: 9, maxLevel: 9, label: 'Illusion Savant' } },
     },
+    'Psion:Metamorph': {
+      3: { spells: [
+        { name: 'Alter Self', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Cure Wounds', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Inflict Wounds', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Lesser Restoration', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Aura of Vitality', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Haste', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Polymorph', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Stoneskin', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Contagion', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Mass Cure Wounds', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    'Psion:Psykinetic': {
+      3: { spells: [
+        { name: 'Cloud of Daggers', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Levitate', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Shield', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Thunderwave', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Slow', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Telekinetic Crush', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: "Otiluke's Resilient Sphere", level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Stone Shape', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Telekinesis', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Wall of Force', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    'Psion:Telepath': {
+      3: { spells: [
+        { name: 'Bane', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Command', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Detect Thoughts', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Mind Spike', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Counterspell', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Slow', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Compulsion', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Confusion', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Modify Memory', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: "Yolande's Regal Presence", level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    'Psion:Psi Warper': {
+      3: { spells: [
+        { name: 'Expeditious Retreat', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Feather Fall', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Misty Step', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Shatter', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Blink', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Haste', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Banishment', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Dimension Door', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Steel Wind Strike', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Teleportation Circle', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
     // 2014 PHB naming alias
     'Wizard:School of Illusion': {
       3: {
@@ -242,6 +367,46 @@ window.LevelUp = {
 
   _numLevels() {
     return Math.max(0, this._newLevel - this._startLevel);
+  },
+
+  /**
+   * Build a map of spellName (lowercase) → [{subclass, grantLevel}] for all subclasses
+   * of the given class that grant that spell via SUBCLASS_GRANTS.
+   */
+  _getSubclassOverlapMap(className) {
+    const result = new Map();
+    for (const [key, grants] of Object.entries(this.SUBCLASS_GRANTS)) {
+      const colonIdx = key.indexOf(':');
+      const cls = key.slice(0, colonIdx);
+      const sc  = key.slice(colonIdx + 1);
+      if (cls.toLowerCase() !== (className || '').toLowerCase()) continue;
+      for (const [lvl, grant] of Object.entries(grants)) {
+        for (const sp of (grant.spells || [])) {
+          const lower = sp.name.toLowerCase();
+          if (!result.has(lower)) result.set(lower, []);
+          result.get(lower).push({ subclass: sc, grantLevel: parseInt(lvl) });
+        }
+      }
+    }
+    return result;
+  },
+
+  /**
+   * Return a warning badge HTML string if `spellName` overlaps with any subclass grant.
+   * `currentSubclass` (if set) is sorted first and uses a stronger warning style.
+   */
+  _subclassWarnBadge(overlapMap, spellName, currentSubclass) {
+    const matches = overlapMap.get((spellName || '').toLowerCase());
+    if (!matches?.length) return '';
+    const sorted = [...matches].sort((a, b) => {
+      if (currentSubclass && a.subclass === currentSubclass) return -1;
+      if (currentSubclass && b.subclass === currentSubclass) return 1;
+      return a.grantLevel - b.grantLevel;
+    });
+    const isCurrent = currentSubclass && sorted.some(m => m.subclass === currentSubclass);
+    const label = sorted.map(m => `${m.subclass} (lv. ${m.grantLevel})`).join(', ');
+    const cls = 'subclass-spell-warn' + (isCurrent ? ' subclass-spell-warn--current' : '');
+    return `<span class="${cls}" data-warn-label="Always prepared for free from: ${label}">⚠</span>`;
   },
 
   _getHpStats() {
@@ -595,9 +760,14 @@ window.LevelUp = {
       const show14f = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
       // Only General feats valid at an ASI — exclude Fighting Styles (FS) and Epic Boons (EB)
       const EXCLUDED_FEAT_CATEGORIES = new Set(['FS', 'EB']);
+      const hasWildTalentLU = (Sheet.lv('feats', []) || []).some(f => {
+        const fi = typeof getFeatInfo === 'function' ? getFeatInfo(typeof f === 'string' ? f : f.name) : null;
+        return (fi?.category || '') === 'Wild Talent';
+      });
       const featOptions = DndData.feats
         .filter(f => {
           if (EXCLUDED_FEAT_CATEGORIES.has(f.category)) return false;
+          if (f.category === 'WT' && hasWildTalentLU) return false;
           // UA2024 feats require both UA and 2024 toggles on
           if (f.source === 'UA2024') return ua && show24f;
           // Other 2024-edition feats (XPHB etc.)
@@ -652,6 +822,7 @@ window.LevelUp = {
               <div class="lu-feat-ab-cards" id="lu-feat-ability-grid-${level}"></div>
             </div>
             <div id="lu-feat-spell-panel-${level}" style="display:none; margin-top:0.85rem;"></div>
+            <div id="lu-feat-psionic-panel-${level}" style="display:none; margin-top:0.85rem;"></div>
           </div>
         </div>`;
     }
@@ -679,6 +850,32 @@ window.LevelUp = {
           `).join('')}
         </div>`;
       this._pending[level].masteryChoices = [];
+    }
+
+    // Psionic Discipline selection (Psion levels 2, 5, 10, 13, 17)
+    const disciplineGainLevels = [2, 5, 10, 13, 17];
+    const disciplineGainCount = level === 2 ? 2 : 1;
+    if (className === 'Psion' && disciplineGainLevels.includes(level)) {
+      const gainCount = disciplineGainCount;
+      const currentDisciplines = CharStore.lv('charPsionicDisciplines', []) || [];
+      const options = typeof ClassResources !== 'undefined' ? (ClassResources.PSIONIC_DISCIPLINE_OPTIONS || []) : [];
+      const available = options.filter(o => !currentDisciplines.includes(o.name));
+      this._pending[level].psionicDisciplines = [];
+      html += `
+        <div class="lu-section" id="lu-discipline-section-${level}">
+          <div class="lu-section-title">Psionic Discipline — Choose ${gainCount} New Options</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            Current disciplines: ${currentDisciplines.join(', ') || 'None'}. Choose ${gainCount} additional disciplines.
+          </div>
+          <div class="lu-expertise-grid" id="lu-discipline-grid-${level}">
+            ${available.map(o => `
+              <label class="lu-expertise-choice lu-discipline-label" data-discipline-text="${o.text.replace(/"/g, '&quot;')}">
+                <input type="checkbox" class="lu-discipline-cb" data-level="${level}" value="${o.name}">
+                ${o.name}
+              </label>`).join('')}
+          </div>
+          <div class="lu-points-left">Select ${gainCount} disciplines (<span id="lu-discipline-left-${level}">${gainCount}</span> remaining)</div>
+        </div>`;
     }
 
     // Expertise section (e.g. Rogue level 6, Bard level 2, Wizard level 2 Scholar)
@@ -813,6 +1010,7 @@ window.LevelUp = {
     if (showsSubclass) this._bindSubclassForLevel(sectionEl, level, existingSubclass);
     if (needsAsi)      this._bindAsiLogicForLevel(sectionEl, level);
     if (needsExpertise) this._bindExpertiseForLevel(sectionEl, level);
+    if (className === 'Psion' && [2, 5, 10, 13, 17].includes(level)) this._bindDisciplinesForLevel(sectionEl, level);
     // Bind prepared spells picker
     if (hasPreparedGain) {
       this._bindPreparedSpellsForLevel(sectionEl, level, className, classInfo, prepGain);
@@ -865,6 +1063,8 @@ window.LevelUp = {
     let activeTabLevel = maxSpellLevel;
 
     const currentSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
+    const _scOverlapMap1 = this._getSubclassOverlapMap(className);
+    const _curSc1 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
@@ -879,15 +1079,17 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
+        const warnBadge1 = this._subclassWarnBadge(_scOverlapMap1, spell.name, _curSc1);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge1}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
         _luAttachSpellTooltip(row, spell);
+        _attachSubclassWarnTooltip(row);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newSpells) this._pending[level].newSpells = [];
@@ -955,7 +1157,29 @@ window.LevelUp = {
     if (!listEl) return;
 
     let activeTabLevel = 1;
-    const currentSpells = new Set((Sheet.lv('charSpells', []) || []).filter(s => s.level > 0).map(s => s.name.toLowerCase()));
+    const _baseSpells = new Set((Sheet.lv('charSpells', []) || []).filter(s => s.level > 0).map(s => s.name.toLowerCase()));
+
+    // Build currentSpells dynamically to include subclass-granted spells.
+    // Must be a function so it picks up the subclass after the user selects it.
+    const getCurrentSpells = () => {
+      const set = new Set(_baseSpells);
+      const _pendingSubclass = (() => {
+        for (const [lvl, p] of Object.entries(this._pending)) {
+          if (parseInt(lvl) <= level && p.subclass) return p.subclass;
+        }
+        return Sheet.lv('charSubclass', '');
+      })();
+      if (_pendingSubclass) {
+        const _scKey = `${className}:${_pendingSubclass}`;
+        const _allScGrants = this.SUBCLASS_GRANTS[_scKey] || {};
+        for (const [_grantLvl, _grantData] of Object.entries(_allScGrants)) {
+          if (parseInt(_grantLvl) <= level) {
+            (_grantData.spells || []).forEach(sp => { if (sp.level > 0) set.add(sp.name.toLowerCase()); });
+          }
+        }
+      }
+      return set;
+    };
 
     // Collect spells chosen at other pending levels to prevent duplicates
     const _otherPendingSpells = () => {
@@ -967,11 +1191,14 @@ window.LevelUp = {
       }
       return set;
     };
+    const _scOverlapMap2 = this._getSubclassOverlapMap(className);
+    const _curSc2 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
       const q = (filter || '').toLowerCase();
       const otherPending = _otherPendingSpells();
+      const currentSpells = getCurrentSpells();
       const filtered = eligible.filter(s =>
         s.level === activeTabLevel && (!q || s.name.toLowerCase().includes(q))
       );
@@ -982,15 +1209,17 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + ((atMax || alreadyKnown) && !isSelected ? ' disabled' : '');
         if ((atMax || alreadyKnown) && !isSelected) row.style.opacity = '0.45';
+        const warnBadge2 = this._subclassWarnBadge(_scOverlapMap2, spell.name, _curSc2);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${(atMax || alreadyKnown) && !isSelected ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge2}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
         _luAttachSpellTooltip(row, spell);
+        _attachSubclassWarnTooltip(row);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newPreparedSpells) this._pending[level].newPreparedSpells = [];
@@ -1089,6 +1318,8 @@ window.LevelUp = {
     const currentCantrips = new Set(
       (Sheet.lv('charSpells', []) || []).filter(s => s.level === 0).map(s => s.name.toLowerCase())
     );
+    // Also block cantrips auto-granted by class features (e.g. Mage Hand for Psion)
+    (ClassResources?.CLASS_AUTO_CANTRIPS?.[className] || []).forEach(n => currentCantrips.add(n.toLowerCase()));
 
     // Collect cantrips chosen at other pending levels to prevent duplicates
     const _otherPendingCantrips = () => {
@@ -1100,6 +1331,8 @@ window.LevelUp = {
       }
       return set;
     };
+    const _scOverlapMap3 = this._getSubclassOverlapMap(className);
+    const _curSc3 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
@@ -1113,15 +1346,17 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
+        const warnBadge3 = this._subclassWarnBadge(_scOverlapMap3, spell.name, _curSc3);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge3}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
           <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
           <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
         _luAttachSpellTooltip(row, spell);
+        _attachSubclassWarnTooltip(row);
         const cb = row.querySelector('input');
         cb.addEventListener('change', () => {
           if (!this._pending[level].newCantrips) this._pending[level].newCantrips = [];
@@ -1661,6 +1896,9 @@ window.LevelUp = {
       if (!this._pending[level]) this._pending[level] = {};
       this._pending[level].subclass = sel.value || existingSubclass || null;
 
+      // Re-render prepared spell pickers so subclass-granted spells show as greyed out
+      (this._preparedRenderers || []).forEach(fn => fn());
+
       // Remove generic "Subclass Feature" placeholders and inject per-level subclass features
       const chosenSubclass = sel.value || existingSubclass || '';
 
@@ -1914,7 +2152,7 @@ window.LevelUp = {
                 spellPanel.appendChild(autoDiv);
               }
 
-              spellConfig.picks.forEach((pickDef, pickIdx) => {
+              (spellConfig.picks || []).forEach((pickDef, pickIdx) => {
                 const pool = ClassResources.getFeatSpellPool(pickDef, selectedClass);
                 const section = document.createElement('div');
                 section.className = 'feat-spell-pick-section';
@@ -1998,6 +2236,49 @@ window.LevelUp = {
             spellPanel.innerHTML = '';
           }
         }
+
+        // Check if this feat requires a psionic spellcasting ability choice (Wild Talent feats)
+        const psionicPanel = sectionEl.querySelector(`#lu-feat-psionic-panel-${level}`);
+        if (psionicPanel) {
+          const customConfig = ClassResources?.FEAT_CUSTOM_CHOICES?.[name];
+          if (customConfig?.type === 'spellAbility') {
+            psionicPanel.style.display = 'block';
+            psionicPanel.innerHTML = `<div class="lu-feat-psionic-label">Psionic Spellcasting Ability <span style="font-size:0.8rem;color:var(--ink-faint)">(Choose one)</span></div>
+              <div class="lu-feat-psionic-hint" style="font-size:0.8rem;color:var(--ink-faint);margin-bottom:6px">${customConfig.hint || ''}</div>`;
+            if (this._pending[level]?.asi) this._pending[level].asi.psionicAbility = null;
+            const abGrid = document.createElement('div');
+            abGrid.className = 'lu-feat-ab-cards';
+            [['int', 'INT', 'Intelligence'], ['wis', 'WIS', 'Wisdom'], ['cha', 'CHA', 'Charisma']].forEach(([key, abbr, label]) => {
+              const card = document.createElement('div');
+              card.className = 'lu-feat-ab-card';
+              card.dataset.ab = key;
+              card.innerHTML = `<div class="lu-feat-ab-card-name">${abbr}</div><div class="lu-feat-ab-card-score" style="font-size:0.8rem">${label}</div>`;
+              card.addEventListener('click', () => {
+                abGrid.querySelectorAll('.lu-feat-ab-card').forEach(c => c.classList.remove('selected'));
+                card.classList.add('selected');
+                if (this._pending[level]?.asi) this._pending[level].asi.psionicAbility = key;
+              });
+              abGrid.appendChild(card);
+            });
+            psionicPanel.appendChild(abGrid);
+
+            // Wild Talent exclusivity warning
+            const existingWT = (Sheet.lv('feats', []) || []).find(f => {
+              const fi = typeof getFeatInfo === 'function' ? getFeatInfo(typeof f === 'string' ? f : f.name) : null;
+              return (fi?.category || '') === 'Wild Talent';
+            });
+            if (existingWT) {
+              const warn = document.createElement('div');
+              warn.style.cssText = 'color:var(--danger,#c0392b);font-size:0.82rem;margin-top:6px;padding:4px 8px;background:rgba(192,57,43,0.1);border-radius:4px;';
+              warn.textContent = `⚠ Character already has the ${typeof existingWT === 'string' ? existingWT : existingWT.name} Wild Talent feat. Only one Wild Talent feat is allowed.`;
+              psionicPanel.appendChild(warn);
+            }
+          } else {
+            psionicPanel.style.display = 'none';
+            psionicPanel.innerHTML = '';
+            if (this._pending[level]?.asi) delete this._pending[level].asi.psionicAbility;
+          }
+        }
       });
     }
   },
@@ -2021,6 +2302,59 @@ window.LevelUp = {
         // Disable unchecked boxes when maxPicks are selected
         checkboxes.forEach(other => {
           if (!other.checked) other.disabled = chosen.length >= maxPicks;
+        });
+      });
+    });
+
+  },
+
+  // ---- Psionic Discipline binding ----
+  _bindDisciplinesForLevel(sectionEl, level) {
+    const gainCount = level === 2 ? 2 : 1;
+    const _getTip = () => {
+      let t = document.getElementById('lu-discipline-tooltip');
+      if (!t) {
+        t = document.createElement('div');
+        t.id = 'lu-discipline-tooltip';
+        t.className = 'wiz-spell-tooltip';
+        t.style.maxWidth = '340px';
+        document.body.appendChild(t);
+      }
+      return t;
+    };
+    sectionEl.querySelectorAll('.lu-discipline-label').forEach(lbl => {
+      const rawText = lbl.dataset.disciplineText || '';
+      const name = lbl.querySelector('input')?.value || '';
+      lbl.addEventListener('mouseenter', e => {
+        const tip = _getTip();
+        const highlighted = typeof _highlightSpellKeywords === 'function'
+          ? _highlightSpellKeywords(_highlightPsionicKeywords(rawText))
+          : rawText;
+        tip.innerHTML = `<div class="wiz-tip-header"><span class="wiz-tip-name">${name}</span><span class="wiz-tip-level">Psionic Discipline</span></div><div class="wiz-tip-body">${highlighted}</div>`;
+        tip.style.display = 'block';
+        if (typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+      });
+      lbl.addEventListener('mousemove', e => {
+        const tip = document.getElementById('lu-discipline-tooltip');
+        if (tip && typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+      });
+      lbl.addEventListener('mouseleave', () => {
+        const tip = document.getElementById('lu-discipline-tooltip');
+        if (tip) tip.style.display = 'none';
+      });
+    });
+    const disciplineCbs = sectionEl.querySelectorAll('.lu-discipline-cb');
+    disciplineCbs.forEach(cb => {
+      cb.addEventListener('change', () => {
+        const lvl = parseInt(cb.dataset.level);
+        const chosen = [...sectionEl.querySelectorAll('.lu-discipline-cb:checked')].map(c => c.value);
+        if (chosen.length > gainCount) { cb.checked = false; return; }
+        if (!this._pending[lvl]) this._pending[lvl] = {};
+        this._pending[lvl].psionicDisciplines = chosen;
+        const leftEl = sectionEl.querySelector(`#lu-discipline-left-${lvl}`);
+        if (leftEl) leftEl.textContent = gainCount - chosen.length;
+        disciplineCbs.forEach(other => {
+          if (!other.checked) other.disabled = chosen.length >= gainCount;
         });
       });
     });
@@ -2113,6 +2447,13 @@ window.LevelUp = {
             alert(`Please choose ${needed} weapon mastery slot${needed > 1 ? 's' : ''} at level ${lvl}.`); return;
           }
         }
+        // Psionic discipline gain at levels 2, 5, 10, 13, 17
+        if (className === 'Psion' && [2, 5, 10, 13, 17].includes(lvl)) {
+          const gainCount = lvl === 2 ? 2 : 1;
+          if (!p.psionicDisciplines || p.psionicDisciplines.length < gainCount) {
+            alert(`Please choose ${gainCount} Psionic Discipline${gainCount > 1 ? 's' : ''} at level ${lvl}.`); return;
+          }
+        }
         // Spellbook spells — must pick the required number
         const _classInfoLu = classInfo || (className ? getClassInfo(className) : null);
         if (_classInfoLu?.spellbookSpellsPerLevel && lvl > 1) {
@@ -2194,12 +2535,13 @@ window.LevelUp = {
           } else if (p.asi.type === 'feat' && p.asi.feat) {
             // Check if this feat has spell choices
             const spellConfig = ClassResources?.FEAT_SPELL_CHOICES?.[p.asi.feat];
-            if (spellConfig && p.asi.featSpells?.length) {
+            const spellAbility = p.asi.psionicAbility || p.asi.featAbility || null;
+            if (spellConfig && (p.asi.featSpells?.length || spellConfig.autoSpells?.length || spellAbility)) {
               const featObj = {
                 name: p.asi.feat,
-                chosenSpells: p.asi.featSpells.flat(),
+                ...(p.asi.featSpells?.length && { chosenSpells: p.asi.featSpells.flat() }),
                 ...(p.asi.featSpellClass && { spellClass: p.asi.featSpellClass }),
-                ...(p.asi.featAbility && { spellAbility: p.asi.featAbility }),
+                ...(spellAbility && { spellAbility }),
               };
               if (typeof Sheet.addFeat === 'function') Sheet.addFeat(featObj);
             } else {
@@ -2295,6 +2637,13 @@ window.LevelUp = {
             }
           });
           Sheet.sv('charSpells', spells);
+        }
+
+        // Apply psionic discipline choices
+        if (p.psionicDisciplines?.length) {
+          const current = CharStore.lv('charPsionicDisciplines', []) || [];
+          p.psionicDisciplines.forEach(d => { if (!current.includes(d)) current.push(d); });
+          CharStore.sv('charPsionicDisciplines', current);
         }
 
         // Apply conditional cantrip grant (e.g. Improved Illusions)
@@ -2399,6 +2748,7 @@ window.LevelUp = {
     }
 
     Sheet.recalcAll();
+    Sheet.restoreSpells();
     Sheet.renderInventory();
     if (className) Sheet.displayClassFeatures(className);
     this._xpBeforeLevelUp = undefined;

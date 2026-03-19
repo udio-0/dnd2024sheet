@@ -882,7 +882,12 @@ window.Sheet = {
                 return;
               }
             }
-            items.push({ label: `Lv.${l}: ${f.name}`, html: f.html || f.text || '' });
+            let html = f.html || f.text || '';
+            // Append chosen Psionic Disciplines to the Psionic Discipline feature tooltip
+            if (f.name === 'Psionic Discipline') {
+              html = this._appendPsionicDisciplines(html);
+            }
+            items.push({ label: `Lv.${l}: ${f.name}`, html });
           });
         }
       }
@@ -1282,7 +1287,8 @@ window.Sheet = {
       const titleEl = box.querySelector('.box-title');
       if (titleEl) titleEl.textContent = `Specie Traits - ${info.name}`;
       let parts = [];
-      let statLine = `<strong class="trait-keyword">Size:</strong> ${info.size}`;
+      const chosenSize = this.lv('charSize', '');
+      let statLine = `<strong class="trait-keyword">Size:</strong> ${chosenSize || info.size}`;
       if (flySpeed) statLine += ` | <strong class="trait-keyword">Fly:</strong> ${flySpeed} ft.`;
       if (swimSpeed) statLine += ` | <strong class="trait-keyword">Swim:</strong> ${swimSpeed} ft.`;
       if (darkvision) statLine += ` | <strong class="trait-keyword">Darkvision:</strong> ${darkvision} ft.`;
@@ -1329,7 +1335,7 @@ window.Sheet = {
       // Base race entry
       const div = document.createElement('div');
       div.className = 'feature-entry';
-      let statsHtml = `<p><strong>Size:</strong> ${info.size}`;
+      let statsHtml = `<p><strong>Size:</strong> ${this.lv('charSize', '') || info.size}`;
       if (flySpeed) statsHtml += ` &nbsp;|&nbsp; <strong>Fly:</strong> ${flySpeed} ft.`;
       if (swimSpeed) statsHtml += ` &nbsp;|&nbsp; <strong>Swim:</strong> ${swimSpeed} ft.`;
       if (darkvision) statsHtml += ` &nbsp;|&nbsp; <strong>Darkvision:</strong> ${darkvision} ft.`;
@@ -1684,6 +1690,7 @@ window.Sheet = {
     // State
     let selectedAbility = null;
     let selectedClass = '';
+    let selectedSpellAbility = null; // for Wild Talent psionic ability choice
     const chosenSpells = [];
     const chosenCustom = [];
 
@@ -1886,6 +1893,36 @@ window.Sheet = {
       buildSpellPickers(selectedClass);
     }
 
+    // --- Psionic spell ability section (Wild Talent feats) ---
+    if (customConfig && customConfig.type === 'spellAbility') {
+      const psionicSection = document.createElement('div');
+      psionicSection.className = 'feat-opts-section';
+      psionicSection.innerHTML = `<div class="feat-opts-section-title">${customConfig.label} <span class="feat-opts-section-hint">Choose one</span></div>`;
+      if (customConfig.hint) {
+        const hint = document.createElement('div');
+        hint.style.cssText = 'font-size:0.82rem;color:var(--ink-faint);margin-bottom:8px;';
+        hint.textContent = customConfig.hint;
+        psionicSection.appendChild(hint);
+      }
+      const abGrid = document.createElement('div');
+      abGrid.className = 'feat-opts-ab-grid';
+      [['int', 'INT', 'Intelligence'], ['wis', 'WIS', 'Wisdom'], ['cha', 'CHA', 'Charisma']].forEach(([key, abbr, label]) => {
+        const card = document.createElement('div');
+        card.className = 'feat-opts-ab-card';
+        card.dataset.ab = key;
+        card.innerHTML = `<div class="feat-opts-ab-name">${abbr}</div><div class="feat-opts-ab-label">${label}</div>`;
+        card.addEventListener('click', () => {
+          abGrid.querySelectorAll('.feat-opts-ab-card').forEach(c => c.classList.remove('selected'));
+          card.classList.add('selected');
+          selectedSpellAbility = key;
+          updateConfirm();
+        });
+        abGrid.appendChild(card);
+      });
+      psionicSection.appendChild(abGrid);
+      modal.appendChild(psionicSection);
+    }
+
     // --- Custom choices section (e.g. Metamagic) ---
     let customSection = null;
     if (customConfig && customConfig.type === 'metamagic') {
@@ -1958,7 +1995,9 @@ window.Sheet = {
         if (spellConfig.requireClassPick && !selectedClass) ready = false;
       }
       // Need custom choices filled
-      if (customConfig && chosenCustom.length < customConfig.count) ready = false;
+      if (customConfig && customConfig.type === 'metamagic' && chosenCustom.length < customConfig.count) ready = false;
+      // Need psionic spell ability chosen
+      if (customConfig && customConfig.type === 'spellAbility' && !selectedSpellAbility) ready = false;
       confirmBtn.disabled = !ready;
     };
     updateConfirm();
@@ -1974,6 +2013,7 @@ window.Sheet = {
       // Build feat object
       const featObj = { name: featName };
       if (selectedAbility) featObj.spellAbility = selectedAbility;
+      if (selectedSpellAbility) featObj.spellAbility = selectedSpellAbility;
       if (spellConfig && chosenSpells.length) featObj.chosenSpells = [...chosenSpells];
       if (selectedClass) featObj.spellClass = selectedClass;
       if (customConfig && chosenCustom.length) featObj.customChoices = [...chosenCustom];
@@ -2001,6 +2041,17 @@ window.Sheet = {
     const feats = this.lv('feats', []);
     // De-duplicate case-insensitively
     if (feats.some(f => this._featName(f).toLowerCase() === canonical.toLowerCase())) return;
+    // Wild Talent feats are exclusive — only one allowed
+    if ((info?.category || '') === 'Wild Talent') {
+      const existing = feats.find(f => {
+        const fi = typeof getFeatInfo === 'function' ? getFeatInfo(this._featName(f)) : null;
+        return (fi?.category || '') === 'Wild Talent';
+      });
+      if (existing) {
+        alert(`You already have the ${this._featName(existing)} Wild Talent feat. A character can't have more than one Wild Talent feat.`);
+        return;
+      }
+    }
     if (isObj) {
       feats.push({ ...nameOrObj, name: canonical });
     } else {
@@ -2168,7 +2219,11 @@ window.Sheet = {
       if (typeof f === 'string') return;
       const config = ClassResources?.FEAT_SPELL_CHOICES?.[f.name];
       if (!config) return;
-      const allSpells = [...(config.autoSpells || []), ...(f.chosenSpells || [])];
+      const charLevel = parseInt(this.lv('charLevel', 1)) || 1;
+      const levelSpells = (config.levelSpells || [])
+        .filter(entry => charLevel >= entry.minLevel)
+        .flatMap(entry => entry.spells || []);
+      const allSpells = [...(config.autoSpells || []), ...levelSpells, ...(f.chosenSpells || [])];
       allSpells.forEach(spellName => {
         const spellData = DndData?.spells?.find(s => s.name.toLowerCase() === spellName.toLowerCase());
         if (spellData && !nonFeat.some(s => s.name.toLowerCase() === spellName.toLowerCase())) {
@@ -2449,12 +2504,22 @@ window.Sheet = {
     const show24f = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
     const show14f = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
 
+    // Check if character already has a Wild Talent feat
+    const currentFeats = this.lv('feats', []);
+    const hasWildTalent = currentFeats.some(cf => {
+      const cfName = this._featName(cf);
+      const cfInfo = typeof getFeatInfo === 'function' ? getFeatInfo(cfName) : null;
+      return (cfInfo?.category || '') === 'Wild Talent';
+    });
+
     const feats = DndData.feats.filter(f => {
       if (f.source === 'UA2024') { if (!ua || !show24f) return false; }
       else if (typeof is2024Source === 'function' && is2024Source(f.source)) { if (!show24f) return false; }
       else { if (!show14f) return false; }
       // Epic Boons only at level 20+
       if (f.category === 'EB' && level < 20) return false;
+      // Wild Talent feats are exclusive — hide all if one is already chosen
+      if (f.category === 'WT' && hasWildTalent) return false;
       // Racial prerequisite: if any prerequisite object has a `race` key,
       // only show if character's species name contains one of those race names
       const prereqs = f.prerequisite || [];
@@ -2669,6 +2734,7 @@ window.Sheet = {
     bard:     [0, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
     sorcerer: [0, 2, 4, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
     warlock:  [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10, 11, 11, 12, 12, 13, 13, 14, 14, 15, 15],
+    psion:    [0, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
   },
 
   _calcPreparedMax(mods, level) {
@@ -2778,13 +2844,9 @@ window.Sheet = {
     card.dataset.isPrepared = isPrepared ? '1' : '';
 
     // Build badges
-    const svgBadge = (letter, fill, stroke, textFill, title) =>
-      `<svg class="spell-badge" width="18" height="18" viewBox="0 0 18 18" role="img" aria-label="${title}"><title>${title}</title>` +
-      `<circle cx="9" cy="9" r="8" fill="${fill}" stroke="${stroke}" stroke-width="1"/>` +
-      `<text x="9" y="8" text-anchor="middle" dominant-baseline="central" font-size="12" font-weight="700" fill="${textFill}">${letter}</text></svg>`;
     let badges = '';
-    if (isConc) badges += svgBadge('C', 'rgba(155,89,182,0.15)', 'rgba(155,89,182,0.3)', '#8e44ad', 'Concentration');
-    if (isRitual) badges += svgBadge('R', 'rgba(39,174,96,0.15)', 'rgba(39,174,96,0.3)', '#27ae60', 'Ritual');
+    if (isConc) badges += `<span class="spell-badge spell-badge-conc" title="Concentration">C</span>`;
+    if (isRitual) badges += `<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>`;
     if (isRacial && !saved?.featSource) {
       badges += `<span class="spell-badge spell-badge-racial" title="Racial spell — always prepared">✦</span>`;
       // Show which ability this racial spell uses
@@ -4486,6 +4548,17 @@ window.Sheet = {
     if (res?.notes) return res.notes;
 
     return null;
+  },
+
+  _appendPsionicDisciplines(baseText) {
+    const options = ClassResources?.PSIONIC_DISCIPLINE_OPTIONS || [];
+    const chosen = this.lv('charPsionicDisciplines', []);
+    if (!chosen.length) return baseText;
+    const lines = chosen.map(name => {
+      const opt = options.find(o => o.name === name);
+      return opt ? `<span style="color:var(--red);font-weight:600">${opt.name}</span>: ${opt.text}` : name;
+    });
+    return baseText + '\n\nChosen disciplines:\n' + lines.join('\n');
   },
 
   _appendMetamagicChoices(baseText, resourceName) {

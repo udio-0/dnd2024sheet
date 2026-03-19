@@ -2820,7 +2820,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .spell-card:hover .del-btn { opacity: 1; }
 
 /* Spell badges */
-.spell-badge { width: 18px; height: 18px; flex-shrink: 0; }
+.spell-badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; font-size: 11px; font-weight: 700; line-height: 1; padding-top: 1px; padding-right: 0.5px;}
 .spell-badge-conc { background: rgba(155, 89, 182, 0.15); color: #8e44ad; border: 1px solid rgba(155, 89, 182, 0.3); }
 .spell-badge-ritual { background: rgba(39, 174, 96, 0.15); color: #27ae60; border: 1px solid rgba(39, 174, 96, 0.3); }
 .spell-badge-racial { background: var(--gold); color: var(--white); border: none; font-size: 0.7rem; width: auto; padding: 0 4px; border-radius: 3px; }
@@ -2919,7 +2919,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .spell-action-reaction { color: #ffe600; }
 .spell-card-meta .spell-action-action,
 .spell-card-meta .spell-action-bonus,
-.spell-card-meta .spell-action-reaction { font-size: 2rem; position: relative; top: -3px; }
+.spell-card-meta .spell-action-reaction { font-size: 2rem; position: relative; top: -1.2px; }
 .spell-card-school { font-size: 0.65rem; color: var(--ink-faint); font-weight: 400; font-style: italic; flex-shrink: 0; }
 
 /* Concentration highlight on active spell */
@@ -6459,7 +6459,34 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 .wiz-spell-row input[type="checkbox"] { accent-color: var(--red); margin: 0; }
 .wiz-spell-col-check { display: flex; align-items: center; justify-content: center; }
-.wiz-spell-col-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wiz-spell-col-name { font-weight: 600; display: flex; align-items: center; gap: 3px; min-width: 0; }
+.wiz-spell-col-name-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.subclass-spell-warn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+  font-size: 10px; font-weight: 800; line-height: 1; cursor: help;
+  background: rgba(230, 126, 34, 0.15); color: #c0620a;
+  border: 1px solid rgba(230, 126, 34, 0.4);
+}
+.subclass-spell-warn--current {
+  background: rgba(192, 57, 43, 0.15); color: #c0392b;
+  border-color: rgba(192, 57, 43, 0.5);
+}
+#subclass-warn-tooltip {
+  display: none;
+  position: fixed;
+  z-index: 9999;
+  max-width: 280px;
+  background: var(--parchment-dk, #f0e8d0);
+  color: var(--ink, #2c1810);
+  border: 1px solid var(--gold, #c9a84c);
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  box-shadow: 0 3px 12px rgba(0,0,0,0.18);
+  pointer-events: none;
+}
 .wiz-spell-col-school,
 .wiz-spell-col-cast,
 .wiz-spell-col-range,

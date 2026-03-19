@@ -396,19 +396,26 @@ async function loadAllData(progressCallback) {
 
         // Flag races that should not appear in the player-facing species list:
         // 1. Known NPC/monster-only races (no player rules)
-        // 2. Older-source entries superseded by a better non-2024 reprint (e.g. VGM Goblin
-        //    when MPMM Goblin exists) — identified via reprintedAs pointing to a 2014 source
+        // 2. Older-source entries superseded by any reprint (2014 or 2024)
+        //    e.g. VGM Goblin when MPMM exists, or MPMM Changeling when EFA (2024) exists
         const _pc2024srcs = new Set(['XPHB','XDMG','XMM','EFA','LFL','ABH','UA2024']);
         const _npcRaces   = new Set(['Bullywug','Gnoll','Grimlock','Gith','Kuo-Toa','Skeleton','Troglodyte','Zombie']);
         const _isRace2024 = r.edition === 'one' || _pc2024srcs.has(r.source);
         r._skipPlayer = _npcRaces.has(r.name) || (
           !_isRace2024 &&
           Array.isArray(r.reprintedAs) &&
-          r.reprintedAs.some(ref => {
-            const src = typeof ref === 'string' ? ref.split('|').pop() : null;
-            return src && !_pc2024srcs.has(src); // has a newer 2014-era reprint
-          })
+          r.reprintedAs.length > 0
         );
+
+        // Data fixes for known errors in source data
+        // EFA Changeling: Changeling Instincts should offer 5 skills but "performance" is missing
+        if (r.name === 'Changeling' && r.source === 'EFA') {
+          const chooseBlock = r.skillProficiencies?.[0]?.choose;
+          if (chooseBlock?.from && !chooseBlock.from.includes('performance')) {
+            chooseBlock.from.push('performance');
+          }
+        }
+
         return r;
       });
       // Build subrace lookup for _copy resolution
@@ -458,7 +465,7 @@ async function loadAllData(progressCallback) {
     if (featsData) {
       DndData.feats = (featsData.feat || []).map(f => {
         f._src = sourceName(f.source);
-        f._catName = { G: 'General', O: 'Origin', FS: 'Fighting Style', EB: 'Epic Boon', OG: 'Origin' }[f.category] || f.category || '';
+        f._catName = { G: 'General', O: 'Origin', FS: 'Fighting Style', EB: 'Epic Boon', OG: 'Origin', WT: 'Wild Talent' }[f.category] || f.category || '';
         return f;
       });
     }
@@ -544,7 +551,7 @@ async function loadAllData(progressCallback) {
       // UA Feats
       (uaData.feat || []).forEach(f => {
         f._src = sourceName(f.source);
-        f._catName = { G: 'General', O: 'Origin', FS: 'Fighting Style', EB: 'Epic Boon', OG: 'Origin' }[f.category] || f.category || '';
+        f._catName = { G: 'General', O: 'Origin', FS: 'Fighting Style', EB: 'Epic Boon', OG: 'Origin', WT: 'Wild Talent' }[f.category] || f.category || '';
         DndData.feats.push(f);
       });
 
@@ -592,13 +599,16 @@ async function loadAllData(progressCallback) {
           `${sc.className} (UA 2024)`,
         ];
         // Extract named feature entries from the nested UA subclass structure,
-        // stripping level prefixes like "6th Level: " so they can be looked up by clean name.
+        // stripping level prefixes like "Level 3: " so they can be looked up by clean name.
         const extractedFeatures = [];
+        const shortNameForSc = sc.shortName || sc.name;
         const flattenEntries = (arr) => {
           for (const e of (arr || [])) {
             if (e && typeof e === 'object' && e.name && e.entries) {
-              const cleanName = e.name.replace(/^\d+\w*\s+Level:\s*/i, '').trim();
-              extractedFeatures.push({ name: cleanName, entries: e.entries });
+              const levelMatch = e.name.match(/^Level\s+(\d+):/i) || e.name.match(/^(\d+)\w*\s+Level:/i);
+              const featureLevel = levelMatch ? parseInt(levelMatch[1]) : null;
+              const cleanName = e.name.replace(/^Level\s+\d+:\s*/i, '').replace(/^\d+\w*\s+Level:\s*/i, '').trim();
+              extractedFeatures.push({ name: cleanName, entries: e.entries, level: featureLevel, subclassShortName: shortNameForSc });
               flattenEntries(e.entries);
             }
           }
@@ -1313,6 +1323,7 @@ function getSpeciesInfo(name, source) {
     source: race.source,
     src: race._src,
     size: (race.size || ['M']).map(s => ({ S: 'Small', M: 'Medium', L: 'Large', T: 'Tiny', H: 'Huge', G: 'Gargantuan' }[s] || s)).join(' or '),
+    sizes: (race.size || ['M']).map(s => ({ S: 'Small', M: 'Medium', L: 'Large', T: 'Tiny', H: 'Huge', G: 'Gargantuan' }[s] || s)),
     speed: typeof race.speed === 'number' ? race.speed : (race.speed?.walk || 30),
     flySpeed,
     swimSpeed,

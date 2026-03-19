@@ -112,6 +112,17 @@ function _highlightSpellKeywords(html) {
   return html;
 }
 
+// Highlight Psionic-specific keywords — call before _highlightSpellKeywords
+function _highlightPsionicKeywords(html) {
+  const _hl = (text, fn) => text.replace(/([^<]*)(<[^>]*>)?/g, (_, outside, tag) => fn(outside || '') + (tag || ''));
+  html = _hl(html, t => t.replace(/\b(Psionic Energy Di(?:e|ce)|Psionic Energy)\b/g, '<span class="wiz-kw-dc">$1</span>'));
+  html = _hl(html, t => t.replace(/\b(D20 Test)\b/g, '<span class="wiz-kw-save">$1</span>'));
+  html = _hl(html, t => t.replace(/\b(Immunity|Resistance)\b/g, '<span class="wiz-kw-heal">$1</span>'));
+  html = _hl(html, t => t.replace(/\b(Abjuration|Conjuration|Divination|Enchantment|Evocation|Illusion|Necromancy|Transmutation)\b/g, '<span class="wiz-kw-prof">$1</span>'));
+  html = _hl(html, t => t.replace(/\b(Intelligence|Wisdom|Charisma|Strength|Dexterity|Constitution)( modifier)?\b/g, '<span class="wiz-kw-atk">$1$2</span>'));
+  return html;
+}
+
 function _positionSpellTooltip(tip, e) {
   const pad = 12;
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -193,11 +204,18 @@ window.Wizard = {
         ? parseRacialSpells(addSpells, d.charSubrace || '', null, d._racialCantripChoice) : null;
       if (racialSpells?.abilityChoices?.length && !d._racialSpellAbility) return 'Please choose a spellcasting ability for your racial spells.';
       if (racialSpells?.cantripChoices?.length && d._racialCantripChoice == null) return 'Please choose a racial cantrip.';
+      if ((d._speciesInfo?.sizes?.length || 0) > 1 && !d._speciesSizeChoice) return 'Please choose a size for your species.';
+      const _needSkillChoices = (d._speciesInfo?.skillProficiencies || []).find(sp => sp.choose);
+      if (_needSkillChoices) {
+        const _count = _needSkillChoices.choose.count || 1;
+        if ((d._speciesSkillChoices || []).length < _count) return `Please choose ${_count} skill proficiency${_count > 1 ? 'ies' : 'y'} for your species.`;
+      }
     }
     if (step === 'background' && !d.charBackground) return 'Please select a background before continuing.';
     if (step === 'background' && d._bgInfo?.name === 'Custom Background' && !d._customBgEquipSource) return 'Please select a background to use as your equipment source.';
     if (step === 'background' && d._bgInfo?.startingEquipment?.length && !d._bgEquipChoice) return 'Please choose a starting equipment option (A or B) before continuing.';
     if (step === 'background' && d._bgInfo?.toolProf && Object.keys(d._bgInfo.toolProf).some(k => /anyMusicalInstrument/i.test(k)) && !d._bgInstrumentChoice) return 'Please choose a musical instrument proficiency for your background.';
+    if (step === 'background' && d._bgInfo?.toolProf && Object.keys(d._bgInfo.toolProf).some(k => /anyGamingSet/i.test(k) || k.toLowerCase() === 'gaming set') && !d._bgGamingSetChoice) return 'Please choose a gaming set proficiency for your background.';
     if (step === 'background') {
       const chosenLangs = (d._bgLanguages || []).filter(l => l !== 'Common');
       if (chosenLangs.length < 2) return `Please choose 2 languages (${chosenLangs.length}/2 chosen).`;
@@ -231,6 +249,12 @@ window.Wizard = {
           if (hasUnpickedCategory) return `Please choose between Artisan's Tools or Musical Instrument.`;
           return `Please choose ${totalNeeded} tool proficienc${totalNeeded === 1 ? 'y' : 'ies'} (${chosen}/${totalNeeded} selected).`;
         }
+      }
+      if (d.charClass === 'Psion' && parseInt(d.charLevel || 1) >= 2) {
+        const level = parseInt(d.charLevel || 1);
+        const count = level >= 17 ? 6 : level >= 13 ? 5 : level >= 10 ? 4 : level >= 5 ? 3 : 2;
+        const chosen = (d._psionicDisciplines || []).length;
+        if (chosen < count) return `Please choose ${count} Psionic Disciplines (${chosen}/${count} selected).`;
       }
     }
     if (step === 'equipment') {
@@ -618,7 +642,10 @@ window.Wizard = {
       if (d._racialCantripChoice != null) d.racialCantripChoice = d._racialCantripChoice;
     }
 
-    // Apply species skill proficiencies (e.g. Astral Elf → Perception)
+    // Apply species size choice
+    if (d._speciesSizeChoice) d.charSize = d._speciesSizeChoice;
+
+    // Apply species skill proficiencies (fixed ones like Astral Elf → Perception, and chosen ones like Changeling)
     const _specSkills = d._speciesInfo?.skillProficiencies || [];
     _specSkills.forEach(sp => {
       Object.keys(sp).forEach(sk => {
@@ -627,6 +654,11 @@ window.Wizard = {
           if (key) d['skillProf_' + key] = true;
         }
       });
+    });
+    // Apply chosen skill proficiencies (e.g. Changeling Instincts)
+    (d._speciesSkillChoices || []).forEach(sk => {
+      const key = _normalizeSkillKey(sk);
+      if (key) d['skillProf_' + key] = true;
     });
 
     // Add attacks granted by selected character options (e.g. Gift of the Aetherborn → Drain Life)
@@ -678,11 +710,25 @@ window.Wizard = {
       const existingTools = new Set((d.toolProficiencies || []).map(t => t.toLowerCase()));
       if (d._bgInfo.toolProf) {
         for (const [key, val] of Object.entries(d._bgInfo.toolProf)) {
-          if (val !== true) continue;
-          const name = key.split('|')[0];
-          if (!existingTools.has(name.toLowerCase())) {
-            d.toolProficiencies = [...(d.toolProficiencies || []), name];
-            existingTools.add(name.toLowerCase());
+          // Handle instrument choice (anyMusicalInstrument)
+          if (/anyMusicalInstrument/i.test(key) && d._bgInstrumentChoice) {
+            if (!existingTools.has(d._bgInstrumentChoice.toLowerCase())) {
+              d.toolProficiencies = [...(d.toolProficiencies || []), d._bgInstrumentChoice];
+              existingTools.add(d._bgInstrumentChoice.toLowerCase());
+            }
+          // Handle gaming set choice (anyGamingSet or "gaming set")
+          } else if ((/anyGamingSet/i.test(key) || key.toLowerCase() === 'gaming set') && d._bgGamingSetChoice) {
+            if (!existingTools.has(d._bgGamingSetChoice.toLowerCase())) {
+              d.toolProficiencies = [...(d.toolProficiencies || []), d._bgGamingSetChoice];
+              existingTools.add(d._bgGamingSetChoice.toLowerCase());
+            }
+          // Handle fixed tool proficiencies (skip generic "gaming set" — handled above)
+          } else if (val === true && key.toLowerCase() !== 'gaming set') {
+            const name = key.split('|')[0];
+            if (!existingTools.has(name.toLowerCase())) {
+              d.toolProficiencies = [...(d.toolProficiencies || []), name];
+              existingTools.add(name.toLowerCase());
+            }
           }
         }
       }
@@ -696,6 +742,11 @@ window.Wizard = {
     // Apply weapon mastery choices
     if (d._weaponMasteryChoices?.length) {
       d.weaponMastery = [...d._weaponMasteryChoices];
+    }
+
+    // Apply psionic discipline choices
+    if (d._psionicDisciplines?.length) {
+      d.charPsionicDisciplines = [...d._psionicDisciplines];
     }
 
     // Apply fighting style as a feat
@@ -855,6 +906,42 @@ window.Wizard = {
           ${racialSpells.level5.length ? `<div style="font-size:0.82rem">Level 5: ${racialSpells.level5.map(capSpell).join(', ')}</div>` : ''}
         </div>
         ${abilityPickerHtml}` : '';
+      // Size picker (when species can be Small or Medium)
+      const hasSizeChoice = (info.sizes?.length || 0) > 1;
+      const sizePickerHtml = hasSizeChoice ? `
+        <div class="wiz-stat-row" style="margin-top:4px">
+          <strong>Size:</strong> <em>Choose one:</em>
+          <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+            ${info.sizes.map(s => `
+              <label class="lu-asi-choice${d._speciesSizeChoice === s ? ' selected' : ''}" style="flex:none;padding:4px 12px;font-size:0.82rem">
+                <input type="radio" name="wiz-species-size" value="${s}" ${d._speciesSizeChoice === s ? 'checked' : ''}> ${s}
+              </label>`).join('')}
+          </div>
+        </div>` : '';
+
+      // Skill proficiency picker (e.g. Changeling Instincts — choose 2 from a list)
+      const _skillChooseEntry = (info.skillProficiencies || []).find(sp => sp.choose);
+      const SKILL_NAMES = { acrobatics:'Acrobatics', animalHandling:'Animal Handling', arcana:'Arcana', athletics:'Athletics', deception:'Deception', history:'History', insight:'Insight', intimidation:'Intimidation', investigation:'Investigation', medicine:'Medicine', nature:'Nature', perception:'Perception', performance:'Performance', persuasion:'Persuasion', religion:'Religion', sleightOfHand:'Sleight of Hand', stealth:'Stealth', survival:'Survival' };
+      const skillPickerHtml = _skillChooseEntry ? (() => {
+        const count = _skillChooseEntry.choose.count || 1;
+        const from = _skillChooseEntry.choose.from || [];
+        const chosen = d._speciesSkillChoices || [];
+        return `
+        <div class="wiz-stat-row" style="margin-top:6px">
+          <strong>Skill Proficiencies:</strong> Choose ${count}
+          <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap">
+            ${from.map(sk => {
+              const label = SKILL_NAMES[sk] || sk.charAt(0).toUpperCase() + sk.slice(1);
+              const sel = chosen.includes(sk);
+              return `<label class="lu-asi-choice${sel ? ' selected' : ''}" style="flex:none;padding:4px 12px;font-size:0.82rem">
+                <input type="checkbox" name="wiz-species-skill" value="${sk}" ${sel ? 'checked' : ''}> ${label}
+              </label>`;
+            }).join('')}
+          </div>
+          <div style="font-size:0.78rem;color:var(--ink-faint);margin-top:4px">${chosen.length}/${count} chosen</div>
+        </div>`;
+      })() : '';
+
       preview.innerHTML = `
         <div class="wiz-preview-card">
           <h3>${info.name} <span class="wiz-source">${info.src}</span></h3>
@@ -862,6 +949,8 @@ window.Wizard = {
           <div class="wiz-stat-row"><strong>Speed:</strong> ${info.speed} ft.${flySpeed ? ` | <strong>Fly:</strong> ${flySpeed} ft.` : ''}${swimSpeed ? ` | <strong>Swim:</strong> ${swimSpeed} ft.` : ''}</div>
           ${darkvision ? `<div class="wiz-stat-row"><strong>Darkvision:</strong> ${darkvision} ft.</div>` : ''}
           ${resist.length ? `<div class="wiz-stat-row"><strong>Resistances:</strong> ${resist.map(r => typeof r === 'string' ? r.charAt(0).toUpperCase() + r.slice(1) : (r?.choose?.from ? r.choose.from.map(x=>x.charAt(0).toUpperCase()+x.slice(1)).join(', ') + ' (choose one)' : '')).filter(Boolean).join(', ')}</div>` : ''}
+          ${sizePickerHtml}
+          ${skillPickerHtml}
           ${spellHtml}
           <div class="wiz-traits">${info.traitsHtml || ''}</div>
         </div>`;
@@ -881,6 +970,30 @@ window.Wizard = {
           radio.closest('label.lu-asi-choice').classList.add('selected');
         });
       });
+      // Bind size choice picker
+      preview.querySelectorAll('input[name="wiz-species-size"]').forEach(radio => {
+        radio.addEventListener('change', () => {
+          d._speciesSizeChoice = radio.value;
+          preview.querySelectorAll('input[name="wiz-species-size"]').forEach(r => r.closest('label.lu-asi-choice').classList.remove('selected'));
+          radio.closest('label.lu-asi-choice').classList.add('selected');
+        });
+      });
+      // Bind species skill proficiency pickers
+      if (_skillChooseEntry) {
+        const count = _skillChooseEntry.choose.count || 1;
+        preview.querySelectorAll('input[name="wiz-species-skill"]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const chosen = Array.from(preview.querySelectorAll('input[name="wiz-species-skill"]:checked')).map(c => c.value);
+            if (cb.checked && chosen.length > count) { cb.checked = false; return; }
+            d._speciesSkillChoices = Array.from(preview.querySelectorAll('input[name="wiz-species-skill"]:checked')).map(c => c.value);
+            preview.querySelectorAll('input[name="wiz-species-skill"]').forEach(c => {
+              c.closest('label.lu-asi-choice').classList.toggle('selected', c.checked);
+            });
+            const countEl = preview.querySelector('input[name="wiz-species-skill"]')?.closest('.wiz-stat-row')?.querySelector('div[style*="ink-faint"]');
+            if (countEl) countEl.textContent = `${d._speciesSkillChoices.length}/${count} chosen`;
+          });
+        });
+      }
     };
 
     const showPreview = (name, subraceOverride) => {
@@ -970,6 +1083,7 @@ window.Wizard = {
         <input type="text" id="wiz-bg-search" list="bg-list" class="wiz-search" placeholder="Search background..." value="${d.charBackground || ''}" autocomplete="off">
         <div id="wiz-bg-preview" class="wiz-preview"></div>
         <div id="wiz-bg-instrument-picker"></div>
+        <div id="wiz-bg-gamingset-picker"></div>
         <div id="wiz-bg-equip" class="wiz-bg-equip"></div>
         <div id="wiz-bg-lang" class="wiz-bg-equip"></div>
         <div id="wiz-bg-characteristics"></div>
@@ -986,12 +1100,21 @@ window.Wizard = {
       if (!it) return '';
       if (typeof it === 'string') return stripTags(it.replace(/\|[^,)|]+/g, '').trim());
       if (it.value != null) return (it.value / 100) + ' GP';
-      if (it.displayName) return (it.quantity ? `${it.quantity}× ` : '') + stripPrice(it.displayName);
+      if (it.displayName) {
+        let name = stripPrice(it.displayName);
+        // Resolve gaming set placeholder to the chosen gaming set
+        if (/gaming set.*chosen|same as chosen/i.test(name) && d._bgGamingSetChoice) name = d._bgGamingSetChoice;
+        return (it.quantity ? `${it.quantity}× ` : '') + name;
+      }
       if (it.equipmentType) {
-        const typeNames = { weaponMartial: 'any martial weapon', weaponSimple: 'any simple weapon', toolArtisan: 'any artisan tool', instrumentMusical: 'Musical Instrument (same as above)' };
+        const typeNames = { weaponMartial: 'any martial weapon', weaponSimple: 'any simple weapon', toolArtisan: 'any artisan tool', instrumentMusical: 'Musical Instrument (same as above)', setGaming: 'Gaming Set (same as above)' };
         // Resolve instrument placeholder to the chosen background instrument
         if (it.equipmentType === 'instrumentMusical' && d._bgInstrumentChoice) {
           return (it.quantity ? `${it.quantity}× ` : '') + d._bgInstrumentChoice;
+        }
+        // Resolve gaming set placeholder to the chosen background gaming set
+        if (it.equipmentType === 'setGaming' && d._bgGamingSetChoice) {
+          return (it.quantity ? `${it.quantity}× ` : '') + d._bgGamingSetChoice;
         }
         return (it.quantity ? `${it.quantity}× ` : '') + (typeNames[it.equipmentType] || it.equipmentType.replace(/([A-Z])/g, ' $1').trim().toLowerCase());
       }
@@ -1235,10 +1358,12 @@ window.Wizard = {
       d.charBackground = name;
       d._bgInfo = info;
       const skills = Object.keys(info.skillProf).join(', ') || 'None';
-      // Check if background grants an instrument choice (e.g. Entertainer)
+      // Check if background grants an instrument or gaming set choice
       const bgNeedsInstrument = Object.keys(info.toolProf).some(k => /anyMusicalInstrument/i.test(k));
+      const bgNeedsGamingSet = Object.keys(info.toolProf).some(k => /anyGamingSet/i.test(k) || k.toLowerCase() === 'gaming set');
       const toolDisplayNames = Object.keys(info.toolProf).map(k => {
         if (/anyMusicalInstrument/i.test(k)) return d._bgInstrumentChoice || 'Musical Instrument (choose below)';
+        if (/anyGamingSet/i.test(k) || k.toLowerCase() === 'gaming set') return d._bgGamingSetChoice || 'Gaming Set (choose below)';
         return k;
       });
       const tools = toolDisplayNames.join(', ') || 'None';
@@ -1247,6 +1372,16 @@ window.Wizard = {
         const key = _normalizeSkillKey(sk);
         if (key) d['skillProf_' + key] = true;
       });
+
+      // Check for skill overlaps with species (fixed + chosen)
+      const _speciesFixedSkills = new Set();
+      (d._speciesInfo?.skillProficiencies || []).forEach(sp => {
+        Object.keys(sp).forEach(sk => { if (sp[sk] === true) _speciesFixedSkills.add(_normalizeSkillKey(sk)); });
+      });
+      (d._speciesSkillChoices || []).forEach(sk => _speciesFixedSkills.add(_normalizeSkillKey(sk)));
+      const _bgSkillKeys = Object.keys(info.skillProf).map(sk => _normalizeSkillKey(sk)).filter(Boolean);
+      const _overlappingSkills = _bgSkillKeys.filter(sk => _speciesFixedSkills.has(sk)).map(_skillLabel);
+
       // Collect the 3 ability names for the info note
       const AB_MAP_BG = { str:'Strength', dex:'Dexterity', con:'Constitution', int:'Intelligence', wis:'Wisdom', cha:'Charisma' };
       const abList = [];
@@ -1262,6 +1397,11 @@ window.Wizard = {
            <p>For equipment, select any standard background below to use its starting equipment package.</p>`
         : (info.descriptionHtml || (info.description || '').replace(/\n/g, '<br>'));
 
+      const overlapWarningHtml = _overlappingSkills.length ? `
+        <div style="background:rgba(200,120,0,0.12);border:1px solid #c07820;border-radius:6px;padding:8px 12px;margin-top:10px;font-size:0.82rem;color:#7a4a00">
+          <strong>⚠ Duplicate Proficiency:</strong> Your species already grants proficiency in <strong>${_overlappingSkills.join(', ')}</strong>. You will not gain any extra benefit from this background granting the same skill${_overlappingSkills.length > 1 ? 's' : ''} again.
+        </div>` : '';
+
       preview.innerHTML = `
         <div class="wiz-preview-card">
           <h3>${info.name} <span class="wiz-source">${info.src}</span></h3>
@@ -1271,6 +1411,7 @@ window.Wizard = {
           <div class="wiz-stat-row"><strong>Languages:</strong> Common + 2 of your choice</div>
           <div class="wiz-stat-row" style="color:var(--ink-faint);font-size:0.8rem">${abNote}</div>
           <div class="wiz-traits">${traitsHtml}</div>
+          ${overlapWarningHtml}
         </div>`;
 
       // Instrument proficiency picker for backgrounds that grant a musical instrument choice
@@ -1300,6 +1441,35 @@ window.Wizard = {
         });
       } else if (instrPickerDiv) {
         instrPickerDiv.innerHTML = '';
+      }
+
+      // Gaming set proficiency picker for backgrounds that grant a gaming set choice (e.g. Carouser)
+      const gamingPickerDiv = document.getElementById('wiz-bg-gamingset-picker');
+      if (bgNeedsGamingSet && gamingPickerDiv) {
+        const BG_GAMING_SETS = ["Dice Set", "Dragonchess Set", "Playing Card Set", "Three-Dragon Ante Set"];
+        gamingPickerDiv.innerHTML = `
+          <div class="lu-section" style="margin-top:12px">
+            <div class="lu-section-title">Gaming Set Proficiency</div>
+            <select class="wiz-select" id="wiz-bg-gamingset">
+              <option value="">— Choose a gaming set —</option>
+              ${BG_GAMING_SETS.map(n => `<option value="${n}" ${d._bgGamingSetChoice === n ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+          </div>`;
+        gamingPickerDiv.querySelector('select').addEventListener('change', function () {
+          d._bgGamingSetChoice = this.value || null;
+          // Update the tool proficiency display in the preview card
+          const toolsRow = preview.querySelector('.wiz-stat-row:nth-child(2)');
+          if (toolsRow) {
+            const updatedNames = Object.keys(info.toolProf).map(k =>
+              (/anyGamingSet/i.test(k) || k.toLowerCase() === 'gaming set') ? (d._bgGamingSetChoice || 'Gaming Set (choose below)') : k
+            );
+            toolsRow.innerHTML = `<strong>Tool Proficiencies:</strong> ${updatedNames.join(', ')}`;
+          }
+          // Re-render equipment to update gaming set name in equipment text
+          if (!isCustomBg) renderEquipPicker(info);
+        });
+      } else if (gamingPickerDiv) {
+        gamingPickerDiv.innerHTML = '';
       }
 
       if (isCustomBg) {
@@ -1387,6 +1557,7 @@ window.Wizard = {
         d._weaponMasteryChoices = [];
         d._classToolChoices = [];
         d._classToolCategories = [];
+        d._psionicDisciplines = [];
       }
       d.charClass = className;
       d._classInfo = info;
@@ -1424,6 +1595,7 @@ window.Wizard = {
         (d._speciesInfo?.skillProficiencies || []).forEach(sp => {
           Object.keys(sp).forEach(sk => { if (sp[sk] === true) { const k = _normalizeSkillKey(sk); if (k) speciesSkills.add(k); } });
         });
+        (d._speciesSkillChoices || []).forEach(sk => { const k = _normalizeSkillKey(sk); if (k) speciesSkills.add(k); });
         const grantedSkills = new Set([...bgSkills, ...speciesSkills]);
 
         // Remove any class picks that duplicate background/species skills
@@ -1813,6 +1985,105 @@ window.Wizard = {
         });
 
         skillDiv.appendChild(toolSection);
+      }
+
+      // ---- Psionic Disciplines (Psion level 2+) ----
+      if (d.charClass === 'Psion' && parseInt(d.charLevel || 1) >= 2) {
+        const level = parseInt(d.charLevel || 1);
+        const count = level >= 17 ? 6 : level >= 13 ? 5 : level >= 10 ? 4 : level >= 5 ? 3 : 2;
+        d._psionicDisciplines = d._psionicDisciplines || [];
+        const options = typeof ClassResources !== 'undefined' ? ClassResources.PSIONIC_DISCIPLINE_OPTIONS || [] : [];
+        if (options.length) {
+          const pdSection = document.createElement('div');
+          pdSection.className = 'wiz-fighting-style-section';
+
+          const heading = document.createElement('h4');
+          heading.className = 'wiz-subtitle';
+          heading.textContent = `Choose ${count} Psionic Disciplines`;
+          pdSection.appendChild(heading);
+
+          const note = document.createElement('p');
+          note.className = 'wiz-desc';
+          note.textContent = 'You can use only one Discipline per turn.';
+          pdSection.appendChild(note);
+
+          const countBadge = document.createElement('div');
+          countBadge.className = 'wiz-count-badge';
+          countBadge.textContent = `${Math.min(d._psionicDisciplines.length, count)}/${count} selected`;
+          pdSection.appendChild(countBadge);
+
+          const grid = document.createElement('div');
+          grid.className = 'wiz-checkbox-grid';
+          const descEl = document.createElement('div');
+          descEl.className = 'wiz-fs-desc wiz-preview-card';
+          descEl.style.marginTop = '8px';
+
+          const updateStates = () => {
+            const atLimit = d._psionicDisciplines.length >= count;
+            countBadge.textContent = `${d._psionicDisciplines.length}/${count} selected`;
+            grid.querySelectorAll('.wiz-checkbox-label').forEach(lbl => {
+              const inp = lbl.querySelector('input');
+              if (!inp) return;
+              if (!inp.checked && atLimit) lbl.classList.add('disabled');
+              else lbl.classList.remove('disabled');
+            });
+          };
+
+          options.forEach(opt => {
+            const checked = d._psionicDisciplines.includes(opt.name);
+            const lbl = document.createElement('label');
+            lbl.className = 'wiz-checkbox-label' + (checked ? ' selected' : '');
+            lbl.innerHTML = `<input type="checkbox" value="${opt.name}" ${checked ? 'checked' : ''}> ${opt.name}`;
+            lbl.querySelector('input').addEventListener('change', function () {
+              if (this.checked) {
+                if (d._psionicDisciplines.length >= count) { this.checked = false; return; }
+                d._psionicDisciplines.push(opt.name);
+                lbl.classList.add('selected');
+              } else {
+                d._psionicDisciplines = d._psionicDisciplines.filter(n => n !== opt.name);
+                lbl.classList.remove('selected');
+              }
+              descEl.innerHTML = `<strong>${opt.name}</strong>: ${opt.text}`;
+              updateStates();
+            });
+            const _showDisciplineTip = (e) => {
+              let tip = document.getElementById('wiz-discipline-tooltip');
+              if (!tip) {
+                tip = document.createElement('div');
+                tip.id = 'wiz-discipline-tooltip';
+                tip.className = 'wiz-spell-tooltip';
+                tip.style.maxWidth = '340px';
+                document.body.appendChild(tip);
+              }
+              const highlighted = typeof _highlightSpellKeywords === 'function'
+                ? _highlightSpellKeywords(_highlightPsionicKeywords(opt.text))
+                : opt.text;
+              tip.innerHTML = `<div class="wiz-tip-header"><span class="wiz-tip-name">${opt.name}</span><span class="wiz-tip-level">Psionic Discipline</span></div><div class="wiz-tip-body">${highlighted}</div>`;
+              tip.style.display = 'block';
+              if (typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+            };
+            lbl.addEventListener('mouseenter', _showDisciplineTip);
+            lbl.addEventListener('mousemove', e => {
+              const tip = document.getElementById('wiz-discipline-tooltip');
+              if (tip && typeof _positionSpellTooltip === 'function') _positionSpellTooltip(tip, e);
+            });
+            lbl.addEventListener('mouseleave', () => {
+              const tip = document.getElementById('wiz-discipline-tooltip');
+              if (tip) tip.style.display = 'none';
+            });
+            grid.appendChild(lbl);
+          });
+
+          if (d._psionicDisciplines.length) {
+            const last = options.find(o => o.name === d._psionicDisciplines[d._psionicDisciplines.length - 1]);
+            if (last) descEl.innerHTML = `<strong>${last.name}</strong>: ${last.text}`;
+          }
+
+          pdSection.appendChild(grid);
+          pdSection.appendChild(descEl);
+          updateStates();
+          skillDiv.appendChild(pdSection);
+        }
       }
     };
     input.addEventListener('change', () => showPreview(input.value));
@@ -2611,6 +2882,16 @@ window.Wizard = {
       }
     }
 
+    // Class-auto-granted cantrips (excluded from cantrip picks)
+    const classAutoCantrips = (ClassResources?.CLASS_AUTO_CANTRIPS?.[className] || []);
+    const classGrantedCantripNames = new Set(classAutoCantrips.map(n => n.toLowerCase()));
+    // Ensure class-granted cantrips are in d.charSpells so levelup and spell list know about them
+    classAutoCantrips.forEach(name => {
+      if (!d.charSpells.some(s => s.name === name && s.level === 0)) {
+        d.charSpells.push({ name, level: 0, prepared: true, classGranted: true });
+      }
+    });
+
     // Determine limits from class data
     const classInfo = className ? getClassInfo(className) : null;
     const maxCantrips = classInfo?.cantripCount ?? null;
@@ -2640,7 +2921,7 @@ window.Wizard = {
     if (maxSpells !== null) maxSpells = Math.max(1, maxSpells);
     const maxPrepared = maxSpells; // alias for backward compat in renderCounter
 
-    const countSelected = (level) => d.charSpells.filter(s => s.level === level && !s.racial).length;
+    const countSelected = (level) => d.charSpells.filter(s => s.level === level && !s.racial && !s.classGranted).length;
 
     const renderCounter = (level) => {
       const id = level === 0 ? 'wiz-cantrip-counter' : 'wiz-spell1-counter';
@@ -2705,6 +2986,10 @@ window.Wizard = {
         </div>
       </div>`;
 
+    // Build subclass overlap map for warning badges (all subclasses of this class)
+    const _wizScOverlapMap = (typeof LevelUp !== 'undefined' && typeof LevelUp._getSubclassOverlapMap === 'function')
+      ? LevelUp._getSubclassOverlapMap(className) : new Map();
+
     const renderSpellList = (spellsToRender, containerId, level) => {
       const el = document.getElementById(containerId);
       if (!el) return;
@@ -2723,16 +3008,19 @@ window.Wizard = {
         <span class="wiz-spell-col-dur">Duration</span>`;
       el.appendChild(header);
       spellsToRender.forEach(spell => {
-        const isRacial = level === 0 && racialCantripNames.has(spell.name.toLowerCase());
+        const isClassGranted = level === 0 && classGrantedCantripNames.has(spell.name.toLowerCase());
+        const isRacial = level === 0 && (racialCantripNames.has(spell.name.toLowerCase()) || isClassGranted);
         const isSelected = d.charSpells.some(s => s.name === spell.name);
         const atMax = max !== null && countSelected(level) >= max && !isSelected;
         const isDisabled = isRacial || atMax;
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (isDisabled ? ' disabled' : '');
         if (isDisabled) row.style.opacity = '0.45';
+        const _wizWarnBadge = (typeof LevelUp !== 'undefined' && typeof LevelUp._subclassWarnBadge === 'function' && !isRacial)
+          ? LevelUp._subclassWarnBadge(_wizScOverlapMap, spell.name, '') : '';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isRacial ? 'checked disabled' : (isSelected ? 'checked' : '')} ${atMax ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${isRacial ? ' <small style="color:var(--ink-faint)">(from species)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? '<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${_wizWarnBadge}${isClassGranted ? '<small style="color:var(--ink-faint);white-space:nowrap">(from class)</small>' : isRacial ? '<small style="color:var(--ink-faint);white-space:nowrap">(from species)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -2779,6 +3067,7 @@ window.Wizard = {
           const filtered = (level === 0 ? cantrips : level1).filter(s => !q || s.name.toLowerCase().includes(q));
           renderSpellList(filtered, containerId, level);
         });
+        if (typeof _attachSubclassWarnTooltip === 'function') _attachSubclassWarnTooltip(row);
         el.appendChild(row);
       });
       renderCounter(level);
@@ -3087,14 +3376,20 @@ window.Wizard = {
             ${(() => {
               const bgSkills = new Set(Object.keys(d._bgInfo?.skillProf || {}).map(_normalizeSkillKey));
               const classSkills = new Set((d._classSkillChoices || []).map(_normalizeSkillKey));
-              const allSkills = [...new Set([...bgSkills, ...classSkills])].sort();
+              const speciesFixedSkills = new Set();
+              (d._speciesInfo?.skillProficiencies || []).forEach(sp => {
+                Object.keys(sp).forEach(sk => { if (sp[sk] === true) { const k = _normalizeSkillKey(sk); if (k) speciesFixedSkills.add(k); } });
+              });
+              (d._speciesSkillChoices || []).forEach(sk => { const k = _normalizeSkillKey(sk); if (k) speciesFixedSkills.add(k); });
+              const allSkills = [...new Set([...bgSkills, ...classSkills, ...speciesFixedSkills])].sort();
               const rows = allSkills.map(sk => {
                 const label = _skillLabel(sk);
-                const tag = bgSkills.has(sk) && classSkills.has(sk)
-                  ? ' <span class="wiz-review-skill-tag">background &amp; class</span>'
-                  : bgSkills.has(sk)
-                    ? ' <span class="wiz-review-skill-tag">background</span>'
-                    : ' <span class="wiz-review-skill-tag">class</span>';
+                const sources = [
+                  speciesFixedSkills.has(sk) ? 'species' : null,
+                  bgSkills.has(sk) ? 'background' : null,
+                  classSkills.has(sk) ? 'class' : null,
+                ].filter(Boolean);
+                const tag = sources.length ? ` <span class="wiz-review-skill-tag">${sources.join(' &amp; ')}</span>` : '';
                 return `<div>• ${label}${tag}</div>`;
               }).join('');
               return `<h4>Skill Proficiencies (${allSkills.length})</h4>${rows || '<div>None</div>'}`;
