@@ -22,11 +22,6 @@ window.ConditionRules = {
       effects: {},
       rollPrompt: null,
     },
-    Exhausted: {
-      description: 'While a creature has the Exhaustion condition, it experiences the following effects:\n\nExhaustion Levels. This condition is cumulative. Each time you receive it, you gain 1 Exhaustion level. You die if your Exhaustion level is 6.\n\nD20 Tests Affected. When you make a D20 Test, the roll is reduced by 2 times your Exhaustion level.\n\nSpeed Reduced. Your Speed is reduced by a number of feet equal to 5 times your Exhaustion level.\n\nRemoving Exhaustion Levels. Finishing a Long Rest removes 1 of your Exhaustion levels. When your Exhaustion level reaches 0, the condition ends.',
-      effects: { exhaustion: true },
-      rollPrompt: null, // handled via numeric penalty, not disadvantage
-    },
     Frightened: {
       description: 'A Frightened creature has Disadvantage on ability checks and attack rolls while the source of its fear is within line of sight. The creature can\'t willingly move closer to the source of its fear.',
       effects: { attackRolls: 'disadvantage', abilityChecks: 'disadvantage' },

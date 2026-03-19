@@ -274,8 +274,8 @@ window.ClassResources = {
       ], refresh: 'lr', startLevel: 2 },
     ],
     'Bard:College of Spirits': [
-      { name: 'Spirit Session (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6, notes: 'Spirit Session: Spend 1 Bardic Inspiration during a Short Rest in a ritual. You and a number of willing creatures equal to your Charisma modifier (min 1) can add half your Bard level to their next D20 Test within 24 hours. This use casts Spirit Guardians for free (no spell slot).' },
-      { name: 'Spirit Session (Modified)', maxAt: [{ level: 6, max: 1 }], refresh: 'sr', startLevel: 6, notes: 'Spirit Session: Spend 1 Bardic Inspiration during a Short Rest in a ritual. You and a number of willing creatures equal to your Charisma modifier (min 1) can add half your Bard level to their next D20 Test within 24 hours. This use casts a modified version of Spirit Guardians (refreshes on Short Rest).' },
+      { name: 'Spirit Session (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6, notes: 'Spiritual Manifestation. You always have the Spirit Guardians spell prepared. You can cast it once without expending a spell slot, and you regain the ability to do so when you finish a Long Rest.\n\nPower from Beyond. Once per turn, when you cast a Bard spell that either deals damage or restores Hit Points, roll a d6. You gain a bonus to one of the spell\'s damage rolls or the total healing equal to the number rolled.' },
+      { name: 'Spirit Session (Modified)', maxAt: [{ level: 6, max: 1 }], refresh: 'sr', startLevel: 6, notes: 'Spiritual Manifestation. Whenever you cast Spirit Guardians, you can modify it so the spirits also guard against worldly threats. When cast in this way, you and your allies within the spell\'s Emanation gain Half Cover. Once you modify the spell this way, you can\'t do so again until you finish a Short or Long Rest.' },
     ],
     'Paladin:Oath of Devotion': [],
     'Paladin:Oath of the Ancients': [],

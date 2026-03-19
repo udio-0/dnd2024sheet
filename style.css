@@ -1844,7 +1844,9 @@ textarea::placeholder { color: var(--ink-faint); }
 .mini-field label { font-size: 0.55rem; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.8px; display: block; margin-top: 1px; }
 
 /* ---- FEATS ---- */
-.feat-add-row { display: flex; gap: 6px; margin-top: 6px; }
+.feat-add-row { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+.feat-add-row .feat-search-input { min-width: 0; }
+.feat-add-row .btn { flex-shrink: 0; white-space: nowrap; }
 .feat-search-input {
   flex: 1;
   border: 1px solid var(--border);
@@ -3283,7 +3285,7 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 
 .inv-cards { display: flex; flex-direction: column; gap: 4px; min-height: 30px; }
-.inv-gear-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 4px; }
+.inv-gear-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px; margin-top: 4px; }
 
 /* ---- CONTAINERS (Backpack / Pouch) ---- */
 .inv-container {
@@ -3636,6 +3638,7 @@ textarea::placeholder { color: var(--ink-faint); }
 
 /* Folder tree */
 .notes-folder-tree {
+  overflow-y: auto;
   padding: 4px 0; border-bottom: 1px solid var(--border);
 }
 .notes-folder-item {

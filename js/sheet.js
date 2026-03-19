@@ -6844,15 +6844,6 @@ window.Sheet = {
         const cur = this.lv('combat_exhaustion', 0);
         const newLevel = cur === i ? i - 1 : i;
         this.sv('combat_exhaustion', newLevel);
-        // Toggle Exhausted condition automatically
-        const conds = this.lv('conditions', []);
-        if (newLevel > 0 && !conds.includes('Exhausted')) {
-          conds.push('Exhausted');
-          this.sv('conditions', conds);
-        } else if (newLevel === 0 && conds.includes('Exhausted')) {
-          conds.splice(conds.indexOf('Exhausted'), 1);
-          this.sv('conditions', conds);
-        }
         this._renderConditions();
         this.applyConditionEffects();
       });

@@ -289,8 +289,8 @@ window.FileSync = {
 
   // ---- IMPORT CHARACTERS + NOTES FROM FOLDER ----
   async syncFromFolder() {
-    // Load notes file first
-    await this.loadNotesFromFile();
+    // Load notes file first, but only if notes are clean (don't overwrite unsaved changes)
+    if (!this._notesDirty) await this.loadNotesFromFile();
 
     const characters = await this.loadFromFolder();
     if (!characters.length) return 0;

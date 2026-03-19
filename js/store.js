@@ -207,6 +207,7 @@ window.CharStore = {
     this._wasAlreadyDirty = typeof FileSync !== 'undefined' && FileSync.isDirty(id);
     this.activeId = id;
     this.activeData = this.loadCharacter(id);
+    this._migrateResourceNames(this.activeData);
     this._undoStack = [];
     this._redoStack = [];
     this._updateUndoButtons();
@@ -264,6 +265,22 @@ window.CharStore = {
   },
 
   // ---- MIGRATION ----
+
+  // Rename resources that were saved under old names to match current definitions.
+  _migrateResourceNames(data) {
+    const RENAMES = {
+      'Spirit Guardians (Free Cast)': 'Spirit Session (Free Cast)',
+      'Modified Spirit Guardians':    'Spirit Session (Modified)',
+    };
+    const resources = data.resources;
+    if (!Array.isArray(resources)) return;
+    let changed = false;
+    resources.forEach(r => {
+      if (RENAMES[r.name]) { r.name = RENAMES[r.name]; changed = true; }
+    });
+    if (changed) localStorage.setItem(this.CHAR_PREFIX + this.activeId, JSON.stringify(data));
+  },
+
   migrateV1() {
     const old = localStorage.getItem(this.OLD_KEY);
     if (!old) return false;

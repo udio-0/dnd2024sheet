@@ -51,6 +51,9 @@ window.NotesManager = {
   _navHistory: [],       // note navigation history (array of note IDs)
   _navIndex: -1,         // current position in navigation history
   _navLock: false,       // prevent history push during back/forward
+  _selectedNoteIds: new Set(),   // multi-select state
+  _selectedFolderIds: new Set(), // folder multi-select state
+  _lastClickedId: null,          // anchor for shift-click / shift-arrow range (note or folder id)
 
   // ---- STORAGE (independent from character data) ----
   STORAGE_KEY: 'dnd_campaign_notes_v1',
@@ -195,6 +198,8 @@ window.NotesManager = {
 
   // ---- UI BINDING ----
   _bindUI() {
+    if (this._bound) return;
+    this._bound = true;
     // New note button
     this.$('notes-btn-new')?.addEventListener('click', () => this.createNote());
     // New folder button
@@ -204,7 +209,7 @@ window.NotesManager = {
     if (search) {
       search.addEventListener('input', () => {
         this._searchQuery = search.value.trim().toLowerCase();
-        this.renderNoteList();
+        this.renderFolderTree();
       });
     }
     // Tag filter pills
@@ -214,7 +219,7 @@ window.NotesManager = {
       const tag = btn.dataset.tag;
       this._filterTag = this._filterTag === tag ? null : tag;
       this.renderTagFilters();
-      this.renderNoteList();
+      this.renderFolderTree();
     });
     // Editor content auto-save + autocomplete triggers
     const editor = this.$('notes-editor-content');
@@ -288,52 +293,148 @@ window.NotesManager = {
       if (file) this.importNotes(file);
       e.target.value = ''; // reset so same file can be re-imported
     });
+
+    // Document-level Shift+↑/↓ for sidebar range selection.
+    // Must be document-level because after any openNote() call, renderFolderTree() destroys
+    // all buttons and focus falls to <body> — a tree-container handler never fires in that state.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      if (!this._lastClickedId) return;
+      // Don't intercept when the user is typing
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      // Only fire when the notes folder tree is visible on screen
+      const treeEl = this.$('notes-folder-tree');
+      if (!treeEl || !treeEl.offsetParent) return;
+      e.preventDefault();
+
+      if (e.shiftKey) {
+        // Shift+Arrow: extend selection within same level
+        const sameLevel = this._getSameLevelElements(this._lastClickedId);
+        const idx = sameLevel.findIndex(el => (el.dataset.noteId || el.dataset.folderId) === this._lastClickedId);
+        if (idx === -1) return;
+        const newIdx = e.key === 'ArrowDown' ? Math.min(idx + 1, sameLevel.length - 1) : Math.max(idx - 1, 0);
+        if (newIdx === idx) return;
+        if (this._selectedNoteIds.size === 0 && this._selectedFolderIds.size === 0) {
+          const anchor = sameLevel[idx];
+          if (anchor.dataset.noteId) this._selectedNoteIds.add(anchor.dataset.noteId);
+          if (anchor.dataset.folderId) this._selectedFolderIds.add(anchor.dataset.folderId);
+        }
+        const nextEl = sameLevel[newIdx];
+        if (nextEl.dataset.noteId) this._selectedNoteIds.add(nextEl.dataset.noteId);
+        if (nextEl.dataset.folderId) this._selectedFolderIds.add(nextEl.dataset.folderId);
+        this._lastClickedId = nextEl.dataset.noteId || nextEl.dataset.folderId;
+        nextEl.focus();
+        this._updateSelectionUI();
+      } else {
+        // Plain Arrow: move cursor through all visible items in DOM order
+        const all = [...document.querySelectorAll('[data-note-id], [data-folder-id]')];
+        const idx = all.findIndex(el => (el.dataset.noteId || el.dataset.folderId) === this._lastClickedId);
+        const startIdx = idx === -1 ? 0 : idx;
+        const newIdx = e.key === 'ArrowDown' ? Math.min(startIdx + 1, all.length - 1) : Math.max(startIdx - 1, 0);
+        if (newIdx === startIdx && idx !== -1) return;
+        const nextEl = all[newIdx];
+        this._selectedNoteIds.clear();
+        this._selectedFolderIds.clear();
+        this._lastClickedId = nextEl.dataset.noteId || nextEl.dataset.folderId;
+        nextEl.focus();
+        this._updateSelectionUI();
+      }
+    });
+
+    // Trash drop zone
+    const trash = this.$('notes-trash');
+    if (trash) {
+      trash.addEventListener('dragover',  (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; trash.classList.add('drag-over'); });
+      trash.addEventListener('dragleave', () => trash.classList.remove('drag-over'));
+      trash.addEventListener('drop', (e) => {
+        e.preventDefault(); trash.classList.remove('drag-over');
+        const raw = e.dataTransfer.getData('application/x-dnd-items');
+        if (!raw) return;
+        const { noteIds = [], folderIds = [] } = JSON.parse(raw);
+        if (!noteIds.length && !folderIds.length) return;
+        const parts = [];
+        if (folderIds.length) parts.push(`<strong>${folderIds.length} folder${folderIds.length !== 1 ? 's' : ''}</strong> and all their notes`);
+        if (noteIds.length) parts.push(`<strong>${noteIds.length} note${noteIds.length !== 1 ? 's' : ''}</strong>`);
+        this._dialog({
+          title: 'Delete Items',
+          body: `Permanently delete ${parts.join(' and ')}? This cannot be undone.`,
+          okText: 'Delete', danger: true,
+        }, () => {
+          folderIds.forEach(id => this._deleteRecursive(id));
+          this._selectedFolderIds = new Set([...this._selectedFolderIds].filter(id => !folderIds.includes(id)));
+          if (noteIds.length) {
+            let notes = this.getNotes();
+            notes = notes.filter(n => !noteIds.includes(n.id));
+            this.saveNotes(notes);
+            this._selectedNoteIds = new Set([...this._selectedNoteIds].filter(id => !noteIds.includes(id)));
+            if (noteIds.includes(this._activeNoteId)) this._showEmptyEditor();
+          }
+          this.renderSidebar();
+        });
+      });
+    }
+
   },
 
   // ---- FOLDER CRUD ----
   createFolder() {
-    const name = prompt('Folder name:');
-    if (!name || !name.trim()) return;
-    const folders = this.getFolders();
-    const folder = {
-      id: this._uid(),
-      name: name.trim(),
-      parentId: this._activeFolder,
-      color: null,
-      order: folders.length,
-      collapsed: false,
-    };
-    folders.push(folder);
-    this.saveFolders(folders);
-    this.renderSidebar();
+    this._dialog({ type: 'prompt', title: 'New Folder', body: 'Enter folder name:', okText: 'Create' }, (name) => {
+      if (!name || !name.trim()) return;
+      const folders = this.getFolders();
+      folders.push({ id: this._uid(), name: name.trim(), parentId: this._activeFolder, color: null, order: folders.length, collapsed: false });
+      this.saveFolders(folders);
+      this.renderSidebar();
+    });
   },
 
   renameFolder(id) {
     const folders = this.getFolders();
     const f = folders.find(x => x.id === id);
     if (!f) return;
-    const name = prompt('Rename folder:', f.name);
-    if (!name || !name.trim()) return;
-    f.name = name.trim();
-    this.saveFolders(folders);
-    this.renderSidebar();
+    this._dialog({ type: 'prompt', title: 'Rename Folder', body: `Rename "${this._esc(f.name)}" to:`, defaultValue: f.name, okText: 'Rename' }, (name) => {
+      if (!name || !name.trim()) return;
+      f.name = name.trim();
+      this.saveFolders(folders);
+      this.renderSidebar();
+    });
+  },
+
+  _countFolderNotes(folderId) {
+    const notes = this.getNotes(), folders = this.getFolders();
+    let count = 0;
+    const walk = (id) => {
+      count += notes.filter(n => n.folderId === id).length;
+      folders.filter(f => f.parentId === id).forEach(f => walk(f.id));
+    };
+    walk(folderId);
+    return count;
   },
 
   deleteFolder(id) {
-    if (!confirm('Delete this folder and move its notes to root?')) return;
     let folders = this.getFolders();
-    // move notes to root
-    const notes = this.getNotes();
-    notes.forEach(n => { if (n.folderId === id) n.folderId = null; });
-    this.saveNotes(notes);
-    // move subfolders to parent
-    const target = folders.find(f => f.id === id);
-    const parentId = target ? target.parentId : null;
-    folders.forEach(f => { if (f.parentId === id) f.parentId = parentId; });
-    folders = folders.filter(f => f.id !== id);
-    this.saveFolders(folders);
-    if (this._activeFolder === id) this._activeFolder = null;
-    this.renderSidebar();
+    const folder = folders.find(f => f.id === id);
+    if (!folder) return;
+    const noteCount = this._countFolderNotes(id);
+    const body = noteCount > 0
+      ? `<span class="nd-warn">This will permanently delete <strong>"${this._esc(folder.name)}"</strong> and <strong>${noteCount} note${noteCount !== 1 ? 's' : ''}</strong> inside it. This cannot be undone.</span>`
+      : `Delete folder <strong>"${this._esc(folder.name)}"</strong>?`;
+    this._dialog({ title: 'Delete Folder', body, okText: 'Delete', danger: noteCount > 0 }, () => {
+      // Collect all folder IDs in the tree
+      folders = this.getFolders();
+      const toDelete = new Set();
+      const collect = (fId) => { toDelete.add(fId); folders.filter(f => f.parentId === fId).forEach(f => collect(f.id)); };
+      collect(id);
+      // Delete notes inside
+      let notes = this.getNotes();
+      notes = notes.filter(n => !toDelete.has(n.folderId));
+      this.saveNotes(notes);
+      // Delete folders
+      folders = folders.filter(f => !toDelete.has(f.id));
+      this.saveFolders(folders);
+      if (toDelete.has(this._activeFolder)) this._activeFolder = null;
+      this.renderSidebar();
+    });
   },
 
   // ---- NOTE CRUD ----
@@ -397,7 +498,7 @@ window.NotesManager = {
     if (pinBtn) pinBtn.classList.toggle('active', note.pinned);
     this._renderNoteTags(note);
     this._renderMeta(note);
-    this.renderNoteList();
+    this.renderFolderTree();
 
     // Always show rendered view (blur editor if it has focus)
     if (contentEl && document.activeElement === contentEl) contentEl.blur();
@@ -445,7 +546,7 @@ window.NotesManager = {
     note.modified = new Date().toISOString();
     titleEl.value = newTitle;
     this.saveNotes(notes);
-    this.renderNoteList();
+    this.renderFolderTree();
   },
 
   _togglePin() {
@@ -457,17 +558,18 @@ window.NotesManager = {
     this.saveNotes(notes);
     const pinBtn = this.$('notes-btn-pin');
     if (pinBtn) pinBtn.classList.toggle('active', note.pinned);
-    this.renderNoteList();
+    this.renderFolderTree();
   },
 
   _deleteActiveNote() {
     if (!this._activeNoteId) return;
-    if (!confirm('Delete this note?')) return;
-    let notes = this.getNotes();
-    notes = notes.filter(n => n.id !== this._activeNoteId);
-    this.saveNotes(notes);
-    this._showEmptyEditor();
-    this.renderSidebar();
+    this._dialog({ title: 'Delete Note', body: 'Delete this note? This cannot be undone.', okText: 'Delete', danger: true }, () => {
+      let notes = this.getNotes();
+      notes = notes.filter(n => n.id !== this._activeNoteId);
+      this.saveNotes(notes);
+      this._showEmptyEditor();
+      this.renderSidebar();
+    });
   },
 
   // ---- TAGS ----
@@ -479,7 +581,7 @@ window.NotesManager = {
     note.modified = new Date().toISOString();
     this.saveNotes(notes);
     if (noteId === this._activeNoteId) this._renderNoteTags(note);
-    this.renderNoteList();
+    this.renderFolderTree();
   },
 
   removeTag(noteId, tag) {
@@ -490,7 +592,7 @@ window.NotesManager = {
     note.modified = new Date().toISOString();
     this.saveNotes(notes);
     if (noteId === this._activeNoteId) this._renderNoteTags(note);
-    this.renderNoteList();
+    this.renderFolderTree();
   },
 
   _renderNoteTags(note) {
@@ -609,6 +711,57 @@ window.NotesManager = {
     this.renderSidebar();
   },
 
+  _moveNotes(ids, folderId) {
+    const notes = this.getNotes();
+    ids.forEach(id => {
+      const note = notes.find(n => n.id === id);
+      if (note) { note.folderId = folderId; note.modified = new Date().toISOString(); }
+    });
+    this.saveNotes(notes);
+    this.renderSidebar();
+  },
+
+  _moveFolder(folderId, newParentId) {
+    if (folderId === newParentId) return; // can't drop into itself
+    // Prevent dropping into a descendant
+    const folders = this.getFolders();
+    const isDescendant = (ancestorId, targetId) => {
+      let f = folders.find(x => x.id === targetId);
+      while (f) {
+        if (f.parentId === ancestorId) return true;
+        f = folders.find(x => x.id === f.parentId);
+      }
+      return false;
+    };
+    if (newParentId && isDescendant(folderId, newParentId)) return;
+    const folder = folders.find(f => f.id === folderId);
+    if (!folder) return;
+    folder.parentId = newParentId;
+    this.saveFolders(folders);
+    this.renderSidebar();
+  },
+
+  // Returns the parent ID of any note or folder (null = root)
+  _getItemParent(id) {
+    const note = this.getNotes().find(n => n.id === id);
+    if (note) return note.folderId ?? null;
+    const folder = this.getFolders().find(f => f.id === id);
+    return folder ? (folder.parentId ?? null) : null;
+  },
+
+  // Returns DOM elements ([data-note-id] or [data-folder-id]) that share the same parent as anchorId
+  _getSameLevelElements(anchorId) {
+    const parentId = this._getItemParent(anchorId);
+    return [...document.querySelectorAll('[data-note-id], [data-folder-id]')]
+      .filter(el => this._getItemParent(el.dataset.noteId || el.dataset.folderId) === parentId);
+  },
+
+  _deleteRecursive(folderId) {
+    this.getFolders().filter(f => f.parentId === folderId).forEach(sf => this._deleteRecursive(sf.id));
+    this.saveFolders(this.getFolders().filter(f => f.id !== folderId));
+    this.saveNotes(this.getNotes().filter(n => n.folderId !== folderId));
+  },
+
   _toggleFolderCollapse(folderId) {
     const folders = this.getFolders();
     const folder = folders.find(f => f.id === folderId);
@@ -631,16 +784,31 @@ window.NotesManager = {
 
     if (this._activeFolder) {
       const folderName = this.getFolderById(this._activeFolder)?.name || 'folder';
-      const choice = confirm(
-        `Export just the "${folderName}" folder?\n\nOK = Export this folder only\nCancel = Export all notes`
-      );
-      if (choice) {
-        scope = this._activeFolder;
-        exportNotes = notes.filter(n => n.folderId === this._activeFolder);
-        exportFolders = [this.getFolderById(this._activeFolder)].filter(Boolean);
-      }
+      // Use a synchronous-style flag; dialog is async so we wrap the rest of export in the callback
+      this._dialog({
+        type: 'choice', title: 'Export Scope',
+        body: `Export only <strong>"${this._esc(folderName)}"</strong> or all notes?`,
+        cancelText: 'Cancel',
+        choices: [
+          { text: 'This Folder', value: 'folder' },
+          { text: 'All Notes',   value: 'all'    },
+        ],
+      }, (choice) => {
+        if (choice === 'folder') {
+          exportNotes   = notes.filter(n => n.folderId === this._activeFolder);
+          exportFolders = [this.getFolderById(this._activeFolder)].filter(Boolean);
+          scope = this._activeFolder;
+        }
+        this._doExport(exportFolders, exportNotes, scope, charName);
+      });
+      return; // rest handled in callback
     }
 
+    // No active folder — export all immediately
+    this._doExport(exportFolders, exportNotes, scope, charName);
+  },
+
+  _doExport(exportFolders, exportNotes, scope, charName) {
     // Build a clean export — remap folder references so import is self-contained
     const folderIdMap = {};
     const cleanFolders = exportFolders.map(f => {
@@ -687,7 +855,7 @@ window.NotesManager = {
 
         // Validate format
         if (data._format !== 'dnd2024-notes-v1') {
-          alert('Invalid file. This does not appear to be a D&D notes export.');
+          this._dialog({ type: 'alert', title: 'Invalid File', body: 'This does not appear to be a D&D notes export.', okText: 'OK' });
           return;
         }
 
@@ -695,91 +863,83 @@ window.NotesManager = {
         const importNotes = data.notes || [];
 
         if (!importNotes.length && !importFolders.length) {
-          alert('This export file is empty — nothing to import.');
+          this._dialog({ type: 'alert', title: 'Empty File', body: 'This export file is empty — nothing to import.', okText: 'OK' });
           return;
         }
 
         // Show summary and ask for confirmation
-        const info = `Import ${importNotes.length} note(s) and ${importFolders.length} folder(s)` +
-          (data.characterName ? ` from "${data.characterName}"` : '') + '?';
+        const fromChar = data.characterName ? ` from <strong>${this._esc(data.characterName)}</strong>` : '';
+        const info = `Import <strong>${importNotes.length}</strong> note(s) and <strong>${importFolders.length}</strong> folder(s)${fromChar}?`;
 
-        if (!confirm(info)) return;
+        this._dialog({ title: 'Import Notes', body: info, okText: 'Import' }, () => {
+          // Merge: check for title conflicts
+          const existingNotes = this.getNotes();
+          const existingFolders = this.getFolders();
+          const existingTitles = new Map(existingNotes.map(n => [n.title.toLowerCase(), n]));
+          const existingFolderNames = new Map(existingFolders.map(f => [f.name.toLowerCase(), f]));
 
-        // Merge: check for title conflicts
-        const existingNotes = this.getNotes();
-        const existingFolders = this.getFolders();
-        const existingTitles = new Map(existingNotes.map(n => [n.title.toLowerCase(), n]));
-        const existingFolderNames = new Map(existingFolders.map(f => [f.name.toLowerCase(), f]));
-
-        // Import folders — skip if same name exists, map IDs
-        const folderIdRemap = {};
-        const newFolders = [...existingFolders];
-        importFolders.forEach(f => {
-          const existing = existingFolderNames.get(f.name.toLowerCase());
-          if (existing) {
-            folderIdRemap[f.id] = existing.id; // point to existing
-          } else {
-            const newId = this._uid();
-            folderIdRemap[f.id] = newId;
-            newFolders.push({
-              ...f,
-              id: newId,
-              parentId: f.parentId ? (folderIdRemap[f.parentId] || null) : null,
-            });
-          }
-        });
-
-        // Import notes — handle conflicts
-        let imported = 0, skipped = 0, overwritten = 0;
-        let askOverwrite = null; // null = not asked yet, true/false = user choice for all
-
-        const newNotes = [...existingNotes];
-        importNotes.forEach(n => {
-          const existing = existingTitles.get(n.title.toLowerCase());
-          if (existing) {
-            // Conflict: ask user
-            if (askOverwrite === null) {
-              const choice = confirm(
-                `A note titled "${existing.title}" already exists.\n\n` +
-                'OK = Overwrite ALL conflicts with imported versions\n' +
-                'Cancel = Skip ALL conflicts (keep existing)'
-              );
-              askOverwrite = choice;
-            }
-            if (askOverwrite) {
-              // Overwrite: update existing note's content/tags
-              existing.content = n.content;
-              existing.tags = [...new Set([...existing.tags, ...n.tags])];
-              existing.modified = new Date().toISOString();
-              overwritten++;
+          // Import folders — skip if same name exists, map IDs
+          const folderIdRemap = {};
+          const newFolders = [...existingFolders];
+          importFolders.forEach(f => {
+            const existing = existingFolderNames.get(f.name.toLowerCase());
+            if (existing) {
+              folderIdRemap[f.id] = existing.id;
             } else {
-              skipped++;
+              const newId = this._uid();
+              folderIdRemap[f.id] = newId;
+              newFolders.push({ ...f, id: newId, parentId: f.parentId ? (folderIdRemap[f.parentId] || null) : null });
             }
-          } else {
-            // No conflict — add new
-            newNotes.unshift({
-              ...n,
-              id: this._uid(),
-              folderId: n.folderId ? (folderIdRemap[n.folderId] || null) : null,
+          });
+
+          // Find conflicts
+          const conflicts = importNotes.filter(n => existingTitles.has(n.title.toLowerCase()));
+          const doImport = (overwrite) => {
+            let imported = 0, skipped = 0, overwritten = 0;
+            const newNotes = [...existingNotes];
+            importNotes.forEach(n => {
+              const existing = existingTitles.get(n.title.toLowerCase());
+              if (existing) {
+                if (overwrite) {
+                  existing.content = n.content;
+                  existing.tags = [...new Set([...existing.tags, ...n.tags])];
+                  existing.modified = new Date().toISOString();
+                  overwritten++;
+                } else { skipped++; }
+              } else {
+                newNotes.unshift({ ...n, id: this._uid(), folderId: n.folderId ? (folderIdRemap[n.folderId] || null) : null });
+                imported++;
+              }
             });
-            imported++;
+            this.saveFolders(newFolders);
+            this.saveNotes(newNotes);
+            this.renderSidebar();
+            this._dirty = false;
+            let msg = `Import complete: ${imported} added`;
+            if (overwritten) msg += `, ${overwritten} overwritten`;
+            if (skipped) msg += `, ${skipped} skipped`;
+            this._dialog({ type: 'alert', title: 'Done', body: msg + '.', okText: 'OK' });
+          };
+
+          if (conflicts.length) {
+            const firstTitle = this._esc(conflicts[0].title);
+            const more = conflicts.length > 1 ? ` (+${conflicts.length - 1} more)` : '';
+            this._dialog({
+              type: 'choice', title: 'Duplicate Notes',
+              body: `<strong>"${firstTitle}"</strong>${more} already exist${conflicts.length > 1 ? '' : 's'}. How should duplicates be handled?`,
+              cancelText: 'Cancel',
+              choices: [
+                { text: 'Overwrite existing', value: true,  danger: true },
+                { text: 'Keep existing (skip)', value: false },
+              ],
+            }, (overwrite) => doImport(overwrite));
+          } else {
+            doImport(false);
           }
         });
-
-        this.saveFolders(newFolders);
-        this.saveNotes(newNotes);
-        this.renderSidebar();
-
-        this._dirty = false; // freshly synced with file
-
-        // Show result
-        let msg = `Import complete: ${imported} added`;
-        if (overwritten) msg += `, ${overwritten} overwritten`;
-        if (skipped) msg += `, ${skipped} skipped`;
-        alert(msg + '.');
 
       } catch (err) {
-        alert('Failed to import notes: ' + err.message);
+        this._dialog({ type: 'alert', title: 'Import Failed', body: 'Failed to import notes: ' + err.message, okText: 'OK' });
       }
     };
     reader.readAsText(file);
@@ -1332,7 +1492,6 @@ window.NotesManager = {
   // ---- RENDER SIDEBAR ----
   renderSidebar() {
     this.renderFolderTree();
-    this.renderNoteList();
     this.renderTagFilters();
   },
 
@@ -1354,26 +1513,71 @@ window.NotesManager = {
     const container = this.$('notes-folder-tree');
     if (!container) return;
     const folders = this.getFolders();
+    const allNotes = this.getNotes();
+    const trash = this.$('notes-trash');
     container.innerHTML = '';
 
-    // "All Notes" root
+    // ---- Search / tag-filter mode: show flat results ----
+    if (this._searchQuery || this._filterTag) {
+      let results = allNotes;
+      if (this._filterTag) results = results.filter(n => n.tags.includes(this._filterTag));
+      if (this._searchQuery) {
+        const q = this._searchQuery;
+        results = results.filter(n =>
+          n.title.toLowerCase().includes(q) ||
+          n.content.toLowerCase().includes(q) ||
+          n.tags.some(t => this.TAG_TYPES[t]?.label.toLowerCase().includes(q))
+        );
+      }
+      const header = document.createElement('div');
+      header.className = 'notes-tree-section-header';
+      header.textContent = `${results.length} result${results.length !== 1 ? 's' : ''}`;
+      container.appendChild(header);
+      if (!results.length) {
+        const empty = document.createElement('div');
+        empty.className = 'notes-empty';
+        empty.textContent = 'No notes found.';
+        container.appendChild(empty);
+      } else {
+        results.forEach(note => this._renderNoteTreeItem(note, container, 0));
+      }
+      return;
+    }
+
+    // ---- Normal mode ----
+    // "All Notes" — drop target for moving to root
     const allBtn = document.createElement('button');
     allBtn.className = 'notes-folder-item' + (this._activeFolder === null ? ' active' : '');
-    allBtn.innerHTML = `<span class="notes-folder-icon">📋</span><span class="notes-folder-name">All Notes</span><span class="notes-folder-count">${this.getNotes().length}</span>`;
+    allBtn.innerHTML = `<span class="notes-folder-icon">📋</span><span class="notes-folder-name">All Notes</span><span class="notes-folder-count">${allNotes.length}</span>`;
     allBtn.addEventListener('click', () => { this._activeFolder = null; this.renderSidebar(); });
-    // Drop target: move note to root (no folder)
     allBtn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; allBtn.classList.add('drag-over'); });
     allBtn.addEventListener('dragleave', () => allBtn.classList.remove('drag-over'));
     allBtn.addEventListener('drop', (e) => {
       e.preventDefault(); allBtn.classList.remove('drag-over');
-      const noteId = e.dataTransfer.getData('text/plain');
-      if (noteId) { this._moveNote(noteId, null); }
+      const raw = e.dataTransfer.getData('application/x-dnd-items');
+      if (raw) {
+        const { noteIds = [], folderIds = [] } = JSON.parse(raw);
+        folderIds.forEach(fid => this._moveFolder(fid, null));
+        if (noteIds.length) this._moveNotes(noteIds, null);
+      }
     });
     container.appendChild(allBtn);
 
-    // Render folders (flat for now, could be recursive for nesting)
+    // Folders
     const rootFolders = folders.filter(f => !f.parentId);
     rootFolders.forEach(f => this._renderFolderItem(f, container, 0));
+
+    // Root notes (no folder) — shown at bottom of tree
+    const rootNotes = allNotes.filter(n => !n.folderId);
+    if (rootNotes.length) {
+      rootNotes.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return new Date(b.modified) - new Date(a.modified);
+      });
+      rootNotes.forEach(note => this._renderNoteTreeItem(note, container, 0));
+    }
+    if (trash) container.appendChild(trash);
   },
 
   _renderFolderItem(folder, container, depth) {
@@ -1386,7 +1590,10 @@ window.NotesManager = {
     const hasChildren = subfolders.length > 0 || notes.length > 0;
 
     const btn = document.createElement('button');
-    btn.className = 'notes-folder-item' + (this._activeFolder === folder.id ? ' active' : '');
+    btn.className = 'notes-folder-item' +
+      (this._activeFolder === folder.id ? ' active' : '') +
+      (this._selectedFolderIds.has(folder.id) ? ' selected' : '');
+    btn.dataset.folderId = folder.id;
     btn.style.paddingLeft = (12 + depth * 16) + 'px';
     const chevron = hasChildren ? `<span class="notes-folder-chevron ${folder.collapsed ? '' : 'open'}">▶</span>` : '<span class="notes-folder-chevron-spacer"></span>';
     btn.innerHTML = `${chevron}<span class="notes-folder-icon">${folder.collapsed ? '📁' : '📂'}</span><span class="notes-folder-name">${this._esc(folder.name)}</span><span class="notes-folder-count">${notes.length}</span>`;
@@ -1397,17 +1604,63 @@ window.NotesManager = {
         this._toggleFolderCollapse(folder.id);
         return;
       }
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const hasSelection = this._selectedNoteIds.size > 0 || this._selectedFolderIds.size > 0;
+        if (hasSelection && this._getItemParent(folder.id) !== this._getItemParent(this._lastClickedId)) return;
+        if (this._selectedFolderIds.has(folder.id)) this._selectedFolderIds.delete(folder.id);
+        else this._selectedFolderIds.add(folder.id);
+        this._lastClickedId = folder.id;
+        this._updateSelectionUI();
+        return;
+      }
+      if (e.shiftKey && this._lastClickedId) {
+        e.preventDefault();
+        const sameLevel = this._getSameLevelElements(this._lastClickedId);
+        const fromIdx = sameLevel.findIndex(el => (el.dataset.noteId || el.dataset.folderId) === this._lastClickedId);
+        const toIdx   = sameLevel.findIndex(el => el.dataset.folderId === folder.id);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+          for (let i = lo; i <= hi; i++) {
+            if (sameLevel[i].dataset.noteId) this._selectedNoteIds.add(sameLevel[i].dataset.noteId);
+            if (sameLevel[i].dataset.folderId) this._selectedFolderIds.add(sameLevel[i].dataset.folderId);
+          }
+          this._lastClickedId = folder.id;
+          this._updateSelectionUI();
+        }
+        return;
+      }
+      this._selectedNoteIds.clear();
+      this._selectedFolderIds.clear();
+      this._updateSelectionUI();
+      this._lastClickedId = folder.id;
       this._activeFolder = folder.id;
       this.renderSidebar();
     });
 
-    // Drop target: move note into this folder
+    // Drag source: drag this folder (and any co-selected items) to another folder or trash
+    btn.draggable = true;
+    btn.addEventListener('dragstart', (e) => {
+      const folderIds = this._selectedFolderIds.has(folder.id) ? [...this._selectedFolderIds] : [folder.id];
+      const noteIds = [...this._selectedNoteIds];
+      e.dataTransfer.setData('application/x-dnd-items', JSON.stringify({ noteIds, folderIds }));
+      e.dataTransfer.setData('text/plain', folderIds[0]);
+      e.dataTransfer.effectAllowed = 'move';
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('dragend', () => btn.classList.remove('dragging'));
+
+    // Drop target: move note/folder into this folder
     btn.addEventListener('dragover', (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; btn.classList.add('drag-over'); });
     btn.addEventListener('dragleave', () => btn.classList.remove('drag-over'));
     btn.addEventListener('drop', (e) => {
       e.preventDefault(); btn.classList.remove('drag-over');
-      const noteId = e.dataTransfer.getData('text/plain');
-      if (noteId) { this._moveNote(noteId, folder.id); }
+      const raw = e.dataTransfer.getData('application/x-dnd-items');
+      if (raw) {
+        const { noteIds = [], folderIds = [] } = JSON.parse(raw);
+        folderIds.forEach(fid => { if (fid !== folder.id) this._moveFolder(fid, folder.id); });
+        if (noteIds.length) this._moveNotes(noteIds, folder.id);
+      }
     });
 
     // Visible action buttons (rename / delete)
@@ -1436,10 +1689,66 @@ window.NotesManager = {
     item.appendChild(btn);
     container.appendChild(item);
 
-    // Render subfolders
+    // Render subfolders and notes
     if (!folder.collapsed) {
       subfolders.forEach(sf => this._renderFolderItem(sf, container, depth + 1));
+      notes.forEach(note => this._renderNoteTreeItem(note, container, depth + 1));
     }
+  },
+
+  _renderNoteTreeItem(note, container, depth) {
+    const btn = document.createElement('button');
+    btn.className = 'notes-folder-item notes-tree-note' +
+      (note.id === this._activeNoteId ? ' active' : '') +
+      (this._selectedNoteIds.has(note.id) ? ' selected' : '');
+    btn.dataset.noteId = note.id;
+    btn.style.paddingLeft = (12 + depth * 16) + 'px';
+    btn.innerHTML = `<span class="notes-folder-chevron-spacer"></span><span class="notes-folder-icon">📄</span><span class="notes-folder-name">${this._esc(note.title)}</span>`;
+
+    btn.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        const hasSelection = this._selectedNoteIds.size > 0 || this._selectedFolderIds.size > 0;
+        if (hasSelection && this._getItemParent(note.id) !== this._getItemParent(this._lastClickedId)) return;
+        this._toggleNoteSelection(note.id);
+        this._lastClickedId = note.id;
+        return;
+      }
+      if (e.shiftKey && this._lastClickedId) {
+        e.preventDefault();
+        const sameLevel = this._getSameLevelElements(this._lastClickedId);
+        const fromIdx = sameLevel.findIndex(el => (el.dataset.noteId || el.dataset.folderId) === this._lastClickedId);
+        const toIdx   = sameLevel.findIndex(el => el.dataset.noteId === note.id);
+        if (fromIdx !== -1 && toIdx !== -1) {
+          const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+          for (let i = lo; i <= hi; i++) {
+            if (sameLevel[i].dataset.noteId) this._selectedNoteIds.add(sameLevel[i].dataset.noteId);
+            if (sameLevel[i].dataset.folderId) this._selectedFolderIds.add(sameLevel[i].dataset.folderId);
+          }
+          this._lastClickedId = note.id;
+          this._updateSelectionUI();
+        }
+        return;
+      }
+      this._selectedNoteIds.clear();
+      this._selectedFolderIds.clear();
+      this._updateSelectionUI();
+      this._lastClickedId = note.id;
+      this.openNote(note.id);
+    });
+
+    btn.draggable = true;
+    btn.addEventListener('dragstart', (e) => {
+      const noteIds = this._selectedNoteIds.has(note.id) ? [...this._selectedNoteIds] : [note.id];
+      const folderIds = [...this._selectedFolderIds];
+      e.dataTransfer.setData('application/x-dnd-items', JSON.stringify({ noteIds, folderIds }));
+      e.dataTransfer.setData('text/plain', noteIds[0]);
+      e.dataTransfer.effectAllowed = 'move';
+      btn.classList.add('dragging');
+    });
+    btn.addEventListener('dragend', () => btn.classList.remove('dragging'));
+
+    container.appendChild(btn);
   },
 
   _showFolderMenu(folder, e) {
@@ -1468,76 +1777,98 @@ window.NotesManager = {
     }, 0);
   },
 
-  renderNoteList() {
-    const container = this.$('notes-list');
-    if (!container) return;
-    let notes = this.getNotes();
+  renderNoteList() { /* replaced by renderFolderTree */ },
 
-    // Filter by folder
-    if (this._activeFolder !== null) {
-      notes = notes.filter(n => n.folderId === this._activeFolder);
+  // ---- CUSTOM DIALOG ----
+  // type: 'confirm' | 'alert' | 'prompt' | 'choice'
+  // choices: [{text, value, danger}] — used when type='choice' (replaces ok button)
+  _dialog({ type = 'confirm', title = '', body = '', okText = 'OK', cancelText = 'Cancel',
+            defaultValue = '', danger = false, choices = null } = {}, onOk, onCancel) {
+    const overlay = document.createElement('div');
+    overlay.className = 'nd-overlay';
+    const isPrompt = type === 'prompt';
+    const isAlert  = type === 'alert';
+    const isChoice = type === 'choice' && choices?.length;
+    const inputId  = 'nd-inp-' + Math.random().toString(36).slice(2);
+
+    let choiceBtns = '';
+    if (isChoice) {
+      choiceBtns = choices.map((c, i) =>
+        `<button class="nd-btn nd-btn-choice${c.danger ? ' nd-btn-danger' : ''}" data-idx="${i}">${this._esc(c.text)}</button>`
+      ).join('');
     }
 
-    // Filter by tag
-    if (this._filterTag) {
-      notes = notes.filter(n => n.tags.includes(this._filterTag));
-    }
-
-    // Filter by search
-    if (this._searchQuery) {
-      const q = this._searchQuery;
-      notes = notes.filter(n =>
-        n.title.toLowerCase().includes(q) ||
-        n.content.toLowerCase().includes(q) ||
-        n.tags.some(t => this.TAG_TYPES[t]?.label.toLowerCase().includes(q))
-      );
-    }
-
-    // Sort: pinned first, then by modified date
-    notes.sort((a, b) => {
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      return new Date(b.modified) - new Date(a.modified);
-    });
-
-    container.innerHTML = '';
-    if (!notes.length) {
-      container.innerHTML = '<div class="notes-empty">No notes found.</div>';
-      return;
-    }
-
-    notes.forEach(note => {
-      const card = document.createElement('button');
-      card.className = 'notes-list-item' + (note.id === this._activeNoteId ? ' active' : '');
-      const preview = note.content.slice(0, 80).replace(/\n/g, ' ');
-      const tagPills = note.tags.map(t => {
-        const def = this.TAG_TYPES[t];
-        return def ? `<span class="notes-mini-tag" style="--tag-color:${def.color}">${def.icon}</span>` : '';
-      }).join('');
-
-      card.innerHTML = `
-        <div class="notes-list-item-head">
-          ${note.pinned ? '<span class="notes-pin-icon" title="Pinned">📌</span>' : ''}
-          <span class="notes-list-title">${this._esc(note.title)}</span>
-          <span class="notes-list-tags">${tagPills}</span>
+    overlay.innerHTML = `
+      <div class="nd-box" role="dialog" aria-modal="true">
+        ${title ? `<div class="nd-title">${this._esc(title)}</div>` : ''}
+        ${body  ? `<div class="nd-body">${body}</div>` : ''}
+        ${isPrompt ? `<input id="${inputId}" class="nd-input" type="text" autocomplete="off">` : ''}
+        <div class="nd-footer">
+          ${!isAlert && !isChoice ? `<button class="nd-btn nd-btn-cancel">${this._esc(cancelText)}</button>` : ''}
+          ${isChoice ? `<button class="nd-btn nd-btn-cancel">${this._esc(cancelText)}</button>` : ''}
+          ${isChoice ? choiceBtns : `<button class="nd-btn nd-btn-ok${danger ? ' nd-btn-danger' : ''}">${this._esc(okText)}</button>`}
         </div>
-        <div class="notes-list-preview">${this._esc(preview)}</div>
-        <div class="notes-list-date">${this._relativeDate(note.modified)}</div>
-      `;
-      card.addEventListener('click', () => this.openNote(note.id));
+      </div>`;
 
-      // Drag & drop: make note cards draggable
-      card.draggable = true;
-      card.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData('text/plain', note.id);
-        e.dataTransfer.effectAllowed = 'move';
-        card.classList.add('dragging');
-      });
-      card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    document.body.appendChild(overlay);
+    requestAnimationFrame(() => overlay.classList.add('nd-open'));
 
-      container.appendChild(card);
-    });
+    // Set input default value after insertion
+    if (isPrompt) {
+      const inp = overlay.querySelector('.nd-input');
+      inp.value = defaultValue;
+      inp.focus(); inp.select();
+    } else {
+      overlay.querySelector('.nd-btn-ok, .nd-btn-choice')?.focus();
+    }
+
+    const close = (confirmed, value) => {
+      overlay.classList.remove('nd-open');
+      setTimeout(() => overlay.remove(), 180);
+      overlay.removeEventListener('keydown', onKey);
+      if (confirmed) onOk?.(value);
+      else onCancel?.();
+    };
+
+    overlay.querySelector('.nd-btn-ok')?.addEventListener('click', () =>
+      close(true, isPrompt ? overlay.querySelector('.nd-input').value : undefined));
+    overlay.querySelector('.nd-btn-cancel')?.addEventListener('click', () => close(false));
+    overlay.querySelectorAll('.nd-btn-choice').forEach(btn =>
+      btn.addEventListener('click', () => close(true, choices[+btn.dataset.idx].value)));
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(false); });
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      if (e.key === 'Enter' && !isPrompt && !isChoice) { e.preventDefault(); close(true); }
+      if (e.key === 'Enter' && isPrompt) { e.preventDefault(); close(true, overlay.querySelector('.nd-input').value); }
+    };
+    overlay.addEventListener('keydown', onKey);
   },
+
+  // ---- MULTI-SELECT ----
+  _toggleNoteSelection(noteId) {
+    if (this._selectedNoteIds.has(noteId)) this._selectedNoteIds.delete(noteId);
+    else this._selectedNoteIds.add(noteId);
+    this._updateSelectionUI();
+  },
+
+  _rangeSelectNotes(fromId, toId, notes) {
+    const fromIdx = notes.findIndex(n => n.id === fromId);
+    const toIdx   = notes.findIndex(n => n.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+    const [lo, hi] = fromIdx < toIdx ? [fromIdx, toIdx] : [toIdx, fromIdx];
+    for (let i = lo; i <= hi; i++) this._selectedNoteIds.add(notes[i].id);
+    this._lastClickedId = toId;
+    this._updateSelectionUI();
+  },
+
+  _updateSelectionUI() {
+    document.querySelectorAll('[data-note-id]').forEach(el =>
+      el.classList.toggle('selected', this._selectedNoteIds.has(el.dataset.noteId)));
+    document.querySelectorAll('[data-folder-id]').forEach(el =>
+      el.classList.toggle('selected', this._selectedFolderIds.has(el.dataset.folderId)));
+  },
+
 
   // ---- UTILITIES ----
   _esc(str) {
