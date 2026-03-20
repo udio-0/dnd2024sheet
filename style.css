@@ -4853,6 +4853,13 @@ textarea::placeholder { color: var(--ink-faint); }
 .lu-feature-desc { color: var(--ink-faint); font-size: 0.82rem; margin-top: 2px; }
 .lu-feature-desc p { margin: 0.4em 0; }
 .lu-feature-desc p:first-child { margin-top: 0; }
+.lu-feature-desc--html ul { padding-left: 1.2em; margin: 0.3em 0; }
+.lu-feature-desc--html li { margin: 0.15em 0; }
+.lu-feature-desc--html table.entry-table { border-collapse: collapse; width: 100%; font-size: 0.8rem; margin: 0.4em 0; }
+.lu-feature-desc--html table.entry-table th,
+.lu-feature-desc--html table.entry-table td { border: 1px solid var(--border); padding: 3px 6px; text-align: left; }
+.lu-feature-desc--html table.entry-table thead th { background: var(--bg-alt); font-weight: 600; color: var(--ink); }
+.lu-feature-desc--html strong { color: var(--ink); font-weight: 600; }
 
 /* ASI options */
 .lu-asi-options { display: flex; flex-direction: column; gap: 0.5rem; }
@@ -6459,7 +6466,7 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 .wiz-spell-row input[type="checkbox"] { accent-color: var(--red); margin: 0; }
 .wiz-spell-col-check { display: flex; align-items: center; justify-content: center; }
-.wiz-spell-col-name { font-weight: 600; display: flex; align-items: center; gap: 3px; min-width: 0; }
+.wiz-spell-col-name { font-weight: 600; display: flex; align-items: center; gap: 3px; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .wiz-spell-col-name-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .subclass-spell-warn {
   display: inline-flex; align-items: center; justify-content: center;

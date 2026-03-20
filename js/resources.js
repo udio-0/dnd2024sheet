@@ -50,10 +50,29 @@ window.ClassResources = {
       text: 'You have a pool of healing power that replenishes on a Long Rest. As an action, you can touch a creature and restore Hit Points from this pool, or spend 5 points to cure a disease or neutralize a poison.',
     },
     'Sorcery Points': {
-      text: 'You have a pool of Sorcery Points used to create spell slots, fuel Metamagic options, and power other Sorcerer features.',
+      text: `You can tap into the wellspring of magic within yourself. This wellspring is represented by Sorcery Points, which allow you to create a variety of magical effects. You gain more Sorcery Points as you reach higher levels, as shown in the Sorcerer Features table. You can't have more Sorcery Points than the number shown for your level. You regain all expended Sorcery Points when you finish a Long Rest.
+
+<b>Converting Spell Slots to Sorcery Points.</b> You can expend a spell slot to gain a number of Sorcery Points equal to the slot's level (no action required).
+
+<b>Creating Spell Slots.</b> As a Bonus Action, you can transform unexpended Sorcery Points into one spell slot. You can create a spell slot no higher than level 5. Any spell slot you create with this feature vanishes when you finish a Long Rest.
+
+<table style="width:100%;border-collapse:collapse;font-size:0.82em;margin-top:2px">
+  <thead><tr style="border-bottom:1px solid var(--border)">
+    <th style="text-align:left;padding:3px 8px 3px 0;color:var(--ink-faint)">Spell Slot Level</th>
+    <th style="text-align:center;padding:3px 8px;color:var(--ink-faint)">Sorcery Point Cost</th>
+    <th style="text-align:center;padding:3px 0 3px 8px;color:var(--ink-faint)">Min. Sorcerer Level</th>
+  </tr></thead>
+  <tbody>
+    <tr><td style="padding:2px 8px 2px 0">1st</td><td style="text-align:center;padding:2px 8px">2</td><td style="text-align:center;padding:2px 0 2px 8px">2</td></tr>
+    <tr><td style="padding:2px 8px 2px 0">2nd</td><td style="text-align:center;padding:2px 8px">3</td><td style="text-align:center;padding:2px 0 2px 8px">3</td></tr>
+    <tr><td style="padding:2px 8px 2px 0">3rd</td><td style="text-align:center;padding:2px 8px">5</td><td style="text-align:center;padding:2px 0 2px 8px">5</td></tr>
+    <tr><td style="padding:2px 8px 2px 0">4th</td><td style="text-align:center;padding:2px 8px">6</td><td style="text-align:center;padding:2px 0 2px 8px">7</td></tr>
+    <tr><td style="padding:2px 8px 2px 0">5th</td><td style="text-align:center;padding:2px 8px">7</td><td style="text-align:center;padding:2px 0 2px 8px">9</td></tr>
+  </tbody>
+</table>`,
     },
     'Innate Sorcery': {
-      text: 'As a Bonus Action, you awaken your innate magic for 1 minute. While active, your spell save DC increases by 1 and you have Advantage on attack rolls of Sorcerer spells.',
+      text: 'As a Bonus Action, you unleash your innate magic for 1 minute. While active: your Sorcerer spell save DC increases by 1, and you have Advantage on the attack rolls of Sorcerer spells you cast. You have 2 uses and regain all expended uses on a Long Rest.',
     },
     'Superiority Dice': {
       text: 'You have Superiority Dice (d8s, upgrading to d10s at 10th and d12s at 18th level) used to fuel Battle Master Maneuvers. You add the die roll to the maneuver effect.',
@@ -118,14 +137,31 @@ window.ClassResources = {
     'Psi Boost': {
       text: 'When you take the Dash action, you can increase your Speed by 10 feet until the start of your next turn.',
     },
+    'Healer': {
+      text: 'As an Action, you can spend one use of a Healer\'s Kit to tend to a creature and restore 1d6 + 4 Hit Points to it, plus additional HP equal to the creature\'s maximum number of Hit Dice. The creature can\'t regain HP from this feat again until it finishes a Short or Long Rest.',
+    },
+    'Toughened Flesh': {
+      text: 'When you take damage, you can use your Reaction to harden your body. You gain resistance to that damage, and you can\'t benefit from this again until you finish a Short or Long Rest.',
+    },
+    'Sanguine Feast': {
+      text: 'When you reduce a creature to 0 HP, you can feed on its life force as a Bonus Action. You regain HP equal to your Proficiency Bonus and gain Temporary HP equal to your Proficiency Bonus.',
+    },
     'Fey-Touched: Misty Step': {
       text: 'You can cast Misty Step once without expending a spell slot. You regain the ability after a Long Rest.',
     },
     'Fey-Touched': {
       text: 'You can cast this spell once without expending a spell slot (chosen from Divination or Enchantment when you took the feat). You regain the ability after a Long Rest.',
     },
+    'Shadow-Touched: Invisibility': {
+      text: 'You can cast Invisibility once without expending a spell slot. You regain the ability after a Long Rest.',
+    },
+    'Shadow-Touched': {
+      text: 'You can cast this spell once without expending a spell slot (chosen from Illusion or Necromancy when you took the feat). You regain the ability after a Long Rest.',
+    },
     'Metamagic Sorcery Points': {
-      text: 'You have a pool of Sorcery Points used to fuel Metamagic options. You can spend these points to modify your spells in various ways (e.g. Twinned Spell, Quickened Spell, Subtle Spell).',
+      text: `Granted by the <b>Metamagic Adept</b> feat. You gain 2 Sorcery Points usable only for Metamagic options. These are added to any Sorcery Points you already have from the Sorcerer class.
+
+<b>Spend SP to modify a spell when you cast it</b> (one option per spell unless noted). Chosen options appear in your Sorcery Points tooltip.`,
     },
     'Phantasmal Creatures (Free Cast)': {
       text: 'Once per Long Rest, you can cast Summon Beast or Summon Fey without expending a spell slot. The spell automatically uses an Illusion version of the creature.',
@@ -146,6 +182,39 @@ window.ClassResources = {
     },
     'Psionic Restoration': {
       text: 'You perform a meditation that focuses the mind for 1 minute. At the end of it, you regain all expended Psionic Energy Dice. Once you use this feature, you can\'t do so again until you finish a Long Rest.',
+    },
+    'Favored by the Gods': {
+      text: 'If you fail a saving throw or miss with an attack roll, you can roll 2d4 and add it to the total, possibly changing the outcome. Once you use this feature, you can\'t use it again until you finish a Short or Long Rest.',
+    },
+    'Otherworldly Wings': {
+      text: 'As a Bonus Action, you manifest a pair of spectral wings from your back, gaining a Fly Speed of 30 feet for 1 minute. You can use this feature a number of times equal to your Charisma modifier (minimum 1), and regain all expended uses on a Long Rest.',
+    },
+    'Unearthly Recovery': {
+      text: 'When you are below half your Hit Point maximum, you can use a Bonus Action to regain Hit Points equal to half your Hit Point maximum. Once you use this feature, you can\'t do so again until you finish a Long Rest.',
+    },
+    'Strength of the Grave': {
+      text: 'When damage reduces you to 0 Hit Points, you can make a Charisma saving throw (DC 5 + the damage taken). On a success, you instead drop to 1 Hit Point. Radiant damage and critical hits automatically fail this save. Once you succeed, you can\'t use this feature again until you finish a Long Rest.',
+    },
+    'Ancestral Avatar': {
+      text: 'As an Action, you fully manifest your magical ancestor for 1 minute. During this time your spell save DC increases by 2, your ancestral spirit damage increases to 2d8, and you are immune to the Frightened condition. Once used, you must finish a Long Rest before using it again.',
+    },
+    'Total Defilement': {
+      text: 'Once per Long Rest, you can cast any spell you know at its highest level without expending a spell slot. Doing so permanently defertilizes all land within 100 feet for 1 year.',
+    },
+    'Spellfire Mastery': {
+      text: 'You can absorb spells of 6th level or lower with Spellfire Absorption. Additionally, once per Long Rest when you reduce a creature to 0 Hit Points with radiant damage, you regain all your Hit Points.',
+    },
+    'Bladesong': {
+      text: 'As a Bonus Action, you invoke an elven magic called the Bladesong (provided you aren\'t wearing medium or heavy armor or using a shield). For 1 minute: your AC increases by your Intelligence modifier (minimum +1), your Speed increases by 10 feet, you have Advantage on Acrobatics checks, and you add your Intelligence modifier to Constitution saving throws to maintain Concentration. You can use this feature a number of times equal to your Proficiency Bonus, and regain all expended uses on a Long Rest.',
+    },
+    'Form of Dread': {
+      text: 'As a Bonus Action, you transform for 1 minute. While transformed: you gain Temporary Hit Points equal to 1d10 + your Warlock level; once per turn when you hit a creature with an attack roll you can force it to make a Wisdom saving throw or become Frightened of you until the end of your next turn; and you are immune to the Frightened condition. You can use this feature a number of times equal to your Proficiency Bonus, and regain all uses on a Long Rest.',
+    },
+    'Spirit Projection': {
+      text: 'As an Action, your spirit leaves your body. Your body is Incapacitated and stays in place. Your spirit can move up to twice your Speed per turn, can pass through creatures (but not objects), and can cast spells as if in its space. When you move within 5 feet of a creature, you can make an attack roll dealing 8d8 + your spellcasting modifier as Necrotic damage. Once used, you must finish a Long Rest before using it again.',
+    },
+    "Avatar's Touch": {
+      text: 'Once per Short Rest, when you deal Sneak Attack damage, you can choose to trigger the effects of all three Dead Three blessings simultaneously (Bane\'s Grasp, Bhaal\'s Mark, and Myrkul\'s Touch).',
     },
   },
 
@@ -260,7 +329,7 @@ window.ClassResources = {
     ],
     Sorcerer: [
       { name: 'Sorcery Points', maxAt: 'LEVEL', refresh: 'lr', startLevel: 2 },
-      { name: 'Innate Sorcery', maxAt: [{ level: 2, max: 1 }], refresh: 'lr', startLevel: 2 },
+      { name: 'Innate Sorcery', maxAt: [{ level: 1, max: 2 }], refresh: 'lr', startLevel: 1 },
     ],
     Warlock: [
       // Warlock spell slots refresh on SR — handled specially in combat.js
@@ -305,6 +374,24 @@ window.ClassResources = {
       { name: 'Tides of Chaos', maxAt: [{ level: 1, max: 1 }], refresh: 'lr', startLevel: 1 },
     ],
     'Sorcerer:Draconic Bloodline': [],
+    'Sorcerer:Divine Soul': [
+      { name: 'Favored by the Gods', maxAt: [{ level: 3, max: 1 }], refresh: 'sr', startLevel: 3 },
+      { name: 'Otherworldly Wings', maxAt: [{ level: 14, max: 1 }], refresh: 'lr', startLevel: 14,
+        notes: 'Uses per Long Rest = your Charisma modifier (minimum 1). Update this max to match your CHA modifier.' },
+      { name: 'Unearthly Recovery', maxAt: [{ level: 18, max: 1 }], refresh: 'lr', startLevel: 18 },
+    ],
+    'Sorcerer:Shadow Magic': [
+      { name: 'Strength of the Grave', maxAt: [{ level: 3, max: 1 }], refresh: 'lr', startLevel: 3 },
+    ],
+    'Sorcerer:Ancestral Sorcery': [
+      { name: 'Ancestral Avatar', maxAt: [{ level: 18, max: 1 }], refresh: 'lr', startLevel: 18 },
+    ],
+    'Sorcerer:Defiled Sorcerer': [
+      { name: 'Total Defilement', maxAt: [{ level: 18, max: 1 }], refresh: 'lr', startLevel: 18 },
+    ],
+    'Sorcerer:Spellfire Sorcerer': [
+      { name: 'Spellfire Mastery', maxAt: [{ level: 18, max: 1 }], refresh: 'lr', startLevel: 18 },
+    ],
     'Warlock:The Fiend': [],
     'Warlock:The Archfey': [],
     'Wizard:School of Evocation': [],
@@ -325,6 +412,16 @@ window.ClassResources = {
     ],
     'Paladin:Oath of Devotion': [],
     'Paladin:Oath of the Ancients': [],
+    'Wizard:Bladesinging': [
+      { name: 'Bladesong', maxAt: 'PB', refresh: 'lr', startLevel: 3 },
+    ],
+    'Warlock:The Undead': [
+      { name: 'Form of Dread', maxAt: 'PB', refresh: 'lr', startLevel: 3 },
+      { name: 'Spirit Projection', maxAt: [{ level: 14, max: 1 }], refresh: 'lr', startLevel: 14 },
+    ],
+    'Rogue:Scion of the Three': [
+      { name: "Avatar's Touch", maxAt: [{ level: 13, max: 1 }], refresh: 'sr', startLevel: 13 },
+    ],
     'Wizard:Illusionist': [
       { name: 'Phantasmal Creatures (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
       { name: 'Illusory Self', maxAt: [{ level: 10, max: 1 }], refresh: 'sr', startLevel: 10 },
@@ -405,6 +502,13 @@ window.ClassResources = {
     'Fey-Touched': [
       { name: 'Fey-Touched: Misty Step', maxAt: [{ level: 1, max: 1 }], refresh: 'lr' },
       { name: 'Fey-Touched: Bonus Spell', maxAt: [{ level: 1, max: 1 }], refresh: 'lr' },
+    ],
+    'Shadow-Touched': [
+      { name: 'Shadow-Touched: Invisibility', maxAt: [{ level: 1, max: 1 }], refresh: 'lr' },
+      { name: 'Shadow-Touched: Bonus Spell', maxAt: [{ level: 1, max: 1 }], refresh: 'lr' },
+    ],
+    'Metamagic Adept': [
+      { name: 'Metamagic Sorcery Points', maxAt: [{ level: 1, max: 2 }], refresh: 'lr' },
     ],
     'Bloodlust': [
       { name: 'Sanguine Feast', maxAt: 'PB', refresh: 'lr' },
@@ -807,6 +911,11 @@ window.ClassResources = {
     (draft.feats || []).forEach(f => {
       const featRes = this.getFeatResources(f);
       featRes.forEach(r => {
+        // Metamagic Adept grants extra Sorcery Points — for Sorcerers, add to their existing pool
+        if (r.name === 'Metamagic Sorcery Points' && className === 'Sorcerer') {
+          const sp = draft.resources.find(x => x.name === 'Sorcery Points');
+          if (sp) { sp.max += r.max; return; }
+        }
         if (!draft.resources.some(x => x.name === r.name)) draft.resources.push(r);
       });
     });
@@ -835,7 +944,18 @@ window.ClassResources = {
     const targetSpecRes = speciesName ? this.getSpeciesResources(speciesName, newLevel, subraceName) : [];
     const feats = CharStore.lv('feats', []) || [];
     const targetFeatRes = feats.flatMap(f => this.getFeatResources(f, newLevel));
-    const allTarget = [...targetClassRes, ...targetSubRes, ...targetSpecRes, ...targetFeatRes];
+
+    // Metamagic Adept grants extra Sorcery Points — for Sorcerers, merge into their pool
+    const mergedFeatRes = [];
+    for (const r of targetFeatRes) {
+      if (r.name === 'Metamagic Sorcery Points' && className === 'Sorcerer') {
+        const sp = targetClassRes.find(x => x.name === 'Sorcery Points');
+        if (sp) { sp.max += r.max; continue; }
+      }
+      mergedFeatRes.push(r);
+    }
+
+    const allTarget = [...targetClassRes, ...targetSubRes, ...targetSpecRes, ...mergedFeatRes];
 
     // Update existing or add new
     for (const target of allTarget) {

@@ -370,6 +370,17 @@ window.LevelUp = {
   },
 
   /**
+   * Returns the effective subclass for the given level: checks pending picks at or below
+   * `level`, then falls back to the stored charSubclass. Returns '' if none chosen yet.
+   */
+  _getEffectiveSubclass(level) {
+    for (const [lvl, p] of Object.entries(this._pending)) {
+      if (parseInt(lvl) <= level && p.subclass) return p.subclass;
+    }
+    return Sheet.lv('charSubclass', '') || '';
+  },
+
+  /**
    * Build a map of spellName (lowercase) → [{subclass, grantLevel}] for all subclasses
    * of the given class that grant that spell via SUBCLASS_GRANTS.
    */
@@ -393,19 +404,18 @@ window.LevelUp = {
 
   /**
    * Return a warning badge HTML string if `spellName` overlaps with any subclass grant.
-   * `currentSubclass` (if set) is sorted first and uses a stronger warning style.
+   * If `currentSubclass` is set (i.e. one has already been chosen), only show warnings
+   * for that subclass — never for subclasses the character won't have.
+   * If no subclass is chosen yet, show all overlapping subclasses as a heads-up.
    */
   _subclassWarnBadge(overlapMap, spellName, currentSubclass) {
-    const matches = overlapMap.get((spellName || '').toLowerCase());
-    if (!matches?.length) return '';
-    const sorted = [...matches].sort((a, b) => {
-      if (currentSubclass && a.subclass === currentSubclass) return -1;
-      if (currentSubclass && b.subclass === currentSubclass) return 1;
-      return a.grantLevel - b.grantLevel;
-    });
-    const isCurrent = currentSubclass && sorted.some(m => m.subclass === currentSubclass);
+    const all = overlapMap.get((spellName || '').toLowerCase());
+    if (!all?.length) return '';
+    const matches = currentSubclass ? all.filter(m => m.subclass === currentSubclass) : all;
+    if (!matches.length) return '';
+    const sorted = [...matches].sort((a, b) => a.grantLevel - b.grantLevel);
     const label = sorted.map(m => `${m.subclass} (lv. ${m.grantLevel})`).join(', ');
-    const cls = 'subclass-spell-warn' + (isCurrent ? ' subclass-spell-warn--current' : '');
+    const cls = 'subclass-spell-warn' + (currentSubclass ? ' subclass-spell-warn--current' : '');
     return `<span class="${cls}" data-warn-label="Always prepared for free from: ${label}">⚠</span>`;
   },
 
@@ -535,7 +545,11 @@ window.LevelUp = {
       console.warn(`[LevelUp] No subclass features matched for "${subclassName}" (shortName="${shortName}") at level ${level}. unique shortNames:`, [...new Set(details.subclassFeatures.map(f => f.subclassShortName))]);
     }
 
-    return results.map(f => ({ name: f.name, text: typeof entriesToText === 'function' ? entriesToText(f.entries) : '' }));
+    return results.map(f => ({
+      name: f.name,
+      text: typeof entriesToHtml === 'function' ? entriesToHtml(f.entries) : (typeof entriesToText === 'function' ? entriesToText(f.entries) : ''),
+      _isHtml: typeof entriesToHtml === 'function',
+    }));
   },
 
   // Get all subclass features at a level (tries UA then standard)
@@ -706,11 +720,14 @@ window.LevelUp = {
     const _hl = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
 
     if (filteredClassFeatures.length) {
-      const featureHtml = filteredClassFeatures.map(f => `
+      const featureHtml = filteredClassFeatures.map(f => {
+        const body = f.html || f.text || '';
+        return `
         <li>
           <div class="lu-feature-name">${f.name}</div>
-          ${f.text ? `<div class="lu-feature-desc">${_hl(f.text)}</div>` : ''}
-        </li>`).join('');
+          ${body ? `<div class="lu-feature-desc lu-feature-desc--html">${body}</div>` : ''}
+        </li>`;
+      }).join('');
       html += `
         <div class="lu-section">
           <ul class="lu-features-list">${featureHtml}</ul>
@@ -719,11 +736,14 @@ window.LevelUp = {
 
     // Subclass features at this level
     if (subclassFeatures.length) {
-      const scFeatHtml = subclassFeatures.map(f => `
+      const scFeatHtml = subclassFeatures.map(f => {
+        const body = f._isHtml ? f.text : (f.html || f.text || '');
+        return `
         <li>
           <div class="lu-feature-name">${f.name}</div>
-          ${f.text ? `<div class="lu-feature-desc">${_hl(f.text)}</div>` : ''}
-        </li>`).join('');
+          ${body ? `<div class="lu-feature-desc lu-feature-desc--html">${body}</div>` : ''}
+        </li>`;
+      }).join('');
       html += `
         <div class="lu-section lu-subclass-features-section" id="lu-sc-feat-section-${level}">
           <div class="lu-section-title">${existingSubclass} Features</div>
@@ -956,8 +976,82 @@ window.LevelUp = {
         </div>`;
     }
 
-    // Prepared spells: learn new spells + optional swap (Bard, Ranger, etc.)
-    const prepProg = classInfo?.preparedSpellsProgression;
+    // Cantrip swap (optional — Sorcerer, Bard, Warlock, Wizard, Psion)
+    if (classInfo?.cantripSwapAllowed && level > 1) {
+      this._pending[level].cantripSwapOut = null;
+      this._pending[level].cantripSwapIn  = null;
+      html += `
+        <div class="lu-section" id="lu-cantrip-swap-section-${level}">
+          <div class="lu-section-title">Cantrip Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            You may replace one of your ${className} cantrips with a different ${className} cantrip.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <label style="font-size:0.85rem;">Replace:</label>
+            <select id="lu-cantrip-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
+              <option value="">— none —</option>
+            </select>
+          </div>
+          <div id="lu-cantrip-swap-in-section-${level}" style="display:none;margin-top:4px;">
+            <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:4px;">Choose a replacement cantrip:</div>
+            <input type="text" class="lu-cantrip-search wiz-search wiz-search-sm" id="lu-cantrip-swap-search-${level}" placeholder="Search cantrips..." autocomplete="off" style="margin-bottom:6px">
+            <div class="lu-cantrip-list" id="lu-cantrip-swap-list-${level}" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+            <div id="lu-cantrip-swap-chosen-${level}" style="font-size:0.85rem;margin-top:4px;color:var(--ink-faint);">No replacement selected.</div>
+          </div>
+        </div>`;
+    }
+
+    // Metamagic (Sorcerer) — gain at levels 2/10/17; replace 1 every level from 2+
+    const MM_TOTALS = { 2: 2, 10: 4, 17: 6 };
+    const mmGain = (className === 'Sorcerer' && MM_TOTALS[level] != null)
+      ? MM_TOTALS[level] - (MM_TOTALS[level - 1] ?? (level > 2 ? 2 : 0))
+      : 0;
+    const mmGainFixed = (className === 'Sorcerer' && level === 2) ? 2
+      : (className === 'Sorcerer' && (level === 10 || level === 17)) ? 2 : 0;
+    const mmSwapAllowed = className === 'Sorcerer' && level >= 2;
+    if (mmGainFixed > 0 || mmSwapAllowed) {
+      this._pending[level].newMetamagic = [];
+      this._pending[level].mmSwapOut = null;
+      this._pending[level].mmSwapIn  = null;
+      const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+      const allMMHtml = mmOptions.map(o => `<option value="${o.name}">${o.name} (${o.cost} SP)</option>`).join('');
+      if (mmGainFixed > 0) {
+        html += `
+        <div class="lu-section" id="lu-metamagic-section-${level}">
+          <div class="lu-section-title">Metamagic — Choose ${mmGainFixed}</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            Choose ${mmGainFixed} Metamagic option${mmGainFixed > 1 ? 's' : ''} from the list below.
+          </div>
+          <div id="lu-mm-pick-list-${level}"></div>
+          <div class="lu-points-left" id="lu-mm-msg-${level}">Select ${mmGainFixed} option${mmGainFixed > 1 ? 's' : ''} (<span id="lu-mm-left-${level}">${mmGainFixed}</span> remaining)</div>
+        </div>`;
+      }
+      if (mmSwapAllowed) {
+        html += `
+        <div class="lu-section" id="lu-mm-swap-section-${level}">
+          <div class="lu-section-title">Metamagic Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            You may replace one known Metamagic option with a different one.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <label style="font-size:0.85rem;">Replace:</label>
+            <select id="lu-mm-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:160px;">
+              <option value="">— none —</option>
+            </select>
+          </div>
+          <div id="lu-mm-swap-in-section-${level}" style="display:none;margin-top:4px;">
+            <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:4px;">Choose a replacement:</div>
+            <div id="lu-mm-swap-in-list-${level}"></div>
+            <div id="lu-mm-swap-chosen-${level}" style="font-size:0.85rem;margin-top:4px;color:var(--ink-faint);">No replacement selected.</div>
+          </div>
+        </div>`;
+      }
+    }
+
+    // Prepared/known spells: learn new spells + optional swap (Bard, Ranger, Sorcerer, Warlock, etc.)
+    // Prefer preparedSpellsProgression; fall back to spellsKnownProgression (Sorcerer, Warlock)
+    const prepProg = classInfo?.preparedSpellsProgression || classInfo?.spellsKnownProgression;
+    const isKnownSpellsCaster = !classInfo?.preparedSpellsProgression && !!classInfo?.spellsKnownProgression;
     const prevPrepMax = prepProg ? (prepProg[level - 2] ?? 0) : 0;
     const newPrepMax = prepProg ? (prepProg[level - 1] ?? 0) : 0;
     const prepGain = level > 1 ? Math.max(0, newPrepMax - prevPrepMax) : 0;
@@ -972,11 +1066,13 @@ window.LevelUp = {
         return `<button class="lu-spell-tab${sl === 1 ? ' active' : ''}" data-splvl="${sl}">${sl === 1 ? '1st' : sl === 2 ? '2nd' : sl === 3 ? '3rd' : sl + 'th'}</button>`;
       }).join('');
       if (prepGain > 0) {
+        const _spellSectionTitle = isKnownSpellsCaster ? `Known Spells (${prevPrepMax} → ${newPrepMax})` : `Prepared Spells (${prevPrepMax} → ${newPrepMax})`;
+        const _spellSectionVerb = isKnownSpellsCaster ? 'learn' : 'prepare';
         html += `
         <div class="lu-section" id="lu-prepared-section-${level}">
-          <div class="lu-section-title">Prepared Spells (${prevPrepMax} → ${newPrepMax})</div>
+          <div class="lu-section-title">${_spellSectionTitle}</div>
           <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
-            Choose ${prepGain} new ${className} spell${prepGain > 1 ? 's' : ''} to prepare (up to level ${maxSpellLevel}).
+            Choose ${prepGain} new ${className} spell${prepGain > 1 ? 's' : ''} to ${_spellSectionVerb} (up to level ${maxSpellLevel}).
           </div>
           <div class="lu-spell-tabs" id="lu-prep-tabs-${level}">${tabsHtml}</div>
           <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-prep-search-${level}" placeholder="Search spells..." autocomplete="off" style="margin-bottom:6px">
@@ -984,21 +1080,25 @@ window.LevelUp = {
           <div class="lu-points-left" id="lu-prep-msg-${level}">Select ${prepGain} spell${prepGain > 1 ? 's' : ''} (<span id="lu-prep-left-${level}">${prepGain}</span> remaining)</div>
         </div>`;
       }
+      const _swapTitle = isKnownSpellsCaster ? 'Known Spell Swap' : 'Spell Swap';
       html += `
         <div class="lu-section" id="lu-swap-section-${level}">
-          <div class="lu-section-title">Spell Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
+          <div class="lu-section-title">${_swapTitle} <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
           <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
-            You may exchange one prepared spell for a different ${className} spell.
+            You may exchange one ${isKnownSpellsCaster ? 'known' : ''} spell for a different ${className} spell.
           </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
             <label style="font-size:0.85rem;">Replace:</label>
             <select id="lu-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
               <option value="">— none —</option>
             </select>
-            <label style="font-size:0.85rem;">With:</label>
-            <select id="lu-swap-in-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
-              <option value="">— none —</option>
-            </select>
+          </div>
+          <div id="lu-swap-in-section-${level}" style="display:none;margin-top:4px;">
+            <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:4px;">Choose a replacement spell:</div>
+            <div class="lu-spell-tabs" id="lu-swap-tabs-${level}"></div>
+            <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-swap-search-${level}" placeholder="Search spells..." autocomplete="off" style="margin-bottom:6px">
+            <div class="lu-spellbook-list" id="lu-swap-list-${level}" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+            <div id="lu-swap-chosen-${level}" style="font-size:0.85rem;margin-top:4px;color:var(--ink-faint);">No replacement selected.</div>
           </div>
         </div>`;
     }
@@ -1035,6 +1135,14 @@ window.LevelUp = {
     if (cantripGain > 0 && level > 1) {
       this._bindCantripGainForLevel(sectionEl, level, className, cantripGain);
     }
+    // Bind cantrip swap (optional)
+    if (classInfo?.cantripSwapAllowed && level > 1) {
+      this._bindCantripSwapForLevel(sectionEl, level, className);
+    }
+    // Bind Metamagic picks + swap
+    if (className === 'Sorcerer' && level >= 2) {
+      this._bindMetamagicForLevel(sectionEl, level);
+    }
     // Inject subclass spell picks (e.g. Illusion Savant) and conditional cantrip grants
     this._injectSubclassSpellPicksSections(sectionEl, level, className, existingSubclass);
   },
@@ -1064,11 +1172,11 @@ window.LevelUp = {
 
     const currentSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
     const _scOverlapMap1 = this._getSubclassOverlapMap(className);
-    const _curSc1 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
       const q = (filter || '').toLowerCase();
+      const _curSc1 = this._getEffectiveSubclass(level);
       const filtered = eligible.filter(s =>
         s.level === activeTabLevel && (!q || s.name.toLowerCase().includes(q))
       );
@@ -1079,10 +1187,10 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
-        const warnBadge1 = this._subclassWarnBadge(_scOverlapMap1, spell.name, _curSc1);
+        const warnBadge1 = alreadyKnown ? '' : this._subclassWarnBadge(_scOverlapMap1, spell.name, _curSc1);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge1}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge1}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -1192,11 +1300,11 @@ window.LevelUp = {
       return set;
     };
     const _scOverlapMap2 = this._getSubclassOverlapMap(className);
-    const _curSc2 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
       const q = (filter || '').toLowerCase();
+      const _curSc2 = this._getEffectiveSubclass(level);
       const otherPending = _otherPendingSpells();
       const currentSpells = getCurrentSpells();
       const filtered = eligible.filter(s =>
@@ -1209,10 +1317,10 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + ((atMax || alreadyKnown) && !isSelected ? ' disabled' : '');
         if ((atMax || alreadyKnown) && !isSelected) row.style.opacity = '0.45';
-        const warnBadge2 = this._subclassWarnBadge(_scOverlapMap2, spell.name, _curSc2);
+        const warnBadge2 = alreadyKnown ? '' : this._subclassWarnBadge(_scOverlapMap2, spell.name, _curSc2);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${(atMax || alreadyKnown) && !isSelected ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge2}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge2}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -1252,37 +1360,98 @@ window.LevelUp = {
     renderList('');
     searchEl?.addEventListener('input', () => renderList(searchEl.value));
 
-    // Spell swap dropdowns
+    // Spell swap
     const swapOutEl = document.getElementById(`lu-swap-out-${level}`);
-    const swapInEl = document.getElementById(`lu-swap-in-${level}`);
-    if (swapOutEl && swapInEl) {
-      // Populate swap-out with current prepared spells (level 1+, not always-prepared)
-      const currentPrepared = (Sheet.lv('charSpells', []) || []).filter(s => s.level > 0 && s.prepared && !s.alwaysPrepared && !s.racial);
-      currentPrepared.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
+    const swapInSection = document.getElementById(`lu-swap-in-section-${level}`);
+    const swapTabsEl = document.getElementById(`lu-swap-tabs-${level}`);
+    const swapSearchEl = document.getElementById(`lu-swap-search-${level}`);
+    const swapListEl = document.getElementById(`lu-swap-list-${level}`);
+    const swapChosenEl = document.getElementById(`lu-swap-chosen-${level}`);
+    if (swapOutEl && swapInSection) {
+      // Populate swap-out: all class-learned spells (level 1+) excluding always-prepared,
+      // racial, feat-sourced, and class-auto-granted spells — prepared flag is irrelevant
+      const swappableSpells = (Sheet.lv('charSpells', []) || []).filter(s =>
+        s.level > 0 && !s.alwaysPrepared && !s.racial && !s.featSource && !s.classGranted && !s.subclass
+      );
+      swappableSpells.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
         swapOutEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
       });
 
-      const populateSwapIn = () => {
+      let swapActiveTab = 1;
+
+      const renderSwapList = (filter) => {
+        if (!swapListEl) return;
+        swapListEl.innerHTML = '';
         const outName = swapOutEl.value;
-        swapInEl.innerHTML = '<option value="">— none —</option>';
-        if (!outName) { this._pending[level].swapIn = null; this._pending[level].swapOut = null; return; }
-        const outSpell = currentPrepared.find(s => s.name === outName);
-        const outLevel = outSpell?.level || 1;
-        // Can swap for any eligible spell of same level or lower that isn't already known
-        eligible.filter(s => s.level <= maxSpellLevel && !currentSpells.has(s.name.toLowerCase()))
-          .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name))
-          .forEach(s => {
-            swapInEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
+        if (!outName) return;
+        const knownSpells = new Set(getCurrentSpells());
+        const q = (filter || '').toLowerCase();
+        const _curScSwap = this._getEffectiveSubclass(level);
+        eligible
+          .filter(s => s.level === swapActiveTab && (!q || s.name.toLowerCase().includes(q)))
+          .forEach(spell => {
+            const alreadyKnown = knownSpells.has(spell.name.toLowerCase());
+            const isSelected = this._pending[level].swapIn === spell.name;
+            const row = document.createElement('label');
+            row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (alreadyKnown ? ' disabled' : '');
+            if (alreadyKnown) row.style.opacity = '0.45';
+            const wb = alreadyKnown ? '' : this._subclassWarnBadge(_scOverlapMap2, spell.name, _curScSwap);
+            row.innerHTML = `
+              <span class="wiz-spell-col-check"><input type="radio" name="lu-swap-in-radio-${level}" ${isSelected ? 'checked' : ''} ${alreadyKnown ? 'disabled' : ''}></span>
+              <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${wb}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+              <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+              <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+              <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+              <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+              <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+            _luAttachSpellTooltip(row, spell);
+            _attachSubclassWarnTooltip(row);
+            if (!alreadyKnown) {
+              row.addEventListener('click', () => {
+                this._pending[level].swapIn = spell.name;
+                if (swapChosenEl) swapChosenEl.innerHTML = `Replacing <strong>${outName}</strong> with <strong>${spell.name}</strong>`;
+                renderSwapList(swapSearchEl?.value || '');
+              });
+            }
+            swapListEl.appendChild(row);
           });
       };
 
-      swapOutEl.addEventListener('change', () => {
-        this._pending[level].swapOut = swapOutEl.value || null;
-        populateSwapIn();
-      });
-      swapInEl.addEventListener('change', () => {
-        this._pending[level].swapIn = swapInEl.value || null;
-      });
+      const showSwapInSection = () => {
+        const outName = swapOutEl.value;
+        if (!outName) {
+          swapInSection.style.display = 'none';
+          this._pending[level].swapOut = null;
+          this._pending[level].swapIn = null;
+          return;
+        }
+        this._pending[level].swapOut = outName;
+        this._pending[level].swapIn = null;
+        if (swapChosenEl) swapChosenEl.innerHTML = 'No replacement selected.';
+        swapInSection.style.display = '';
+        // Build tabs based on eligible spell levels
+        const levelSet = [...new Set(eligible.map(s => s.level))].sort((a, b) => a - b);
+        swapActiveTab = levelSet[0] || 1;
+        if (swapTabsEl) {
+          swapTabsEl.innerHTML = levelSet.map(sl => {
+            const lbl = sl === 1 ? '1st' : sl === 2 ? '2nd' : sl === 3 ? '3rd' : sl + 'th';
+            return `<button class="lu-spell-tab${sl === swapActiveTab ? ' active' : ''}" data-splvl="${sl}">${lbl}</button>`;
+          }).join('');
+          swapTabsEl.querySelectorAll('.lu-spell-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+              swapActiveTab = parseInt(tab.dataset.splvl);
+              swapTabsEl.querySelectorAll('.lu-spell-tab').forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+              if (swapSearchEl) swapSearchEl.value = '';
+              renderSwapList('');
+            });
+          });
+        }
+        renderSwapList('');
+      };
+
+      swapOutEl.addEventListener('change', showSwapInSection);
+      swapSearchEl?.addEventListener('input', () => renderSwapList(swapSearchEl.value));
     }
   },
 
@@ -1332,11 +1501,11 @@ window.LevelUp = {
       return set;
     };
     const _scOverlapMap3 = this._getSubclassOverlapMap(className);
-    const _curSc3 = Sheet.lv('charSubclass', '') || '';
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
       const q = (filter || '').toLowerCase();
+      const _curSc3 = this._getEffectiveSubclass(level);
       const otherPending = _otherPendingCantrips();
       const filtered = cantrips.filter(s => !q || s.name.toLowerCase().includes(q));
       filtered.forEach(spell => {
@@ -1346,10 +1515,10 @@ window.LevelUp = {
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
-        const warnBadge3 = this._subclassWarnBadge(_scOverlapMap3, spell.name, _curSc3);
+        const warnBadge3 = alreadyKnown ? '' : this._subclassWarnBadge(_scOverlapMap3, spell.name, _curSc3);
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge3}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${warnBadge3}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -1376,6 +1545,185 @@ window.LevelUp = {
     this._cantripRenderers.push(() => renderList(searchEl?.value || ''));
     renderList('');
     searchEl?.addEventListener('input', () => renderList(searchEl.value));
+  },
+
+  // ---- Cantrip swap (optional replace on level-up) ----
+  _bindCantripSwapForLevel(_sectionEl, level, className) {
+    const swapOutEl = document.getElementById(`lu-cantrip-swap-out-${level}`);
+    const swapInSec = document.getElementById(`lu-cantrip-swap-in-section-${level}`);
+    const swapListEl = document.getElementById(`lu-cantrip-swap-list-${level}`);
+    const swapSearchEl = document.getElementById(`lu-cantrip-swap-search-${level}`);
+    const swapChosenEl = document.getElementById(`lu-cantrip-swap-chosen-${level}`);
+    if (!swapOutEl) return;
+
+    // Populate "replace" dropdown with current class cantrips (non-racial, non-subclass)
+    const currentSpells = Sheet.lv('charSpells', []) || [];
+    const knownCantrips = currentSpells.filter(s => s.level === 0 && !s.racial && !s.subclass);
+    knownCantrips.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.name;
+      opt.textContent = s.name;
+      swapOutEl.appendChild(opt);
+    });
+
+    // Full cantrip pool for this class
+    const allSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass(className) : [];
+    const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+    const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+    const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+    const cantripPool = allSpells.filter(s => {
+      if (s.level !== 0) return false;
+      if (s.source === 'UA2024') return ua && show24;
+      if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+      return show14;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
+    const renderSwapList = (filter) => {
+      if (!swapListEl) return;
+      swapListEl.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const excluded = new Set(knownCantrips.map(s => s.name.toLowerCase()));
+      const swappingOut = this._pending[level].cantripSwapOut?.toLowerCase();
+      if (swappingOut) excluded.delete(swappingOut); // allow picking same name back (edge case)
+      cantripPool
+        .filter(s => (!q || s.name.toLowerCase().includes(q)) && !excluded.has(s.name.toLowerCase()))
+        .forEach(spell => {
+          const isSelected = this._pending[level].cantripSwapIn === spell.name;
+          const row = document.createElement('label');
+          row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '');
+          row.innerHTML = `
+            <span class="wiz-spell-col-check"><input type="radio" name="cantrip-swap-in-${level}" ${isSelected ? 'checked' : ''}></span>
+            <span class="wiz-spell-col-name">${spell.name}</span>
+            <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+            <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+            <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>`;
+          _luAttachSpellTooltip(row, spell);
+          row.querySelector('input').addEventListener('change', () => {
+            this._pending[level].cantripSwapIn = spell.name;
+            if (swapChosenEl) swapChosenEl.textContent = `Replacement: ${spell.name}`;
+            renderSwapList(swapSearchEl?.value || '');
+          });
+          swapListEl.appendChild(row);
+        });
+    };
+
+    swapOutEl.addEventListener('change', () => {
+      const val = swapOutEl.value;
+      this._pending[level].cantripSwapOut = val || null;
+      this._pending[level].cantripSwapIn = null;
+      if (swapInSec) swapInSec.style.display = val ? '' : 'none';
+      if (swapChosenEl) swapChosenEl.textContent = 'No replacement selected.';
+      renderSwapList('');
+    });
+    swapSearchEl?.addEventListener('input', () => renderSwapList(swapSearchEl.value));
+  },
+
+  // ---- Metamagic picks + swap (Sorcerer) ----
+  _bindMetamagicForLevel(_sectionEl, level) {
+    const MM_GAIN = { 2: 2, 10: 2, 17: 2 };
+    const gain = MM_GAIN[level] || 0;
+    const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+
+    // Known metamagic so far (from charMetamagic)
+    const _knownMM = () => new Set([
+      ...(CharStore.lv('charMetamagic', []) || []),
+      ...((this._pending[level].newMetamagic) || []),
+    ]);
+
+    // --- Gain section ---
+    const pickListEl = document.getElementById(`lu-mm-pick-list-${level}`);
+    if (gain > 0 && pickListEl) {
+      const renderPickList = () => {
+        pickListEl.innerHTML = '';
+        const known = _knownMM();
+        mmOptions.forEach(opt => {
+          const isChosen = (this._pending[level].newMetamagic || []).includes(opt.name);
+          const alreadyKnown = known.has(opt.name) && !isChosen;
+          const atMax = !isChosen && (this._pending[level].newMetamagic || []).length >= gain;
+          const row = document.createElement('div');
+          row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:4px 6px;border-radius:4px;cursor:pointer;' + (isChosen ? 'background:var(--accent-faint,rgba(139,90,43,0.12))' : '');
+          if (alreadyKnown || atMax) row.style.opacity = '0.45';
+          row.innerHTML = `
+            <input type="checkbox" ${isChosen ? 'checked' : ''} ${alreadyKnown || atMax ? 'disabled' : ''} style="margin-top:3px;flex-shrink:0">
+            <div>
+              <div style="font-weight:600;font-size:0.85rem">${opt.name} <span style="font-weight:400;color:var(--ink-faint)">(${opt.cost} SP)</span></div>
+              <div style="font-size:0.78rem;color:var(--ink-light)">${opt.text}</div>
+            </div>`;
+          const cb = row.querySelector('input');
+          cb.addEventListener('change', () => {
+            if (!this._pending[level].newMetamagic) this._pending[level].newMetamagic = [];
+            if (cb.checked) {
+              if (this._pending[level].newMetamagic.length >= gain) { cb.checked = false; return; }
+              this._pending[level].newMetamagic.push(opt.name);
+            } else {
+              this._pending[level].newMetamagic = this._pending[level].newMetamagic.filter(n => n !== opt.name);
+            }
+            const leftEl = document.getElementById(`lu-mm-left-${level}`);
+            if (leftEl) leftEl.textContent = gain - (this._pending[level].newMetamagic || []).length;
+            renderPickList();
+            _refreshSwapLists();
+          });
+          pickListEl.appendChild(row);
+        });
+      };
+      renderPickList();
+    }
+
+    // --- Swap section ---
+    const swapOutEl = document.getElementById(`lu-mm-swap-out-${level}`);
+    const swapInSec = document.getElementById(`lu-mm-swap-in-section-${level}`);
+    const swapInList = document.getElementById(`lu-mm-swap-in-list-${level}`);
+    const swapChosenEl = document.getElementById(`lu-mm-swap-chosen-${level}`);
+
+    const _refreshSwapLists = () => {
+      if (!swapOutEl) return;
+      const known = CharStore.lv('charMetamagic', []) || [];
+      // Rebuild out dropdown
+      const curOut = swapOutEl.value;
+      swapOutEl.innerHTML = '<option value="">— none —</option>';
+      known.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name; opt.textContent = name;
+        if (name === curOut) opt.selected = true;
+        swapOutEl.appendChild(opt);
+      });
+      // Rebuild in list
+      if (swapInList && this._pending[level].mmSwapOut) {
+        const pending = new Set(this._pending[level].newMetamagic || []);
+        const knownSet = new Set(known);
+        swapInList.innerHTML = '';
+        mmOptions
+          .filter(o => !knownSet.has(o.name) && !pending.has(o.name))
+          .forEach(opt => {
+            const isSelected = this._pending[level].mmSwapIn === opt.name;
+            const row = document.createElement('div');
+            row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:4px 6px;border-radius:4px;cursor:pointer;' + (isSelected ? 'background:var(--accent-faint,rgba(139,90,43,0.12))' : '');
+            row.innerHTML = `
+              <input type="radio" name="mm-swap-in-${level}" ${isSelected ? 'checked' : ''} style="margin-top:3px;flex-shrink:0">
+              <div>
+                <div style="font-weight:600;font-size:0.85rem">${opt.name} <span style="font-weight:400;color:var(--ink-faint)">(${opt.cost} SP)</span></div>
+                <div style="font-size:0.78rem;color:var(--ink-light)">${opt.text}</div>
+              </div>`;
+            row.querySelector('input').addEventListener('change', () => {
+              this._pending[level].mmSwapIn = opt.name;
+              if (swapChosenEl) swapChosenEl.textContent = `Replacement: ${opt.name}`;
+              _refreshSwapLists();
+            });
+            swapInList.appendChild(row);
+          });
+      }
+    };
+
+    if (swapOutEl) {
+      _refreshSwapLists();
+      swapOutEl.addEventListener('change', () => {
+        this._pending[level].mmSwapOut = swapOutEl.value || null;
+        this._pending[level].mmSwapIn = null;
+        if (swapInSec) swapInSec.style.display = swapOutEl.value ? '' : 'none';
+        if (swapChosenEl) swapChosenEl.textContent = 'No replacement selected.';
+        _refreshSwapLists();
+      });
+    }
   },
 
   // ---- Subclass spell picks + conditional cantrip injection ----
@@ -1477,7 +1825,7 @@ window.LevelUp = {
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -1544,7 +1892,7 @@ window.LevelUp = {
         if (atMax || alreadyKnown) row.style.opacity = '0.45';
         row.innerHTML = `
           <span class="wiz-spell-col-check"><input type="radio" name="lu-sc-cantrip-pick-${level}" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name">${spell.name}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -1829,11 +2177,14 @@ window.LevelUp = {
       const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, lvl);
       const _hl2 = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
       if (feats.length) {
-        const scFeatHtml = feats.map(f => `
+        const scFeatHtml = feats.map(f => {
+          const body = f._isHtml ? f.text : (f.html || f.text || '');
+          return `
           <li>
             <div class="lu-feature-name">${f.name}</div>
-            ${f.text ? `<div class="lu-feature-desc">${_hl2(f.text)}</div>` : ''}
-          </li>`).join('');
+            ${body ? `<div class="lu-feature-desc lu-feature-desc--html">${body}</div>` : ''}
+          </li>`;
+        }).join('');
         const scDiv = document.createElement('div');
         scDiv.className = 'lu-section lu-subclass-features-section';
         scDiv.id = `lu-sc-feat-section-${lvl}`;
@@ -1896,8 +2247,9 @@ window.LevelUp = {
       if (!this._pending[level]) this._pending[level] = {};
       this._pending[level].subclass = sel.value || existingSubclass || null;
 
-      // Re-render prepared spell pickers so subclass-granted spells show as greyed out
+      // Re-render spell/cantrip pickers so subclass-granted spells update their warning badges
       (this._preparedRenderers || []).forEach(fn => fn());
+      (this._cantripRenderers || []).forEach(fn => fn());
 
       // Remove generic "Subclass Feature" placeholders and inject per-level subclass features
       const chosenSubclass = sel.value || existingSubclass || '';
@@ -1914,11 +2266,14 @@ window.LevelUp = {
           const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, secLevel);
           if (feats.length) {
             const _hl2 = typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords : t => t;
-            const scFeatHtml = feats.map(f => `
+            const scFeatHtml = feats.map(f => {
+              const body = f._isHtml ? f.text : (f.html || f.text || '');
+              return `
               <li>
                 <div class="lu-feature-name">${f.name}</div>
-                ${f.text ? `<div class="lu-feature-desc">${_hl2(f.text)}</div>` : ''}
-              </li>`).join('');
+                ${body ? `<div class="lu-feature-desc lu-feature-desc--html">${body}</div>` : ''}
+              </li>`;
+            }).join('');
             const scDiv = document.createElement('div');
             scDiv.className = 'lu-section lu-subclass-features-section';
             scDiv.id = `lu-sc-feat-section-${secLevel}`;
@@ -2471,13 +2826,30 @@ window.LevelUp = {
             alert(`Please choose ${gain} new cantrip${gain > 1 ? 's' : ''} at level ${lvl}.`); return;
           }
         }
-        // Prepared spell gain — must pick the required number
-        if (_classInfoLu?.preparedSpellsProgression && !_classInfoLu?.spellbookSpellsPerLevel && lvl > 1) {
-          const prevMax = _classInfoLu.preparedSpellsProgression[lvl - 2] ?? 0;
-          const newMax = _classInfoLu.preparedSpellsProgression[lvl - 1] ?? 0;
+        // Cantrip swap — if one side is set, both must be
+        if (_classInfoLu?.cantripSwapAllowed && lvl > 1) {
+          if (p.cantripSwapOut && !p.cantripSwapIn) {
+            alert(`Please choose a replacement cantrip at level ${lvl}.`); return;
+          }
+        }
+        // Metamagic gain — must pick required number
+        const mmGainNeeded = (className === 'Sorcerer' && (lvl === 2 || lvl === 10 || lvl === 17)) ? 2 : 0;
+        if (mmGainNeeded > 0 && (!p.newMetamagic || p.newMetamagic.length < mmGainNeeded)) {
+          alert(`Please choose ${mmGainNeeded} Metamagic options at level ${lvl}.`); return;
+        }
+        // Metamagic swap — if one side is set, both must be
+        if (className === 'Sorcerer' && lvl >= 2 && p.mmSwapOut && !p.mmSwapIn) {
+          alert(`Please choose a replacement Metamagic option at level ${lvl}.`); return;
+        }
+        // Prepared/known spell gain — must pick the required number
+        const _spellProg = _classInfoLu?.preparedSpellsProgression || _classInfoLu?.spellsKnownProgression;
+        if (_spellProg && !_classInfoLu?.spellbookSpellsPerLevel && lvl > 1) {
+          const prevMax = _spellProg[lvl - 2] ?? 0;
+          const newMax = _spellProg[lvl - 1] ?? 0;
           const gain = Math.max(0, newMax - prevMax);
+          const _isKnown = !_classInfoLu?.preparedSpellsProgression && !!_classInfoLu?.spellsKnownProgression;
           if (gain > 0 && (!p.newPreparedSpells || p.newPreparedSpells.length < gain)) {
-            alert(`Please choose ${gain} new prepared spell${gain > 1 ? 's' : ''} at level ${lvl}.`); return;
+            alert(`Please choose ${gain} new ${_isKnown ? 'known' : 'prepared'} spell${gain > 1 ? 's' : ''} at level ${lvl}.`); return;
           }
           // Validate swap: if one is set, both must be
           if ((p.swapOut && !p.swapIn) || (!p.swapOut && p.swapIn)) {
@@ -2596,6 +2968,31 @@ window.LevelUp = {
               spells.push({ name, level: 0, prepared: true });
             }
           });
+          Sheet.sv('charSpells', spells);
+        }
+
+        // Apply Metamagic picks + swap
+        if (p.newMetamagic?.length || (p.mmSwapOut && p.mmSwapIn)) {
+          const mm = CharStore.lv('charMetamagic', []) || [];
+          if (p.newMetamagic?.length) {
+            p.newMetamagic.forEach(name => { if (!mm.includes(name)) mm.push(name); });
+          }
+          if (p.mmSwapOut && p.mmSwapIn) {
+            const idx = mm.indexOf(p.mmSwapOut);
+            if (idx !== -1) mm.splice(idx, 1);
+            if (!mm.includes(p.mmSwapIn)) mm.push(p.mmSwapIn);
+          }
+          CharStore.sv('charMetamagic', mm);
+        }
+
+        // Apply cantrip swap
+        if (p.cantripSwapOut && p.cantripSwapIn) {
+          const spells = Sheet.lv('charSpells', []) || [];
+          const idx = spells.findIndex(s => s.name === p.cantripSwapOut && s.level === 0);
+          if (idx !== -1) spells.splice(idx, 1);
+          if (!spells.some(s => s.name === p.cantripSwapIn && s.level === 0)) {
+            spells.push({ name: p.cantripSwapIn, level: 0, prepared: true });
+          }
           Sheet.sv('charSpells', spells);
         }
 

@@ -4473,6 +4473,10 @@ window.Sheet = {
         const cfg = ClassResources?.FEAT_CUSTOM_CHOICES?.[resourceName]
           || (resourceName.toLowerCase().includes('metamagic') ? { type: 'metamagic' } : null);
         if (cfg?.type === 'metamagic') return this._appendMetamagicChoices(curated, resourceName);
+        // Sorcery Points tooltip: also append metamagic choices if Sorcerer
+        if (resourceName === 'Sorcery Points' && this.lv('charClass', '') === 'Sorcerer') {
+          return this._appendMetamagicChoices(curated, resourceName);
+        }
         return curated;
       }
     }
@@ -4556,29 +4560,38 @@ window.Sheet = {
     if (!chosen.length) return baseText;
     const lines = chosen.map(name => {
       const opt = options.find(o => o.name === name);
-      return opt ? `<span style="color:var(--red);font-weight:600">${opt.name}</span>: ${opt.text}` : name;
+      return opt ? `<p style="margin:6px 0 0"><span style="color:var(--red);font-weight:600">${opt.name}</span>: ${opt.text}</p>` : `<p style="margin:6px 0 0">${name}</p>`;
     });
-    return baseText + '\n\nChosen disciplines:\n' + lines.join('\n');
+    return baseText + '<p style="margin:8px 0 2px;font-weight:600">Chosen disciplines:</p>' + lines.join('');
   },
 
   _appendMetamagicChoices(baseText, resourceName) {
-    // Collect all chosen metamagic options across feats
     const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+
+    // Class Metamagic (Sorcerer charMetamagic)
+    const classChosen = this.lv('charMetamagic', []) || [];
+
+    // Feat Metamagic (Metamagic Adept customChoices)
     const feats = this.lv('feats', []);
-    const allChosen = [];
+    const featChosen = [];
     for (const f of feats) {
       const featName = typeof f === 'string' ? f : f?.name;
       const cfg = ClassResources?.FEAT_CUSTOM_CHOICES?.[featName];
       if (cfg?.type === 'metamagic' && f?.customChoices?.length) {
-        allChosen.push(...f.customChoices);
+        featChosen.push(...f.customChoices);
       }
     }
+
+    const allChosen = [...new Set([...classChosen, ...featChosen])];
     if (!allChosen.length) return baseText;
+
     const lines = allChosen.map(name => {
       const opt = mmOptions.find(o => o.name === name);
-      return opt ? `<span style="color:var(--red);font-weight:600">${opt.name}</span> (${opt.cost} SP): ${opt.text}` : name;
+      return opt
+        ? `<p style="margin:6px 0 0"><span style="color:var(--red,#8B2222);font-weight:700">${opt.name}</span> <span style="color:var(--ink-faint)">(${opt.cost} SP)</span><br><span style="font-size:0.9em">${opt.text}</span></p>`
+        : `<p style="margin:6px 0 0">${name}</p>`;
     });
-    return baseText + '\n\nChosen options:\n' + lines.join('\n');
+    return baseText + '<p style="margin:8px 0 2px;font-weight:700;border-top:1px solid var(--border);padding-top:6px">Chosen Metamagic:</p>' + lines.join('');
   },
 
   renderResources() {
@@ -4644,7 +4657,8 @@ window.Sheet = {
             tip.style.cssText = 'position:fixed;z-index:9999;max-width:min(400px,85vw);background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:10px 14px;font-size:0.8rem;color:var(--ink-light,#3D2B18);line-height:1.5;box-shadow:0 6px 20px rgba(0,0,0,0.35);pointer-events:none';
             document.body.appendChild(tip);
           }
-          tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid var(--border,#C4A87A);padding-bottom:3px">${res.name}</div><div>${this._highlightKeywords(desc.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>'))}</div>`;
+          const _descHtml = desc.includes('<') ? desc : desc.replace(/\n\n/g, '<br><br>').replace(/\n/g, '<br>');
+          tip.innerHTML = `<div style="font-weight:700;margin-bottom:4px;border-bottom:1px solid var(--border,#C4A87A);padding-bottom:3px">${res.name}</div><div>${this._highlightKeywords(_descHtml)}</div>`;
           tip.style.display = 'block';
           const x = e.clientX + 12, y = e.clientY + 12;
           tip.style.left = x + 'px';

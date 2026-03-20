@@ -749,6 +749,17 @@ window.Wizard = {
       d.charPsionicDisciplines = [...d._psionicDisciplines];
     }
 
+    // Apply background origin feat
+    if (d._bgInfo?.feat) {
+      const bgFeatName = Object.keys(d._bgInfo.feat)[0]?.split('|')[0];
+      if (bgFeatName) {
+        if (!d.feats) d.feats = [];
+        if (!d.feats.some(f => (typeof f === 'string' ? f : f.name).toLowerCase() === bgFeatName.toLowerCase())) {
+          d.feats.push(bgFeatName);
+        }
+      }
+    }
+
     // Apply fighting style as a feat
     if (d._fightingStyle) {
       if (!d.feats) d.feats = [];

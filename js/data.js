@@ -972,6 +972,7 @@ function getClassInfo(className) {
     startingEquipment: cls.startingEquipment || null,
     cantripCount,
     cantripProgression,
+    cantripSwapAllowed: cantripProgression != null && ['Sorcerer','Bard','Warlock','Wizard','Psion'].includes(className),
     spellsKnownAtL1,
     spellsKnownProgression,
     preparedSpellsFormula,
