@@ -1175,6 +1175,46 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   font-style: italic;
   margin: 0;
 }
+.rest-modal-used {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+.rest-modal-optional-badge {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+  background: #7c4dff;
+  border-radius: 3px;
+  padding: 1px 5px;
+  vertical-align: middle;
+  margin-left: 6px;
+  position: relative;
+  top: -1px;
+}
+.rest-sorcery-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.84rem;
+  color: var(--ink);
+  cursor: pointer;
+  margin-top: 4px;
+  user-select: none;
+}
+.rest-sorcery-opt input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #7c4dff;
+  flex-shrink: 0;
+}
+.rest-sorcery-opt input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
 .rest-summary-list, .rest-feature-list {
   margin: 0; padding-left: 18px;
   font-size: 0.83rem;
@@ -2289,6 +2329,19 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 .spell-conc-input:focus { outline: none; border-color: var(--gold); }
 .spell-conc-save-btn { font-size: 0.75rem !important; }
+.conc-dmg-input {
+  width: 52px;
+  height: calc(var(--bar-h, 28px) - 4px);
+  padding: 2px 4px;
+  font-size: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--input-bg, var(--parchment));
+  color: var(--ink);
+  box-sizing: border-box;
+  text-align: center;
+}
+.conc-dmg-input:focus { outline: none; border-color: var(--gold); }
 .spell-conc-drop-btn { font-size: 0.75rem !important; background: transparent; border: 1px solid var(--border); color: var(--ink-faint); }
 .spell-conc-drop-btn:hover { color: #c0392b; border-color: #c0392b; }
 
@@ -2823,9 +2876,10 @@ textarea::placeholder { color: var(--ink-faint); }
 .spell-badge { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0; font-size: 11px; font-weight: 700; line-height: 1; padding-top: 1px; padding-right: 0.5px;}
 .spell-badge-conc { background: rgba(155, 89, 182, 0.15); color: #8e44ad; border: 1px solid rgba(155, 89, 182, 0.3); }
 .spell-badge-ritual { background: rgba(39, 174, 96, 0.15); color: #27ae60; border: 1px solid rgba(39, 174, 96, 0.3); }
-.spell-badge-racial { background: var(--gold); color: var(--white); border: none; font-size: 0.7rem; width: auto; padding: 0 4px; border-radius: 3px; }
+.spell-badge-racial  { background: var(--gold); color: var(--white); border: none; font-size: 0.7rem; width: auto; padding: 0 4px; border-radius: 3px; }
+.spell-badge-feat    { background: #8e44ad;     color: #fff;           border: none; font-size: 0.7rem; width: auto; padding: 0 4px; border-radius: 3px; }
+.spell-badge-subclass{ background: #16a085;     color: #fff;           border: none; font-size: 0.7rem; width: auto; padding: 0 4px; border-radius: 3px; }
 .spell-badge-racial-ab { background: #e67e22; color: #fff; border: none; font-size: 0.65rem; font-weight: 700; width: auto; padding: 1px 5px; border-radius: 3px; letter-spacing: 0.5px; }
-
 /* Feat options picker modal */
 .feat-opts-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; display: flex; align-items: center; justify-content: center; }
 .feat-opts-modal { background: var(--parchment, #fdf1dc); border: 2px solid var(--gold, #b8860b); border-radius: 12px; padding: 24px 28px; min-width: 380px; max-width: 540px; max-height: 85vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0,0,0,0.35); }
@@ -2919,7 +2973,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .spell-action-reaction { color: #ffe600; }
 .spell-card-meta .spell-action-action,
 .spell-card-meta .spell-action-bonus,
-.spell-card-meta .spell-action-reaction { font-size: 2rem; position: relative; top: -1.2px; }
+.spell-card-meta .spell-action-reaction { font-size: 2rem; position: relative; top: -3px; }
 .spell-card-school { font-size: 0.65rem; color: var(--ink-faint); font-weight: 400; font-style: italic; flex-shrink: 0; }
 
 /* Concentration highlight on active spell */
@@ -3001,6 +3055,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .spell-detail-body { font-size: 0.87rem; line-height: 1.6; }
 .spell-detail-body p { margin: 0 0 6px; }
 .spell-detail-body h4, .spell-detail-body h5 { margin: 8px 0 3px; font-size: 0.88rem; }
+.spell-detail-higher { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 
 /* Spell keyword colors */
 .spell-kw-dmg     { color: #c0392b; font-weight: 600; }
@@ -7254,6 +7309,12 @@ textarea::placeholder { color: var(--ink-faint); }
   align-items: center;
   justify-content: space-between;
   gap: 4px;
+}
+.cond-cell.cond-custom > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 .cond-cell.cond-custom.active {
   background: linear-gradient(135deg, #7a5230 0%, #5e3d20 100%);

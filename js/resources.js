@@ -158,6 +158,9 @@ window.ClassResources = {
     'Shadow-Touched': {
       text: 'You can cast this spell once without expending a spell slot (chosen from Illusion or Necromancy when you took the feat). You regain the ability after a Long Rest.',
     },
+    'Sorcerous Restoration': {
+      text: `<b>5th-Level Sorcerer Feature.</b> When you finish a Short Rest, you can choose to regain up to <b>4 Sorcery Points</b>. Once you use this feature, you can't use it again until you finish a Long Rest.`,
+    },
     'Metamagic Sorcery Points': {
       text: `Granted by the <b>Metamagic Adept</b> feat. You gain 2 Sorcery Points usable only for Metamagic options. These are added to any Sorcery Points you already have from the Sorcerer class.
 
@@ -330,6 +333,7 @@ window.ClassResources = {
     Sorcerer: [
       { name: 'Sorcery Points', maxAt: 'LEVEL', refresh: 'lr', startLevel: 2 },
       { name: 'Innate Sorcery', maxAt: [{ level: 1, max: 2 }], refresh: 'lr', startLevel: 1 },
+      { name: 'Sorcerous Restoration', maxAt: [{ level: 5, max: 1 }], refresh: 'lr', startLevel: 5 },
     ],
     Warlock: [
       // Warlock spell slots refresh on SR — handled specially in combat.js
@@ -656,16 +660,16 @@ window.ClassResources = {
   ],
 
   METAMAGIC_OPTIONS: [
-    { name: 'Careful Spell',    cost: 1, text: 'When you cast a spell that forces others to make a saving throw, you can protect some of those creatures. Choose up to your Spellcasting modifier (minimum 1) — they automatically succeed.' },
-    { name: 'Distant Spell',    cost: 1, text: 'When you cast a spell with a range of 5+ feet, double its range. When you cast a touch spell, its range becomes 30 feet.' },
-    { name: 'Empowered Spell',  cost: 1, text: 'When you roll damage for a spell, reroll up to your Spellcasting modifier (minimum 1) damage dice. You must use the new rolls. Can be used with other Metamagic.' },
-    { name: 'Extended Spell',   cost: 1, text: 'When you cast a spell with a duration of 1 minute or longer, double its duration (max 24 hours).' },
-    { name: 'Heightened Spell', cost: 2, text: 'When you cast a spell that forces a creature to make a saving throw, one target has Disadvantage on its first save against the spell.' },
-    { name: 'Quickened Spell',  cost: 2, text: 'When you cast a spell with a casting time of 1 action, change its casting time to 1 Bonus Action for this casting.' },
-    { name: 'Seeking Spell',    cost: 2, text: 'If you make an attack roll for a spell and miss, reroll the d20 and use the new roll. You can use Seeking Spell even if you already used a different Metamagic this turn.' },
-    { name: 'Subtle Spell',     cost: 1, text: 'When you cast a spell, you can do so without any somatic or verbal components.' },
-    { name: 'Transmuted Spell', cost: 1, text: 'When you cast a spell that deals a type of damage from the following list, change it to one of the other listed types: Acid, Cold, Fire, Lightning, Poison, Thunder.' },
-    { name: 'Twinned Spell',    cost: 1, text: 'When you cast a spell targeting only one creature and not already targeting max creatures, spend SP equal to the spell\'s level (min 1) to target a second creature within range.' },
+    { name: 'Careful Spell',    cost: 1, text: 'When you cast a spell that forces other creatures to make a saving throw, choose up to your Charisma modifier (minimum 1) of those creatures — they automatically succeed on their save and take no damage if they would normally take half on a success.' },
+    { name: 'Distant Spell',    cost: 1, text: 'When you cast a spell with a range of 5+ feet, double its range. When you cast a spell with a range of Touch, its range becomes 30 feet.' },
+    { name: 'Empowered Spell',  cost: 1, text: 'When you roll damage for a spell, reroll up to your Charisma modifier (minimum 1) of the damage dice and use the new rolls. You can use Empowered Spell even if you\'ve already used a different Metamagic option during the casting.' },
+    { name: 'Extended Spell',   cost: 1, text: 'When you cast a spell with a duration of 1 minute or longer, double its duration (max 24 hours). If the spell requires Concentration, you have Advantage on saves to maintain that Concentration.' },
+    { name: 'Heightened Spell', cost: 2, text: 'When you cast a spell that forces a creature to make a saving throw, one target of the spell has Disadvantage on saves against the spell.' },
+    { name: 'Quickened Spell',  cost: 2, text: 'When you cast a spell with a casting time of an action, change its casting time to a Bonus Action for this casting. You can\'t modify a spell this way if you\'ve already cast a level 1+ spell on the current turn, nor can you cast a level 1+ spell on this turn after using Quickened Spell.' },
+    { name: 'Seeking Spell',    cost: 1, text: 'If you make an attack roll for a spell and miss, reroll the d20 and use the new roll. You can use Seeking Spell even if you\'ve already used a different Metamagic option during the casting.' },
+    { name: 'Subtle Spell',     cost: 1, text: 'When you cast a spell, you can do so without any Verbal, Somatic, or Material components, except Material components that are consumed by the spell or that have a cost specified in the spell.' },
+    { name: 'Transmuted Spell', cost: 1, text: 'When you cast a spell that deals Acid, Cold, Fire, Lightning, Poison, or Thunder damage, you can change that damage type to any other type from that list.' },
+    { name: 'Twinned Spell',    cost: 1, text: 'When you cast a spell, such as Charm Person, that can be cast with a higher-level spell slot to target an additional creature, you can spend 1 Sorcery Point to increase the spell\'s effective level by 1.' },
   ],
 
   /**

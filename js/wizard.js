@@ -3066,7 +3066,9 @@ window.Wizard = {
           if (isRacial) { this.checked = true; return; } // cannot toggle racial cantrips
           if (this.checked) {
             if (max !== null && countSelected(level) >= max) { this.checked = false; return; }
-            d.charSpells.push({ name: spell.name, level, prepared: false });
+            // Cantrips are always prepared; known=prepared classes auto-prepare all spells
+            const autoPrepare = level === 0 || (typeof Sheet !== 'undefined' && Sheet._isKnownEqualsPrepared(className));
+            d.charSpells.push({ name: spell.name, level, prepared: autoPrepare });
           } else {
             d.charSpells = d.charSpells.filter(s => s.name !== spell.name);
           }

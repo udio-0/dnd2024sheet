@@ -4,6 +4,35 @@
    ============================================= */
 'use strict';
 
+// Instant custom tooltip — reuses .cf-tooltip styling, shows with zero delay.
+// Call on any element: attachInstantTooltip(el, '<strong>Title</strong><br>Body text')
+window.attachInstantTooltip = function(el, html) {
+  let tip = null;
+  el.removeAttribute('title');
+  el.addEventListener('mouseenter', () => {
+    tip = document.createElement('div');
+    tip.className = 'cf-tooltip';
+    tip.innerHTML = html;
+    document.body.appendChild(tip);
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight, vw = window.innerWidth;
+    let top = rect.bottom + 4, left = rect.left;
+    tip.style.visibility = 'hidden';
+    tip.style.display = 'block';
+    if (top + tip.offsetHeight > vh) top = rect.top - tip.offsetHeight - 4;
+    top = Math.max(8, Math.min(top, vh - tip.offsetHeight - 8));
+    left = Math.max(8, Math.min(left, vw - tip.offsetWidth - 8));
+    tip.style.top = top + 'px';
+    tip.style.left = left + 'px';
+    tip.style.visibility = '';
+    tip.addEventListener('mouseleave', () => { tip?.remove(); tip = null; });
+  });
+  el.addEventListener('mouseleave', (e) => {
+    if (tip && e.relatedTarget && tip.contains(e.relatedTarget)) return;
+    tip?.remove(); tip = null;
+  });
+};
+
 window.Sheet = {
   // ---- CONSTANTS ----
   ABILITIES: ['str', 'dex', 'con', 'int', 'wis', 'cha'],
@@ -70,7 +99,11 @@ window.Sheet = {
   getLevel() { return Math.max(1, Math.min(20, parseInt(this.$('charLevel')?.value) || 1)); },
 
   // ---- INIT (called when navigating to #sheet/:id) ----
-  init(charId) {
+  async init(charId) {
+    // Always prefer the file on disk over localStorage if a folder is connected
+    if (typeof FileSync !== 'undefined' && FileSync.hasFolder()) {
+      await FileSync.loadCharacterFromFile(charId);
+    }
     CharStore.openCharacter(charId);
 
     // Set topbar title
@@ -109,6 +142,7 @@ window.Sheet = {
     this.initEquippedGear();
     if (typeof LevelUp !== 'undefined') LevelUp.init();
     if (typeof NotesManager !== 'undefined') NotesManager.init();
+    this.migrateSubclassGrants();
 
   },
 
@@ -745,6 +779,7 @@ window.Sheet = {
       this.sv('charClass', input.value);
       this.applyClassSelection(input.value);
       this.recalcAll();
+      this._updateLearnScrollVisibility();
     });
   },
 
@@ -867,9 +902,10 @@ window.Sheet = {
                 )
               );
               if (scFeatures.length) {
-                scFeatures.forEach(sf => {
-                  const sfHtml = typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : '';
-                  items.push({ label: `Lv.${l}: ${sf.name}`, html: sfHtml, subclass: true });
+                const _mergedFeatures = this._mergeSubclassFeatures(scFeatures, className, subclassName, scShortName);
+                _mergedFeatures.forEach(sf => {
+                  const sfHtml = typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : (sf._mergedHtml || '');
+                  items.push({ label: `Lv.${l}: ${sf.name}`, html: sf._mergedHtml || sfHtml, subclass: true });
                 });
                 return;
               }
@@ -886,6 +922,10 @@ window.Sheet = {
             // Append chosen Psionic Disciplines to the Psionic Discipline feature tooltip
             if (f.name === 'Psionic Discipline') {
               html = this._appendPsionicDisciplines(html);
+            }
+            // Append chosen Metamagic options to the Metamagic feature tooltip
+            if (/^Metamagic$/i.test(f.name)) {
+              html = this._appendMetamagicChoices(html, 'Metamagic');
             }
             items.push({ label: `Lv.${l}: ${f.name}`, html });
           });
@@ -963,11 +1003,12 @@ window.Sheet = {
             );
 
             if (scFeatures.length) {
-              scFeatures.forEach(sf => {
+              const _mergedFeatures = this._mergeSubclassFeatures(scFeatures, className, subclassName, scShortName);
+              _mergedFeatures.forEach(sf => {
                 const div = document.createElement('div');
                 div.className = 'feature-entry feature-entry-subclass';
                 div.style.opacity = l > level ? '0.4' : '1';
-                const sfHtml = typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : '';
+                const sfHtml = sf._mergedHtml || (typeof entriesToHtml === 'function' ? entriesToHtml(sf.entries) : '');
                 div.innerHTML = `
                   <div class="feature-entry-header">
                     <span class="feature-entry-name">${sf.name}</span>
@@ -1000,6 +1041,13 @@ window.Sheet = {
             }
           }
 
+          let featureHtml = f.html || f.text || '';
+          if (f.name === 'Psionic Discipline') {
+            featureHtml = this._appendPsionicDisciplines(featureHtml);
+          }
+          if (/^Metamagic$/i.test(f.name)) {
+            featureHtml = this._appendMetamagicChoices(featureHtml, 'Metamagic');
+          }
           const div = document.createElement('div');
           div.className = 'feature-entry';
           div.style.opacity = l > level ? '0.4' : '1';
@@ -1008,11 +1056,42 @@ window.Sheet = {
               <span class="feature-entry-name">${f.name}</span>
               <span class="feature-entry-level">Level ${l}</span>
             </div>
-            <div class="feature-entry-text">${this._highlightSpellText(f.html || f.text || '')}</div>`;
+            <div class="feature-entry-text">${this._highlightSpellText(featureHtml)}</div>`;
           fullEl.appendChild(div);
         });
       }
     }
+  },
+
+  // Merge child subclass features into their parent based on LevelUp.SUBCLASS_FEATURE_MERGES.
+  // Returns a new array with child features absorbed into the parent's HTML, children removed.
+  _mergeSubclassFeatures(scFeatures, className, subclassName, scShortName) {
+    if (typeof LevelUp === 'undefined' || !LevelUp.SUBCLASS_FEATURE_MERGES) return scFeatures;
+    const toAbsorb = new Set();
+    const overrides = {};
+    for (const [key, childNames] of Object.entries(LevelUp.SUBCLASS_FEATURE_MERGES)) {
+      const colonIdx = key.indexOf(':');
+      const secondColon = key.indexOf(':', colonIdx + 1);
+      const kClass   = key.slice(0, colonIdx);
+      const kSubclass = key.slice(colonIdx + 1, secondColon);
+      const kParent  = key.slice(secondColon + 1);
+      if (kClass !== className) continue;
+      if (kSubclass !== subclassName && kSubclass !== (scShortName || '')) continue;
+      const parent = scFeatures.find(sf => sf.name === kParent);
+      if (!parent) continue;
+      let parentHtml = typeof entriesToHtml === 'function' ? entriesToHtml(parent.entries) : '';
+      for (const childName of childNames) {
+        const child = scFeatures.find(sf => sf.name === childName);
+        if (!child) continue;
+        const childHtml = typeof entriesToHtml === 'function' ? entriesToHtml(child.entries) : '';
+        parentHtml += `<p><strong>${childName}.</strong></p>${childHtml}`;
+        toAbsorb.add(childName);
+      }
+      overrides[kParent] = parentHtml;
+    }
+    return scFeatures
+      .filter(sf => !toAbsorb.has(sf.name))
+      .map(sf => overrides[sf.name] ? { ...sf, _mergedHtml: overrides[sf.name] } : sf);
   },
 
   // Extract UA subclass features for a given level from inline entries
@@ -1193,13 +1272,13 @@ window.Sheet = {
     if (level >= 3) {
       racialSpells.level3.forEach(name => {
         if (name && !existingRacial.has(name.toLowerCase()))
-          toAdd.push({ name: capName(name), level: 1, prepared: true, racial: true });
+          toAdd.push({ name: capName(name), level: 1, prepared: true, alwaysPrepared: true, racial: true });
       });
     }
     if (level >= 5) {
       racialSpells.level5.forEach(name => {
         if (name && !existingRacial.has(name.toLowerCase()))
-          toAdd.push({ name: capName(name), level: 2, prepared: true, racial: true });
+          toAdd.push({ name: capName(name), level: 2, prepared: true, alwaysPrepared: true, racial: true });
       });
     }
 
@@ -1663,12 +1742,16 @@ window.Sheet = {
         if (!name) return;
         const info = typeof getFeatInfo === 'function' ? getFeatInfo(name) : null;
         const canonical = info?.name || name;
-        const allowed = info?.ability?.length && typeof LevelUp !== 'undefined'
+        const rawAllowed = info?.ability?.length && typeof LevelUp !== 'undefined'
           ? LevelUp._parseFeatAbilities(info.ability) : [];
         const spellConfig = typeof ClassResources !== 'undefined'
           ? ClassResources.FEAT_SPELL_CHOICES?.[canonical] : null;
         const customConfig = typeof ClassResources !== 'undefined'
           ? ClassResources.FEAT_CUSTOM_CHOICES?.[canonical] : null;
+        // 2014 feats with metamagic custom choices grant +1 to any ability
+        const allowed = rawAllowed.length === 0 && customConfig?.type === 'metamagic'
+          ? ['str', 'dex', 'con', 'int', 'wis', 'cha']
+          : rawAllowed;
         if (allowed.length > 0 || spellConfig || customConfig) {
           this._showFeatOptionsPicker(canonical, info, allowed, spellConfig, () => { searchInput.value = ''; }, customConfig);
         } else {
@@ -2729,6 +2812,19 @@ window.Sheet = {
     return matches.slice(0, 3); // max 3 dice expressions
   },
 
+  // Classes where every known spell is always prepared (no separate preparation step).
+  // These classes pick specific spells and all of them are "prepared" at all times.
+  _KNOWN_EQUALS_PREPARED: ['bard', 'sorcerer', 'warlock', 'ranger', 'psion'],
+
+  /**
+   * Returns true if the current character's class auto-prepares all known spells.
+   * For these classes, every spell in charSpells should have prepared: true.
+   */
+  _isKnownEqualsPrepared(className) {
+    const cls = (className || this.lv('charClass', '') || '').toLowerCase().trim();
+    return this._KNOWN_EQUALS_PREPARED.includes(cls);
+  },
+
   // 2024 PHB prepared spell tables for fixed-list casters
   _PREPARED_TABLES: {
     bard:     [0, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 16, 17, 17, 18, 18, 19, 20, 21, 22],
@@ -2775,7 +2871,7 @@ window.Sheet = {
     const el = this.$('spellPreparedCount');
     if (!el) return;
     const spells = this.lv('charSpells', []);
-    const count = spells.filter(s => (s.prepared || s.racial) && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass).length;
+    const count = spells.filter(s => s.prepared && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass && !s.racial).length;
     el.textContent = count;
     const maxEl = this.$('spellPreparedMax');
     const display = el.closest('.spell-prepared-display');
@@ -2813,7 +2909,9 @@ window.Sheet = {
     const level = spell.level;
     const spells = this.lv('charSpells', []);
     if (spells.find(s => s.name === spell.name && s.level === level)) return;
-    spells.push({ name: spell.name, level, prepared: false });
+    // Cantrips are always prepared; known=prepared classes auto-prepare all spells
+    const autoPrepare = level === 0 || this._isKnownEqualsPrepared();
+    spells.push({ name: spell.name, level, prepared: autoPrepare });
     this.sv('charSpells', spells);
     this.renderSpellCard(spell, level);
     this._updatePreparedCount();
@@ -2857,8 +2955,12 @@ window.Sheet = {
         badges += `<span class="spell-badge spell-badge-racial-ab" title="Casts with ${abNames[racialAb] || racialAb} (species) instead of ${abNames[classAb] || classAb} (class)">${abNames[racialAb] || racialAb}</span>`;
       }
     }
+    if (saved?.subclass && saved?.alwaysPrepared) {
+      const subclassName = this.lv('charSubclass', '') || 'Subclass';
+      badges += `<span class="spell-badge spell-badge-subclass" title="${subclassName} — always prepared">✦</span>`;
+    }
     if (saved?.featSource) {
-      badges += `<span class="spell-badge spell-badge-racial" title="${saved.featSource} — always prepared">✦</span>`;
+      badges += `<span class="spell-badge spell-badge-feat" title="${saved.featSource} — always prepared">✦</span>`;
       if (saved.featSpellAbility) {
         const featAb = saved.featSpellAbility.toLowerCase();
         const classAb = (this.lv('spellcastingAbility', '') || '').toLowerCase();
@@ -2932,7 +3034,7 @@ window.Sheet = {
         if (this.checked && spell.level > 0) {
           const max = parseInt(CharStore.lv('spellPreparedMax', '')) || 0;
           if (max > 0) {
-            const current = CharStore.lv('charSpells', []).filter(s => (s.prepared || s.racial) && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass).length;
+            const current = CharStore.lv('charSpells', []).filter(s => s.prepared && s.level > 0 && !s.alwaysPrepared && !s.featSource && !s.subclass && !s.racial).length;
             if (current >= max) {
               this.checked = false;
               const rect = this.getBoundingClientRect();
@@ -2995,8 +3097,8 @@ window.Sheet = {
   _initSpellConcentration() {
     // Both concentration trackers: spell tab and character tab
     const pairs = [
-      { cb: this.$('spell-conc-active'), input: this.$('spell-conc-spell'), drop: this.$('spell-conc-drop'), check: this.$('spell-conc-check'), bar: this.$('spell-conc-bar') },
-      { cb: this.$('char-conc-active'), input: this.$('char-conc-spell'), drop: this.$('char-conc-drop'), check: this.$('char-conc-check'), bar: this.$('char-conc-bar') },
+      { cb: this.$('spell-conc-active'), input: this.$('spell-conc-spell'), drop: this.$('spell-conc-drop'), check: this.$('spell-conc-check'), checkDmg: this.$('spell-conc-check-dmg'), dmgInput: this.$('spell-conc-dmg'), bar: this.$('spell-conc-bar') },
+      { cb: this.$('char-conc-active'), input: this.$('char-conc-spell'), drop: this.$('char-conc-drop'), check: this.$('char-conc-check'), checkDmg: this.$('char-conc-check-dmg'), dmgInput: this.$('char-conc-dmg'), bar: this.$('char-conc-bar') },
     ].filter(p => p.cb && p.input);
 
     // Restore state
@@ -3031,7 +3133,7 @@ window.Sheet = {
         syncAll();
       });
 
-      p.check?.addEventListener('click', () => {
+      const doConcRoll = (dc) => {
         const conScore = parseInt(this.$('con')?.value) || 10;
         const conMod = Math.floor((conScore - 10) / 2);
         const profBonus = this.getProfBonus(this.getLevel());
@@ -3039,17 +3141,37 @@ window.Sheet = {
         const totalMod = conMod + (isProf ? profBonus : 0);
         const mode = this._concSaveMode();
         const result = Dice.rollD20(totalMod, mode);
-        const passed = result.total >= 10;
-        const label = mode === 'advantage'
-          ? `Concentration (Con Save — Adv: War Caster) — ${passed ? 'Maintained!' : 'Lost!'}`
-          : `Concentration Check (Con Save) — ${passed ? 'Maintained!' : 'Lost!'}`;
+        const passed = result.total >= dc;
+        const modeLabel = mode === 'advantage' ? ' — Adv: War Caster' : '';
+        const label = `Concentration (Con Save vs DC ${dc}${modeLabel}) — ${passed ? 'Maintained!' : 'Lost!'}`;
         Dice.showResult(label, result);
         if (!passed) {
           this.sv('combat_concentrating', false);
           this.sv('combat_concSpell', '');
           syncAll();
         }
+      };
+
+      p.check?.addEventListener('click', () => doConcRoll(10));
+      if (p.check) attachInstantTooltip(p.check,
+        '<strong>Concentration Save — DC 10</strong><br>' +
+        'Use when the damage taken was 20 or less.<br>' +
+        'DC is always 10 in this case.');
+
+      p.checkDmg?.addEventListener('click', () => {
+        const dmg = parseInt(p.dmgInput?.value) || 0;
+        const dc = Math.max(10, Math.floor(dmg / 2));
+        doConcRoll(dc);
       });
+      if (p.checkDmg) attachInstantTooltip(p.checkDmg,
+        '<strong>Concentration Save — Custom DC</strong><br>' +
+        'Type the damage taken in the field, then click Roll.<br>' +
+        'DC = half the damage taken (minimum 10).<br>' +
+        'e.g. 30 damage → DC 15');
+      if (p.dmgInput) attachInstantTooltip(p.dmgInput,
+        '<strong>Damage taken</strong><br>' +
+        'Enter the total damage from the hit.<br>' +
+        'DC = half this value (minimum 10).');
 
       p.drop?.addEventListener('click', () => {
         this.sv('combat_concentrating', false);
@@ -3191,6 +3313,7 @@ window.Sheet = {
       </div>
       ${diceSection}
       <div class="spell-detail-body">${this._highlightSpellText(bodyHtml)}</div>
+      ${spell.entriesHigherLevel ? `<div class="spell-detail-body spell-detail-higher"><p><strong>At Higher Levels.</strong> ${this._highlightSpellText(typeof entriesToHtml === 'function' ? entriesToHtml(spell.entriesHigherLevel) : '')}</p></div>` : ''}
       ${racialAbNote}
       ${concBtn}`;
   },
@@ -5103,6 +5226,17 @@ window.Sheet = {
   },
   saveHitDice(arr) { this.sv('hitDice', JSON.stringify(arr)); },
 
+  // Retroactively apply any missing subclass spell grants for existing characters.
+  // Safe to call multiple times — _applySubclassGrants skips spells already in charSpells.
+  migrateSubclassGrants() {
+    if (typeof LevelUp === 'undefined') return;
+    const className  = (this.lv('charClass',    '') || '').trim();
+    const subclass   = (this.lv('charSubclass', '') || '').trim();
+    const level      = parseInt(this.lv('charLevel', '1')) || 1;
+    if (!className || !subclass) return;
+    LevelUp._applySubclassGrants(subclass, className, level);
+  },
+
   migrateHitDice() {
     const existing = this.getHitDice();
     if (existing.length) return;
@@ -5190,6 +5324,15 @@ window.Sheet = {
     this.$('btn-cast-scroll')?.addEventListener('click', () => this._openCastScrollModal());
     this.$('spell-tab-learn-scroll')?.addEventListener('click', () => this._openLearnScrollModal());
     this.$('spell-tab-cast-scroll')?.addEventListener('click', () => this._openCastScrollModal());
+    this._updateLearnScrollVisibility();
+  },
+
+  _updateLearnScrollVisibility() {
+    const isWizard = (this.lv('charClass', '') || '').toLowerCase() === 'wizard';
+    ['btn-learn-scroll', 'spell-tab-learn-scroll'].forEach(id => {
+      const btn = this.$(id);
+      if (btn) btn.style.display = isWizard ? '' : 'none';
+    });
   },
 
   _getScrollsFromInventory() {
@@ -5341,6 +5484,10 @@ window.Sheet = {
   _openLearnScrollModal() {
     const charClass = this.lv('charClass', '');
     if (!charClass) { alert('Select a class first.'); return; }
+    if (charClass.toLowerCase() !== 'wizard') {
+      alert('Only Wizards can learn spells from scrolls.');
+      return;
+    }
 
     const scrolls = this._getScrollsFromInventory();
     if (!scrolls.length) {
@@ -5603,6 +5750,7 @@ window.Sheet = {
     const srUsable = resources.filter(r => r.usableOnShortRest && r.refresh === 'lr' && r.used < r.max);
 
     const charClass = this.lv('charClass', '');
+    const charLevel = parseInt(this.lv('charLevel', 1)) || 1;
     let warlockSlotHtml = '';
     if (charClass === 'Warlock') {
       const slotInfo = [];
@@ -5642,6 +5790,28 @@ window.Sheet = {
         <div class="rest-roll-log" id="rest-roll-log"></div>
       </div>
       ${warlockSlotHtml}
+      ${(() => {
+        if (charClass !== 'Sorcerer' || charLevel < 5) return '';
+        const spRes = resources.find(r => r.name === 'Sorcery Points');
+        const srRes = resources.find(r => r.name === 'Sorcerous Restoration');
+        if (!srRes || srRes.used >= srRes.max) return `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Sorcerous Restoration</div>
+        <p class="rest-modal-desc rest-modal-used">Already used — resets on Long Rest.</p>
+      </div>`;
+        const currentSP = spRes ? (spRes.max - spRes.used) : 0;
+        const maxSP = spRes ? spRes.max : 0;
+        const canRecover = spRes ? Math.min(4, spRes.used) : 4;
+        return `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Sorcerous Restoration <span class="rest-modal-optional-badge">Optional</span></div>
+        <p class="rest-modal-desc">You can regain up to <strong>4 Sorcery Points</strong> on this Short Rest. Currently: <strong>${currentSP}/${maxSP} SP</strong> remaining${canRecover > 0 ? ` — would recover <strong>+${canRecover} SP</strong>` : ' — already at max'}.</p>
+        <label class="rest-sorcery-opt">
+          <input type="checkbox" id="sr-sorcerous-restoration"${canRecover <= 0 ? ' disabled' : ''}>
+          Recover ${canRecover} Sorcery Point${canRecover !== 1 ? 's' : ''} (uses Sorcerous Restoration)
+        </label>
+      </div>`;
+      })()}
       ${srResources.length ? `
       <div class="rest-modal-section">
         <div class="rest-modal-section-title">Features Refreshed on Short Rest</div>
@@ -5780,6 +5950,30 @@ window.Sheet = {
         <button class="btn btn-sm" id="rest-go-spells">Go to Spells Tab</button>
       </div>` : '';
 
+    // Artificer cantrip swap on long rest
+    const isArtificer = charClass.toLowerCase() === 'artificer';
+    const knownCantrips = isArtificer
+      ? (this.lv('charSpells', []) || []).filter(s => s.level === 0 && !s.racial && !s.featSource && !s.subclass && !s.classGranted)
+      : [];
+    const artificerCantripHtml = isArtificer && knownCantrips.length ? `
+      <div class="rest-modal-section" id="rest-artificer-cantrip-section">
+        <div class="rest-modal-section-title">Cantrip Swap</div>
+        <p class="rest-modal-desc">As an <strong>Artificer</strong>, you may replace one of your cantrips with a different Artificer cantrip.</p>
+        <div class="rest-mastery-swap">
+          <label class="rest-label">Swap out:
+            <select id="rest-cantrip-remove" class="rest-select">
+              <option value="">— Keep all current —</option>
+              ${knownCantrips.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rest-label" id="rest-cantrip-add-wrap" style="display:none">Replace with:
+            <select id="rest-cantrip-add" class="rest-select">
+              <option value="">— Choose new cantrip —</option>
+            </select>
+          </label>
+        </div>
+      </div>` : '';
+
     body.innerHTML = `
       <div class="rest-modal-section rest-summary-section">
         <div class="rest-modal-section-title">Long Rest Summary</div>
@@ -5793,6 +5987,7 @@ window.Sheet = {
         </ul>
       </div>
       ${masteryHtml}
+      ${artificerCantripHtml}
       ${lrResourcesHtml}
       ${preparedSpellHtml}
       ${attunedNote}
@@ -5821,6 +6016,38 @@ window.Sheet = {
             opt.value = w.name;
             opt.textContent = `${w.name} (${w.category})`;
             addSelect.appendChild(opt);
+          });
+        });
+      }
+    }
+
+    // Bind Artificer cantrip swap selects
+    if (isArtificer && knownCantrips.length) {
+      const cantripRemove = body.querySelector('#rest-cantrip-remove');
+      const cantripAddWrap = body.querySelector('#rest-cantrip-add-wrap');
+      const cantripAdd = body.querySelector('#rest-cantrip-add');
+      if (cantripRemove && cantripAdd && cantripAddWrap) {
+        const allArtificerSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass('Artificer') : [];
+        const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+        const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+        const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+        const allCantrips = allArtificerSpells.filter(s => {
+          if (s.level !== 0) return false;
+          if (s.source === 'UA2024') return ua && show24;
+          if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+          return show14;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+        const knownNames = new Set(knownCantrips.map(s => s.name.toLowerCase()));
+        cantripRemove.addEventListener('change', () => {
+          const swapOut = cantripRemove.value;
+          if (!swapOut) { cantripAddWrap.style.display = 'none'; return; }
+          cantripAddWrap.style.display = '';
+          cantripAdd.innerHTML = '<option value="">— Choose new cantrip —</option>';
+          allCantrips.filter(c => !knownNames.has(c.name.toLowerCase()) || c.name === swapOut).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = `${c.name} (${c._schoolName || ''})`;
+            cantripAdd.appendChild(opt);
           });
         });
       }
@@ -5894,6 +6121,21 @@ window.Sheet = {
 
   _doShortRest() {
     this.resetResourcesByType(['sr']);
+
+    // Sorcerer: Sorcerous Restoration (opt-in, once per LR)
+    const srCheckbox = document.getElementById('sr-sorcerous-restoration');
+    if (srCheckbox && srCheckbox.checked) {
+      const resources = this.lv('resources', []);
+      const spRes = resources.find(r => r.name === 'Sorcery Points');
+      const srFeat = resources.find(r => r.name === 'Sorcerous Restoration');
+      if (spRes && srFeat && srFeat.used < srFeat.max) {
+        const recover = Math.min(4, spRes.used);
+        spRes.used = Math.max(0, spRes.used - recover);
+        srFeat.used = srFeat.max;
+        this.sv('resources', resources);
+        this.renderResources();
+      }
+    }
 
     const charClass = this.lv('charClass', '');
     if (charClass === 'Warlock') {
@@ -5973,9 +6215,23 @@ window.Sheet = {
         if (idx >= 0) mastery[idx] = addSelect.value;
         this.sv('weaponMastery', mastery);
       }
+
+      // Artificer cantrip swap
+      const cantripRemove = body.querySelector('#rest-cantrip-remove');
+      const cantripAdd = body.querySelector('#rest-cantrip-add');
+      if (cantripRemove?.value && cantripAdd?.value) {
+        const spells = this.lv('charSpells', []) || [];
+        const idx = spells.findIndex(s => s.name === cantripRemove.value && s.level === 0);
+        if (idx !== -1) spells.splice(idx, 1);
+        if (!spells.some(s => s.name === cantripAdd.value && s.level === 0)) {
+          spells.push({ name: cantripAdd.value, level: 0, prepared: true });
+        }
+        this.sv('charSpells', spells);
+      }
     }
 
     this.buildSpellSlots();
+    this.restoreSpells();
     this.recalcAll();
   },
 
@@ -6853,7 +7109,7 @@ window.Sheet = {
     custom.forEach(c => {
       const cell = document.createElement('div');
       cell.className = 'cond-cell cond-custom' + (c.active ? ' active' : '');
-      cell.innerHTML = `<span>${c.name}</span><button class="cond-custom-del" title="Delete">&times;</button>`;
+      cell.innerHTML = `<span title="${c.name}">${c.name}</span><button class="cond-custom-del" title="Delete">&times;</button>`;
       cell.addEventListener('click', (e) => {
         if (e.target.classList.contains('cond-custom-del')) return;
         const customs = this.lv('customConditions', []);

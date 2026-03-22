@@ -116,6 +116,8 @@ window.LevelUp = {
     this._hp = { choice: savedHpMethod || 'avg', rolls: [], manualValue: null };
     this._buildModal();
     document.getElementById('levelup-backdrop').style.display = 'flex';
+    const levelupBody = document.getElementById('levelup-body');
+    if (levelupBody) levelupBody.scrollTop = 0;
   },
 
   close() {
@@ -155,6 +157,15 @@ window.LevelUp = {
   },
   _expertiseCount(className) { return this.EXPERTISE_COUNTS[className] ?? 2; },
   _expertiseSkillFilter(className) { return this.EXPERTISE_SKILL_FILTERS[className] ?? null; },
+
+  // Subclass features that should be absorbed into a parent feature during rendering.
+  // Key: 'ClassName:SubclassName:ParentFeatureName'
+  // Value: array of child feature names to merge into the parent's tooltip HTML.
+  SUBCLASS_FEATURE_MERGES: {
+    'Sorcerer:Spellfire Sorcery:Spellfire Burst':   ['Bolstering Flames', 'Radiant Fire'], // FRHoF name
+    'Sorcerer:Spellfire Sorcerer:Spellfire Burst':  ['Bolstering Flames', 'Radiant Fire'], // UA2024 name
+    'Sorcerer:Spellfire:Spellfire Burst':           ['Bolstering Flames', 'Radiant Fire'], // shortName fallback
+  },
 
   // Subclass mechanical grants: spells, tool proficiencies, spell modifications
   SUBCLASS_GRANTS: {
@@ -266,6 +277,83 @@ window.LevelUp = {
       9: { spells: [
         { name: 'Steel Wind Strike', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
         { name: 'Teleportation Circle', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    // Sorcerer subclasses that grant specific always-known spells
+    'Sorcerer:Draconic Sorcery': {
+      3: { spells: [
+        { name: 'Alter Self',       level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Chromatic Orb',    level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Command',          level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: "Dragon's Breath",  level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Fear', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Fly',  level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Arcane Eye',    level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Charm Monster', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Legend Lore',   level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Summon Dragon', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    'Sorcerer:Divine Soul': {
+      3: {
+        spells: [{ name: 'Cure Wounds', level: 1, prepared: true, alwaysPrepared: true, subclass: true }],
+      },
+    },
+    'Sorcerer:Shadow Magic': {
+      3: {
+        spells: [{ name: 'Darkness', level: 2, prepared: true, alwaysPrepared: true, subclass: true }],
+      },
+    },
+    'Sorcerer:Spellfire Sorcery': {
+      3: { spells: [
+        { name: 'Cure Wounds',       level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Guiding Bolt',      level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Lesser Restoration',level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Scorching Ray',     level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Aura of Vitality',  level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Dispel Magic',      level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      6: { spells: [
+        { name: 'Counterspell',      level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Fire Shield',       level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Wall of Fire',      level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Greater Restoration', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Flame Strike',        level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+    },
+    'Sorcerer:Spellfire Sorcerer': {  // UA2024 name alias
+      3: { spells: [
+        { name: 'Cure Wounds',       level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Guiding Bolt',      level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Lesser Restoration',level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Scorching Ray',     level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      5: { spells: [
+        { name: 'Aura of Vitality',  level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Dispel Magic',      level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      6: { spells: [
+        { name: 'Counterspell',      level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      7: { spells: [
+        { name: 'Fire Shield',       level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Wall of Fire',      level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+      ]},
+      9: { spells: [
+        { name: 'Greater Restoration', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        { name: 'Flame Strike',        level: 5, prepared: true, alwaysPrepared: true, subclass: true },
       ]},
     },
     // 2014 PHB naming alias
@@ -380,22 +468,46 @@ window.LevelUp = {
     return Sheet.lv('charSubclass', '') || '';
   },
 
+  // Maps alias subclass names → canonical display name (prevents duplicate warnings)
+  SUBCLASS_CANONICAL: {
+    'Spellfire Sorcerer': 'Spellfire Sorcery',
+    'School of Illusion':  'Illusionist',
+  },
+
+  _canonicalSubclass(name) {
+    return this.SUBCLASS_CANONICAL[name] || name;
+  },
+
   /**
    * Build a map of spellName (lowercase) → [{subclass, grantLevel}] for all subclasses
    * of the given class that grant that spell via SUBCLASS_GRANTS.
+   * Aliases are collapsed to their canonical name to avoid duplicate warnings.
    */
   _getSubclassOverlapMap(className) {
     const result = new Map();
     for (const [key, grants] of Object.entries(this.SUBCLASS_GRANTS)) {
       const colonIdx = key.indexOf(':');
       const cls = key.slice(0, colonIdx);
-      const sc  = key.slice(colonIdx + 1);
+      const sc  = this._canonicalSubclass(key.slice(colonIdx + 1));
       if (cls.toLowerCase() !== (className || '').toLowerCase()) continue;
       for (const [lvl, grant] of Object.entries(grants)) {
         for (const sp of (grant.spells || [])) {
           const lower = sp.name.toLowerCase();
           if (!result.has(lower)) result.set(lower, []);
-          result.get(lower).push({ subclass: sc, grantLevel: parseInt(lvl) });
+          const existing = result.get(lower);
+          // Deduplicate: skip if same canonical subclass+level already recorded
+          if (!existing.some(e => e.subclass === sc && e.grantLevel === parseInt(lvl))) {
+            existing.push({ subclass: sc, grantLevel: parseInt(lvl) });
+          }
+        }
+        // Also include conditionalCantrip grants (e.g. Illusionist's Minor Illusion)
+        if (grant.conditionalCantrip?.primary) {
+          const lower = grant.conditionalCantrip.primary.toLowerCase();
+          if (!result.has(lower)) result.set(lower, []);
+          const existing = result.get(lower);
+          if (!existing.some(e => e.subclass === sc && e.grantLevel === parseInt(lvl))) {
+            existing.push({ subclass: sc, grantLevel: parseInt(lvl) });
+          }
         }
       }
     }
@@ -403,15 +515,59 @@ window.LevelUp = {
   },
 
   /**
-   * Return a warning badge HTML string if `spellName` overlaps with any subclass grant.
+   * Build a map of spellName (lowercase) → [{subclass, grantLevel, isRacial}]
+   * for spells granted by the character's current species at levels 3 and 5.
+   */
+  _getRacialOverlapMap() {
+    const result = new Map();
+    const speciesName = Sheet.lv('charSpecies', '') || Sheet.lv('charRace', '');
+    const subraceName = Sheet.lv('charSubrace', '');
+    if (!speciesName) return result;
+    const speciesInfo = typeof getSpeciesInfo === 'function' ? getSpeciesInfo(speciesName) : null;
+    if (!speciesInfo?.additionalSpells?.length) return result;
+    const parsed = typeof parseRacialSpells === 'function'
+      ? parseRacialSpells(speciesInfo.additionalSpells, subraceName)
+      : null;
+    if (!parsed) return result;
+    const label = `${speciesName} (species)`;
+    const addSpell = (name, grantLevel) => {
+      if (!name) return;
+      const lower = name.toLowerCase();
+      if (!result.has(lower)) result.set(lower, []);
+      result.get(lower).push({ subclass: label, grantLevel, isRacial: true });
+    };
+    (parsed.cantrips || []).forEach(n => addSpell(n, 1));
+    (parsed.level3  || []).forEach(n => addSpell(n, 3));
+    (parsed.level5  || []).forEach(n => addSpell(n, 5));
+    return result;
+  },
+
+  /**
+   * Merge a racial overlap map into a subclass overlap map, returning a combined map.
+   */
+  _mergeOverlapMaps(subclassMap, racialMap) {
+    const merged = new Map(subclassMap);
+    racialMap.forEach((entries, spellLower) => {
+      if (!merged.has(spellLower)) merged.set(spellLower, []);
+      merged.get(spellLower).push(...entries);
+    });
+    return merged;
+  },
+
+  /**
+   * Return a warning badge HTML string if `spellName` overlaps with any subclass or racial grant.
    * If `currentSubclass` is set (i.e. one has already been chosen), only show warnings
    * for that subclass — never for subclasses the character won't have.
+   * Racial entries (isRacial: true) are always shown regardless of subclass filter.
    * If no subclass is chosen yet, show all overlapping subclasses as a heads-up.
    */
   _subclassWarnBadge(overlapMap, spellName, currentSubclass) {
     const all = overlapMap.get((spellName || '').toLowerCase());
     if (!all?.length) return '';
-    const matches = currentSubclass ? all.filter(m => m.subclass === currentSubclass) : all;
+    const canonical = currentSubclass ? this._canonicalSubclass(currentSubclass) : null;
+    const matches = canonical
+      ? all.filter(m => m.isRacial || m.subclass === canonical)
+      : all;
     if (!matches.length) return '';
     const sorted = [...matches].sort((a, b) => a.grantLevel - b.grantLevel);
     const label = sorted.map(m => `${m.subclass} (lv. ${m.grantLevel})`).join(', ');
@@ -843,6 +999,7 @@ window.LevelUp = {
             </div>
             <div id="lu-feat-spell-panel-${level}" style="display:none; margin-top:0.85rem;"></div>
             <div id="lu-feat-psionic-panel-${level}" style="display:none; margin-top:0.85rem;"></div>
+            <div id="lu-feat-metamagic-panel-${level}" style="display:none; margin-top:0.85rem;"></div>
           </div>
         </div>`;
     }
@@ -976,31 +1133,6 @@ window.LevelUp = {
         </div>`;
     }
 
-    // Cantrip swap (optional — Sorcerer, Bard, Warlock, Wizard, Psion)
-    if (classInfo?.cantripSwapAllowed && level > 1) {
-      this._pending[level].cantripSwapOut = null;
-      this._pending[level].cantripSwapIn  = null;
-      html += `
-        <div class="lu-section" id="lu-cantrip-swap-section-${level}">
-          <div class="lu-section-title">Cantrip Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
-          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
-            You may replace one of your ${className} cantrips with a different ${className} cantrip.
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-            <label style="font-size:0.85rem;">Replace:</label>
-            <select id="lu-cantrip-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
-              <option value="">— none —</option>
-            </select>
-          </div>
-          <div id="lu-cantrip-swap-in-section-${level}" style="display:none;margin-top:4px;">
-            <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:4px;">Choose a replacement cantrip:</div>
-            <input type="text" class="lu-cantrip-search wiz-search wiz-search-sm" id="lu-cantrip-swap-search-${level}" placeholder="Search cantrips..." autocomplete="off" style="margin-bottom:6px">
-            <div class="lu-cantrip-list" id="lu-cantrip-swap-list-${level}" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
-            <div id="lu-cantrip-swap-chosen-${level}" style="font-size:0.85rem;margin-top:4px;color:var(--ink-faint);">No replacement selected.</div>
-          </div>
-        </div>`;
-    }
-
     // Metamagic (Sorcerer) — gain at levels 2/10/17; replace 1 every level from 2+
     const MM_TOTALS = { 2: 2, 10: 4, 17: 6 };
     const mmGain = (className === 'Sorcerer' && MM_TOTALS[level] != null)
@@ -1008,7 +1140,7 @@ window.LevelUp = {
       : 0;
     const mmGainFixed = (className === 'Sorcerer' && level === 2) ? 2
       : (className === 'Sorcerer' && (level === 10 || level === 17)) ? 2 : 0;
-    const mmSwapAllowed = className === 'Sorcerer' && level >= 2;
+    const mmSwapAllowed = className === 'Sorcerer' && level > 2;
     if (mmGainFixed > 0 || mmSwapAllowed) {
       this._pending[level].newMetamagic = [];
       this._pending[level].mmSwapOut = null;
@@ -1103,6 +1235,31 @@ window.LevelUp = {
         </div>`;
     }
 
+    // Cantrip swap (optional — Sorcerer, Bard, Warlock, Wizard, Psion)
+    if (classInfo?.cantripSwapAllowed && level > 1) {
+      this._pending[level].cantripSwapOut = null;
+      this._pending[level].cantripSwapIn  = null;
+      html += `
+        <div class="lu-section" id="lu-cantrip-swap-section-${level}">
+          <div class="lu-section-title">Cantrip Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            You may replace one of your ${className} cantrips with a different ${className} cantrip.
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <label style="font-size:0.85rem;">Replace:</label>
+            <select id="lu-cantrip-swap-out-${level}" class="lu-subclass-select" style="flex:1;min-width:140px;">
+              <option value="">— none —</option>
+            </select>
+          </div>
+          <div id="lu-cantrip-swap-in-section-${level}" style="display:none;margin-top:4px;">
+            <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:4px;">Choose a replacement cantrip:</div>
+            <input type="text" class="lu-cantrip-search wiz-search wiz-search-sm" id="lu-cantrip-swap-search-${level}" placeholder="Search cantrips..." autocomplete="off" style="margin-bottom:6px">
+            <div class="lu-cantrip-list" id="lu-cantrip-swap-list-${level}" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+            <div id="lu-cantrip-swap-chosen-${level}" style="font-size:0.85rem;margin-top:4px;color:var(--ink-faint);">No replacement selected.</div>
+          </div>
+        </div>`;
+    }
+
     html += `</div>`;
     container.insertAdjacentHTML('beforeend', html);
 
@@ -1135,13 +1292,13 @@ window.LevelUp = {
     if (cantripGain > 0 && level > 1) {
       this._bindCantripGainForLevel(sectionEl, level, className, cantripGain);
     }
-    // Bind cantrip swap (optional)
-    if (classInfo?.cantripSwapAllowed && level > 1) {
-      this._bindCantripSwapForLevel(sectionEl, level, className);
-    }
     // Bind Metamagic picks + swap
     if (className === 'Sorcerer' && level >= 2) {
       this._bindMetamagicForLevel(sectionEl, level);
+    }
+    // Bind cantrip swap (optional)
+    if (classInfo?.cantripSwapAllowed && level > 1) {
+      this._bindCantripSwapForLevel(sectionEl, level, className);
     }
     // Inject subclass spell picks (e.g. Illusion Savant) and conditional cantrip grants
     this._injectSubclassSpellPicksSections(sectionEl, level, className, existingSubclass);
@@ -1171,7 +1328,7 @@ window.LevelUp = {
     let activeTabLevel = maxSpellLevel;
 
     const currentSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
-    const _scOverlapMap1 = this._getSubclassOverlapMap(className);
+    const _scOverlapMap1 = this._mergeOverlapMaps(this._getSubclassOverlapMap(className), this._getRacialOverlapMap());
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
@@ -1299,7 +1456,7 @@ window.LevelUp = {
       }
       return set;
     };
-    const _scOverlapMap2 = this._getSubclassOverlapMap(className);
+    const _scOverlapMap2 = this._mergeOverlapMaps(this._getSubclassOverlapMap(className), this._getRacialOverlapMap());
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
@@ -1500,7 +1657,7 @@ window.LevelUp = {
       }
       return set;
     };
-    const _scOverlapMap3 = this._getSubclassOverlapMap(className);
+    const _scOverlapMap3 = this._mergeOverlapMaps(this._getSubclassOverlapMap(className), this._getRacialOverlapMap());
 
     const renderList = (filter) => {
       listEl.innerHTML = '';
@@ -2413,7 +2570,12 @@ window.LevelUp = {
           }
         }
 
-        const allowed  = featInfo?.ability?.length ? this._parseFeatAbilities(featInfo.ability) : [];
+        const customConfig = ClassResources?.FEAT_CUSTOM_CHOICES?.[name];
+        // 2014 feats with metamagic custom choices grant +1 to any ability
+        const rawAllowed = featInfo?.ability?.length ? this._parseFeatAbilities(featInfo.ability) : [];
+        const allowed = rawAllowed.length === 0 && customConfig?.type === 'metamagic'
+          ? ['str', 'dex', 'con', 'int', 'wis', 'cha']
+          : rawAllowed;
 
         if (allowed.length) {
           abilityPanel.style.display = 'block';
@@ -2634,6 +2796,62 @@ window.LevelUp = {
             if (this._pending[level]?.asi) delete this._pending[level].asi.psionicAbility;
           }
         }
+
+        // Check if this feat requires metamagic choices (e.g. Metamagic Adept)
+        const metamagicPanel = sectionEl.querySelector(`#lu-feat-metamagic-panel-${level}`);
+        if (metamagicPanel) {
+          if (customConfig?.type === 'metamagic') {
+            const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
+            const count = customConfig.count || 2;
+            // Exclude options already taken by Sorcerer class metamagic
+            const classChosen = Sheet.lv('charMetamagic', []) || [];
+            const available = mmOptions.filter(o => !classChosen.includes(o.name));
+
+            metamagicPanel.style.display = 'block';
+            metamagicPanel.innerHTML = `
+              <div class="lu-feat-psionic-label">${customConfig.label} <span style="font-size:0.8rem;color:var(--ink-faint)">(Choose ${count})</span></div>
+              <div class="lu-feat-psionic-hint" style="font-size:0.8rem;color:var(--ink-faint);margin-bottom:8px">${customConfig.hint || ''}</div>
+              <div class="lu-feat-mm-pick-list"></div>`;
+
+            if (this._pending[level]?.asi) this._pending[level].asi.metamagicChoices = [];
+            const listEl = metamagicPanel.querySelector('.lu-feat-mm-pick-list');
+
+            const renderFeatMmList = () => {
+              listEl.innerHTML = '';
+              available.forEach(opt => {
+                const chosen = this._pending[level]?.asi?.metamagicChoices || [];
+                const isChosen = chosen.includes(opt.name);
+                const atMax = !isChosen && chosen.length >= count;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex;gap:8px;align-items:flex-start;padding:4px 6px;border-radius:4px;cursor:pointer;' + (isChosen ? 'background:var(--accent-faint,rgba(139,90,43,0.12))' : '');
+                if (atMax) row.style.opacity = '0.45';
+                row.innerHTML = `
+                  <input type="checkbox" ${isChosen ? 'checked' : ''} ${atMax ? 'disabled' : ''} style="margin-top:3px;flex-shrink:0">
+                  <div>
+                    <div style="font-weight:600;font-size:0.85rem">${opt.name} <span style="font-weight:400;color:var(--ink-faint)">(${opt.cost} SP)</span></div>
+                    <div style="font-size:0.78rem;color:var(--ink-light)">${opt.text}</div>
+                  </div>`;
+                const cb = row.querySelector('input');
+                cb.addEventListener('change', () => {
+                  if (!this._pending[level].asi.metamagicChoices) this._pending[level].asi.metamagicChoices = [];
+                  if (cb.checked) {
+                    if (this._pending[level].asi.metamagicChoices.length >= count) { cb.checked = false; return; }
+                    this._pending[level].asi.metamagicChoices.push(opt.name);
+                  } else {
+                    this._pending[level].asi.metamagicChoices = this._pending[level].asi.metamagicChoices.filter(n => n !== opt.name);
+                  }
+                  renderFeatMmList();
+                });
+                listEl.appendChild(row);
+              });
+            };
+            renderFeatMmList();
+          } else {
+            metamagicPanel.style.display = 'none';
+            metamagicPanel.innerHTML = '';
+            if (this._pending[level]?.asi) delete this._pending[level].asi.metamagicChoices;
+          }
+        }
       });
     }
   },
@@ -2782,8 +3000,20 @@ window.LevelUp = {
             const fi = typeof getFeatInfo === 'function' ? getFeatInfo(p.asi.feat) : null;
             const abilOptions = fi?.ability?.length ? this._parseFeatAbilities(fi.ability) : [];
             const nonCapped = abilOptions.filter(ab => Sheet.getAbilityScore(ab) < 20);
-            if (nonCapped.length > 1 && !p.asi.featAbility) {
+            // For metamagic feats with no ability data, all 6 are valid — treat as requiring a choice
+            const mmCfg = ClassResources?.FEAT_CUSTOM_CHOICES?.[p.asi.feat];
+            const effectiveNonCapped = nonCapped.length === 0 && mmCfg?.type === 'metamagic'
+              ? ['str', 'dex', 'con', 'int', 'wis', 'cha'].filter(ab => Sheet.getAbilityScore(ab) < 20)
+              : nonCapped;
+            if (effectiveNonCapped.length > 1 && !p.asi.featAbility) {
               alert(`Please select an ability score bonus for your feat at level ${lvl}.`); return;
+            }
+            // Validate metamagic choices
+            if (mmCfg?.type === 'metamagic') {
+              const needed = mmCfg.count || 2;
+              if (!p.asi.metamagicChoices || p.asi.metamagicChoices.length < needed) {
+                alert(`Please choose ${needed} Metamagic options for your feat at level ${lvl}.`); return;
+              }
             }
           }
         }
@@ -2908,12 +3138,19 @@ window.LevelUp = {
             // Check if this feat has spell choices
             const spellConfig = ClassResources?.FEAT_SPELL_CHOICES?.[p.asi.feat];
             const spellAbility = p.asi.psionicAbility || p.asi.featAbility || null;
+            const mmCfgConfirm = ClassResources?.FEAT_CUSTOM_CHOICES?.[p.asi.feat];
             if (spellConfig && (p.asi.featSpells?.length || spellConfig.autoSpells?.length || spellAbility)) {
               const featObj = {
                 name: p.asi.feat,
                 ...(p.asi.featSpells?.length && { chosenSpells: p.asi.featSpells.flat() }),
                 ...(p.asi.featSpellClass && { spellClass: p.asi.featSpellClass }),
                 ...(spellAbility && { spellAbility }),
+              };
+              if (typeof Sheet.addFeat === 'function') Sheet.addFeat(featObj);
+            } else if (mmCfgConfirm?.type === 'metamagic' && p.asi.metamagicChoices?.length) {
+              const featObj = {
+                name: p.asi.feat,
+                customChoices: p.asi.metamagicChoices,
               };
               if (typeof Sheet.addFeat === 'function') Sheet.addFeat(featObj);
             } else {

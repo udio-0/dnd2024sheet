@@ -2411,8 +2411,10 @@ window.UA2024_DATA = {
       "page": 1,
       "entries": [{ "type": "entries", "name": "Spellfire Sorcerer", "entries": [
         "Spellfire Sorcerers channel spellfire—a rare radiant energy that absorbs and redirects magic.",
-        { "type": "entries", "name": "3rd Level: Spellfire Absorption", "entries": ["When you are targeted by a spell, you can use your Reaction to absorb the spell. The spell has no effect on you, and you gain Sorcery Points equal to the spell's level."] },
-        { "type": "entries", "name": "3rd Level: Radiant Burst", "entries": ["You can spend 1 Sorcery Point as a Bonus Action to release a burst of spellfire. Each creature within 10 feet takes radiant damage equal to 1d6 per Sorcery Point spent."] },
+        { "type": "entries", "name": "3rd Level: Spellfire Burst", "entries": [
+          { "type": "entries", "name": "Bolstering Flames", "entries": ["When you are targeted by a spell, you can use your Reaction to absorb the spell. The spell has no effect on you, and you gain Sorcery Points equal to the spell's level."] },
+          { "type": "entries", "name": "Radiant Fire", "entries": ["You can spend 1 Sorcery Point as a Bonus Action to release a burst of spellfire. Each creature within 10 feet takes radiant damage equal to 1d6 per Sorcery Point spent."] }
+        ]},
         { "type": "entries", "name": "6th Level: Spellfire Healing", "entries": ["As a Bonus Action, you can spend Sorcery Points to heal yourself or a creature you touch. Restore 1d8 HP per Sorcery Point spent."] },
         { "type": "entries", "name": "14th Level: Blazing Spellfire", "entries": ["Your Radiant Burst now affects a 30-foot radius and you can choose which creatures are affected."] },
         { "type": "entries", "name": "18th Level: Spellfire Mastery", "entries": ["You can absorb any spell of 6th level or lower with Spellfire Absorption. You regain full HP once per Long Rest when you reduce a creature to 0 HP with radiant damage."] }

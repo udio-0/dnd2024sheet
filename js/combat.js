@@ -306,7 +306,9 @@ window.Combat = {
             <span>Concentrating</span>
           </label>
           <input type="text" id="conc-spell" class="conc-spell-input" placeholder="Spell name..." value="${this.lv('combat_concSpell', '')}">
-          <button class="btn btn-sm" id="btn-conc-check">Con Save 🎲</button>
+          <button class="btn btn-sm" id="btn-conc-check" title="Roll Constitution save — DC 10 (damage ≤ 20)">DC 10 🎲</button>
+          <input type="number" id="conc-dmg" class="conc-dmg-input" min="1" placeholder="dmg" title="Enter damage taken to calculate DC (half damage, min 10)">
+          <button class="btn btn-sm" id="btn-conc-check-dmg" title="Roll Constitution save — DC = half damage taken (min 10)">Roll 🎲</button>
         </div>
       </div>
 
@@ -407,7 +409,7 @@ window.Combat = {
     if (cb) cb.addEventListener('change', () => this.sv('combat_concentrating', cb.checked));
     if (spellInput) spellInput.addEventListener('input', () => this.sv('combat_concSpell', spellInput.value));
 
-    this.$('btn-conc-check')?.addEventListener('click', () => {
+    const doRoll = (dc) => {
       // Constitution saving throw — check for War Caster advantage
       const conScore = parseInt(document.getElementById('con')?.value) || 10;
       const conMod = Math.floor((conScore - 10) / 2);
@@ -415,7 +417,6 @@ window.Combat = {
       const isProf = CharStore.lv('saveProf_con', false);
       const totalMod = conMod + (isProf ? profBonus : 0);
       if (typeof Sheet !== 'undefined') {
-        // War Caster advantage is handled as an extra source
         const wcMode = Sheet._concSaveMode();
         const extraAdv = wcMode === 'advantage' ? ['War Caster'] : [];
         const active = Sheet.lv('conditions', []);
@@ -426,15 +427,39 @@ window.Combat = {
         });
         const adjMod = totalMod - penalty;
         const result = Dice.rollD20(adjMod, mode);
-        let label = 'Concentration Check (Con Save)';
+        let label = `Concentration Check (Con Save vs DC ${dc})`;
         if (mode === 'advantage') label += ' (Adv)';
         if (mode === 'disadvantage') label += ' (Disadv)';
         if (penalty > 0) label += ` [−${penalty} Exhaustion]`;
         Dice.showResult(label, result);
       } else {
-        Dice.showResult('Concentration Check (Con Save)', Dice.rollD20(totalMod));
+        Dice.showResult(`Concentration Check (Con Save vs DC ${dc})`, Dice.rollD20(totalMod));
       }
+    };
+
+    const dc10Btn = this.$('btn-conc-check');
+    dc10Btn?.addEventListener('click', () => doRoll(10));
+    if (dc10Btn && window.attachInstantTooltip) attachInstantTooltip(dc10Btn,
+      '<strong>Concentration Save — DC 10</strong><br>' +
+      'Use when the damage taken was 20 or less.<br>' +
+      'DC is always 10 in this case.');
+
+    const dmgRollBtn = this.$('btn-conc-check-dmg');
+    const dmgInput = this.$('conc-dmg');
+    dmgRollBtn?.addEventListener('click', () => {
+      const dmg = parseInt(dmgInput?.value) || 0;
+      const dc = Math.max(10, Math.floor(dmg / 2));
+      doRoll(dc);
     });
+    if (dmgRollBtn && window.attachInstantTooltip) attachInstantTooltip(dmgRollBtn,
+      '<strong>Concentration Save — Custom DC</strong><br>' +
+      'Type the damage taken in the field, then click Roll.<br>' +
+      'DC = half the damage taken (minimum 10).<br>' +
+      'e.g. 30 damage → DC 15');
+    if (dmgInput && window.attachInstantTooltip) attachInstantTooltip(dmgInput,
+      '<strong>Damage taken</strong><br>' +
+      'Enter the total damage from the hit.<br>' +
+      'DC = half this value (minimum 10).');
   },
 
   _buildConditions() {
@@ -566,6 +591,7 @@ window.Combat = {
 
     // Warlock spell slot info
     const charClass = CharStore.lv('charClass', '');
+    const charLevel = parseInt(CharStore.lv('charLevel', 1)) || 1;
     let warlockSlotHtml = '';
     if (charClass === 'Warlock') {
       const slotInfo = [];
@@ -605,6 +631,28 @@ window.Combat = {
         <div class="rest-roll-log" id="rest-roll-log"></div>
       </div>
       ${warlockSlotHtml}
+      ${(() => {
+        if (charClass !== 'Sorcerer' || charLevel < 5) return '';
+        const spRes = resources.find(r => r.name === 'Sorcery Points');
+        const srRes = resources.find(r => r.name === 'Sorcerous Restoration');
+        if (!srRes || srRes.used >= srRes.max) return `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Sorcerous Restoration</div>
+        <p class="rest-modal-desc rest-modal-used">Already used — resets on Long Rest.</p>
+      </div>`;
+        const currentSP = spRes ? (spRes.max - spRes.used) : 0;
+        const maxSP = spRes ? spRes.max : 0;
+        const canRecover = spRes ? Math.min(4, spRes.used) : 4;
+        return `
+      <div class="rest-modal-section">
+        <div class="rest-modal-section-title">Sorcerous Restoration <span class="rest-modal-optional-badge">Optional</span></div>
+        <p class="rest-modal-desc">You can regain up to <strong>4 Sorcery Points</strong> on this Short Rest. Currently: <strong>${currentSP}/${maxSP} SP</strong> remaining${canRecover > 0 ? ` — would recover <strong>+${canRecover} SP</strong>` : ' — already at max'}.</p>
+        <label class="rest-sorcery-opt">
+          <input type="checkbox" id="sr-sorcerous-restoration"${canRecover <= 0 ? ' disabled' : ''}>
+          Recover ${canRecover} Sorcery Point${canRecover !== 1 ? 's' : ''} (uses Sorcerous Restoration)
+        </label>
+      </div>`;
+      })()}
       ${srResources.length ? `
       <div class="rest-modal-section">
         <div class="rest-modal-section-title">Features Refreshed on Short Rest</div>
@@ -750,6 +798,30 @@ window.Combat = {
         <button class="btn btn-sm" id="rest-go-spells">Go to Spells Tab</button>
       </div>` : '';
 
+    // Artificer cantrip swap on long rest
+    const isArtificer = charClass.toLowerCase() === 'artificer';
+    const knownCantrips = isArtificer
+      ? (CharStore.lv('charSpells', []) || []).filter(s => s.level === 0 && !s.racial && !s.featSource && !s.subclass && !s.classGranted)
+      : [];
+    const artificerCantripHtml = isArtificer && knownCantrips.length ? `
+      <div class="rest-modal-section" id="rest-artificer-cantrip-section">
+        <div class="rest-modal-section-title">Cantrip Swap</div>
+        <p class="rest-modal-desc">As an <strong>Artificer</strong>, you may replace one of your cantrips with a different Artificer cantrip.</p>
+        <div class="rest-mastery-swap">
+          <label class="rest-label">Swap out:
+            <select id="rest-cantrip-remove" class="rest-select">
+              <option value="">— Keep all current —</option>
+              ${knownCantrips.map(s => `<option value="${s.name}">${s.name}</option>`).join('')}
+            </select>
+          </label>
+          <label class="rest-label" id="rest-cantrip-add-wrap" style="display:none">Replace with:
+            <select id="rest-cantrip-add" class="rest-select">
+              <option value="">— Choose new cantrip —</option>
+            </select>
+          </label>
+        </div>
+      </div>` : '';
+
     body.innerHTML = `
       <div class="rest-modal-section rest-summary-section">
         <div class="rest-modal-section-title">Long Rest Summary</div>
@@ -763,6 +835,7 @@ window.Combat = {
         </ul>
       </div>
       ${masteryHtml}
+      ${artificerCantripHtml}
       ${lrResourcesHtml}
       ${preparedSpellHtml}
       ${attunedNote}
@@ -794,6 +867,38 @@ window.Combat = {
             opt.value = w.name;
             opt.textContent = `${w.name} (${w.category})`;
             addSelect.appendChild(opt);
+          });
+        });
+      }
+    }
+
+    // Bind Artificer cantrip swap selects
+    if (isArtificer && knownCantrips.length) {
+      const cantripRemove = body.querySelector('#rest-cantrip-remove');
+      const cantripAddWrap = body.querySelector('#rest-cantrip-add-wrap');
+      const cantripAdd = body.querySelector('#rest-cantrip-add');
+      if (cantripRemove && cantripAdd && cantripAddWrap) {
+        const allArtificerSpells = typeof getSpellsForClass === 'function' ? getSpellsForClass('Artificer') : [];
+        const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+        const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+        const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+        const allCantrips = allArtificerSpells.filter(s => {
+          if (s.level !== 0) return false;
+          if (s.source === 'UA2024') return ua && show24;
+          if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+          return show14;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+        const knownNames = new Set(knownCantrips.map(s => s.name.toLowerCase()));
+        cantripRemove.addEventListener('change', () => {
+          const swapOut = cantripRemove.value;
+          if (!swapOut) { cantripAddWrap.style.display = 'none'; return; }
+          cantripAddWrap.style.display = '';
+          cantripAdd.innerHTML = '<option value="">— Choose new cantrip —</option>';
+          allCantrips.filter(c => !knownNames.has(c.name.toLowerCase()) || c.name === swapOut).forEach(c => {
+            const opt = document.createElement('option');
+            opt.value = c.name;
+            opt.textContent = `${c.name} (${c._schoolName || ''})`;
+            cantripAdd.appendChild(opt);
           });
         });
       }
@@ -878,6 +983,21 @@ window.Combat = {
   _doShortRest() {
     // Hit dice were already rolled live in the modal; just reset SR resources
     if (typeof Sheet !== 'undefined') Sheet.resetResourcesByType(['sr']);
+
+    // Sorcerer: Sorcerous Restoration (opt-in, once per LR)
+    const srCheckbox = document.getElementById('sr-sorcerous-restoration');
+    if (srCheckbox && srCheckbox.checked) {
+      const resources = CharStore.lv('resources', []);
+      const spRes = resources.find(r => r.name === 'Sorcery Points');
+      const srFeat = resources.find(r => r.name === 'Sorcerous Restoration');
+      if (spRes && srFeat && srFeat.used < srFeat.max) {
+        const recover = Math.min(4, spRes.used);
+        spRes.used = Math.max(0, spRes.used - recover);
+        srFeat.used = srFeat.max; // mark as used for the day
+        CharStore.sv('resources', resources);
+        if (typeof Sheet !== 'undefined') Sheet.renderResources();
+      }
+    }
 
     // Warlock: restore ALL spell slots on Short Rest
     const charClass = CharStore.lv('charClass', '');
@@ -972,6 +1092,19 @@ window.Combat = {
         if (idx >= 0) mastery[idx] = addSelect.value;
         CharStore.sv('weaponMastery', mastery);
       }
+
+      // Apply Artificer cantrip swap if selected
+      const cantripRemove = body.querySelector('#rest-cantrip-remove');
+      const cantripAdd = body.querySelector('#rest-cantrip-add');
+      if (cantripRemove?.value && cantripAdd?.value) {
+        const spells = CharStore.lv('charSpells', []) || [];
+        const idx = spells.findIndex(s => s.name === cantripRemove.value && s.level === 0);
+        if (idx !== -1) spells.splice(idx, 1);
+        if (!spells.some(s => s.name === cantripAdd.value && s.level === 0)) {
+          spells.push({ name: cantripAdd.value, level: 0, prepared: true });
+        }
+        CharStore.sv('charSpells', spells);
+      }
     }
 
     this._resetTurn();
@@ -981,7 +1114,10 @@ window.Combat = {
 
     // Re-render
     this.render();
-    if (typeof Sheet !== 'undefined') Sheet.buildSpellSlots();
+    if (typeof Sheet !== 'undefined') {
+      Sheet.buildSpellSlots();
+      Sheet.restoreSpells();
+    }
   },
 
   /* ---- EXECUTE DAWN ---- */

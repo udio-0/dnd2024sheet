@@ -527,14 +527,14 @@ document.addEventListener('change', e => {
     });
 
     // Character sheet
-    Router.register('sheet/:id', (params) => {
+    Router.register('sheet/:id', async (params) => {
       Router.showView('view-sheet');
       const pdfBtn = document.getElementById('btn-export-pdf');
       if (pdfBtn) pdfBtn.style.display = 'inline-block';
       const saveBtn = document.getElementById('btn-save-char');
       if (saveBtn) saveBtn.style.display = 'inline-flex';
       Sheet.teardown();
-      Sheet.init(params.id);
+      await Sheet.init(params.id);
       // Guard: intercept in-app navigation away from a dirty sheet
       Router._guard = () => {
         if (typeof FileSync !== 'undefined' && FileSync.isDirty(params.id)) {

@@ -287,6 +287,45 @@ window.FileSync = {
     });
   },
 
+  // ---- LOAD SINGLE CHARACTER FROM FILE (file takes priority over localStorage) ----
+  async loadCharacterFromFile(id) {
+    if (!this._dirHandle || !(await this.ensurePermission())) return false;
+    // Try the stored filename first (fastest path)
+    const stored = CharStore.loadCharacter(id);
+    const fileName = stored?._fileName;
+    if (fileName) {
+      try {
+        const fileHandle = await this._dirHandle.getFileHandle(fileName);
+        const file = await fileHandle.getFile();
+        const text = await file.text();
+        const data = JSON.parse(text);
+        if (data && (data.charName || data._meta)) {
+          data._fileName = fileName;
+          // Write directly to localStorage to bypass markDirty
+          localStorage.setItem(CharStore.CHAR_PREFIX + id, JSON.stringify(data));
+          return true;
+        }
+      } catch (e) { /* file renamed or missing — fall through to scan */ }
+    }
+    // Fall back: scan folder for a file whose _meta.id matches
+    try {
+      for await (const entry of this._dirHandle.values()) {
+        if (entry.kind !== 'file' || !entry.name.endsWith('.json') || entry.name === this.NOTES_FILENAME) continue;
+        try {
+          const file = await entry.getFile();
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (data?._meta?.id === id) {
+            data._fileName = entry.name;
+            localStorage.setItem(CharStore.CHAR_PREFIX + id, JSON.stringify(data));
+            return true;
+          }
+        } catch (e) { /* skip */ }
+      }
+    } catch (e) { /* ignore */ }
+    return false;
+  },
+
   // ---- IMPORT CHARACTERS + NOTES FROM FOLDER ----
   async syncFromFolder() {
     // Load notes file first, but only if notes are clean (don't overwrite unsaved changes)

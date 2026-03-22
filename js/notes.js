@@ -256,12 +256,6 @@ window.NotesManager = {
     }
     // Tag add button
     this.$('notes-add-tag-btn')?.addEventListener('click', () => this._toggleTagDropdown());
-    // Pin button
-    this.$('notes-btn-pin')?.addEventListener('click', () => this._togglePin());
-    // Delete note button
-    this.$('notes-btn-delete')?.addEventListener('click', () => this._deleteActiveNote());
-    // Move to folder button
-    this.$('notes-btn-move')?.addEventListener('click', () => this._showMoveDropdown());
     // Back to list (mobile)
     this.$('notes-btn-back')?.addEventListener('click', () => {
       this.$('notes-tab-root')?.classList.remove('note-open');
@@ -491,11 +485,8 @@ window.NotesManager = {
     const contentEl = this.$('notes-editor-content');
     const tagsEl = this.$('notes-editor-tags');
     const metaEl = this.$('notes-editor-meta');
-    const pinBtn = this.$('notes-btn-pin');
-
     if (titleEl) { titleEl.value = note.title; titleEl.disabled = false; }
     if (contentEl) { contentEl.value = note.content; contentEl.disabled = false; }
-    if (pinBtn) pinBtn.classList.toggle('active', note.pinned);
     this._renderNoteTags(note);
     this._renderMeta(note);
     this.renderFolderTree();
@@ -547,29 +538,6 @@ window.NotesManager = {
     titleEl.value = newTitle;
     this.saveNotes(notes);
     this.renderFolderTree();
-  },
-
-  _togglePin() {
-    if (!this._activeNoteId) return;
-    const notes = this.getNotes();
-    const note = notes.find(n => n.id === this._activeNoteId);
-    if (!note) return;
-    note.pinned = !note.pinned;
-    this.saveNotes(notes);
-    const pinBtn = this.$('notes-btn-pin');
-    if (pinBtn) pinBtn.classList.toggle('active', note.pinned);
-    this.renderFolderTree();
-  },
-
-  _deleteActiveNote() {
-    if (!this._activeNoteId) return;
-    this._dialog({ title: 'Delete Note', body: 'Delete this note? This cannot be undone.', okText: 'Delete', danger: true }, () => {
-      let notes = this.getNotes();
-      notes = notes.filter(n => n.id !== this._activeNoteId);
-      this.saveNotes(notes);
-      this._showEmptyEditor();
-      this.renderSidebar();
-    });
   },
 
   // ---- TAGS ----
@@ -643,41 +611,6 @@ window.NotesManager = {
         if (!dd.contains(e.target) && e.target.id !== 'notes-add-tag-btn') {
           dd.remove(); document.removeEventListener('click', closer);
         }
-      };
-      document.addEventListener('click', closer);
-    }, 0);
-  },
-
-  // ---- MOVE NOTE ----
-  _showMoveDropdown() {
-    if (!this._activeNoteId) return;
-    let dd = this.$('notes-move-dropdown');
-    if (dd) { dd.remove(); return; }
-    const folders = this.getFolders();
-
-    dd = document.createElement('div');
-    dd.id = 'notes-move-dropdown';
-    dd.className = 'notes-tag-dropdown notes-move-dropdown';
-
-    // Root option
-    const rootOpt = document.createElement('button');
-    rootOpt.className = 'notes-tag-dd-opt';
-    rootOpt.textContent = '📁 Root (no folder)';
-    rootOpt.addEventListener('click', () => { this._moveNote(this._activeNoteId, null); dd.remove(); });
-    dd.appendChild(rootOpt);
-
-    folders.forEach(f => {
-      const opt = document.createElement('button');
-      opt.className = 'notes-tag-dd-opt';
-      opt.textContent = `📁 ${f.name}`;
-      opt.addEventListener('click', () => { this._moveNote(this._activeNoteId, f.id); dd.remove(); });
-      dd.appendChild(opt);
-    });
-
-    this.$('notes-editor-toolbar')?.appendChild(dd);
-    setTimeout(() => {
-      const closer = (e) => {
-        if (!dd.contains(e.target)) { dd.remove(); document.removeEventListener('click', closer); }
       };
       document.addEventListener('click', closer);
     }, 0);
@@ -1017,21 +950,14 @@ window.NotesManager = {
     const allNotes = this.getNotes();
     const q = this._acQuery.toLowerCase();
 
-    // Filter: notes that have the matching tag, or ALL notes if query is typed
-    // Prioritize notes with the matching tag, then show others
+    // Filter: only show notes with the matching tag for this symbol
     let tagged = allNotes.filter(n => n.tags.includes(tagType));
-    let untagged = allNotes.filter(n => !n.tags.includes(tagType));
 
     if (q) {
       tagged = tagged.filter(n => n.title.toLowerCase().includes(q));
-      untagged = untagged.filter(n => n.title.toLowerCase().includes(q));
     }
 
-    // Combine: tagged first, then untagged (marked as "other")
-    this._acResults = [
-      ...tagged.slice(0, 8).map(n => ({ note: n, primary: true })),
-      ...untagged.slice(0, 4).map(n => ({ note: n, primary: false })),
-    ];
+    this._acResults = tagged.slice(0, 10).map(n => ({ note: n, primary: true }));
 
     // Add "create new" option if query has text and no exact match
     if (q.length > 0) {

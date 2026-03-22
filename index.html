@@ -374,7 +374,9 @@
                   <input type="checkbox" id="char-conc-active" aria-label="Toggle concentration">
                 </label>
                 <input type="text" id="char-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
-                <button class="btn btn-sm spell-conc-save-btn" id="char-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
+                <button class="btn btn-sm spell-conc-save-btn" id="char-conc-check" title="Roll Constitution save — DC 10 (damage ≤ 20)">DC 10 🎲</button>
+                <input type="number" id="char-conc-dmg" class="conc-dmg-input" min="1" placeholder="dmg" title="Enter damage taken to calculate DC (half damage, min 10)">
+                <button class="btn btn-sm spell-conc-save-btn" id="char-conc-check-dmg" title="Roll Constitution save — DC = half damage taken (min 10)">Roll 🎲</button>
                 <button class="btn btn-sm scroll-btn" id="btn-learn-scroll" title="Learn a spell from a scroll in your inventory">Learn Scroll</button>
                 <button class="btn btn-sm scroll-btn" id="btn-cast-scroll" title="Cast a spell from a scroll in your inventory">Cast Scroll</button>
               </div>
@@ -454,7 +456,9 @@
               <input type="checkbox" id="spell-conc-active" aria-label="Toggle concentration">
             </label>
             <input type="text" id="spell-conc-spell" class="spell-conc-input" placeholder="Spell name..." autocomplete="off">
-            <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save to maintain concentration">Con Save</button>
+            <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check" title="Roll Constitution save — DC 10 (damage ≤ 20)">DC 10 🎲</button>
+            <input type="number" id="spell-conc-dmg" class="conc-dmg-input" min="1" placeholder="dmg" title="Enter damage taken to calculate DC (half damage, min 10)">
+            <button class="btn btn-sm spell-conc-save-btn" id="spell-conc-check-dmg" title="Roll Constitution save — DC = half damage taken (min 10)">Roll 🎲</button>
           </div>
           <button class="btn btn-sm scroll-btn" id="spell-tab-learn-scroll" title="Learn a spell from a scroll in your inventory">Learn Scroll</button>
           <button class="btn btn-sm scroll-btn" id="spell-tab-cast-scroll" title="Cast a spell from a scroll in your inventory">Cast Scroll</button>
@@ -578,11 +582,6 @@
               <button id="notes-nav-prev" class="notes-nav-btn" title="Previous note" disabled>◀</button>
               <button id="notes-nav-next" class="notes-nav-btn" title="Next note" disabled>▶</button>
               <input type="text" id="notes-editor-title" class="notes-editor-title" placeholder="Note title..." disabled>
-              <div class="notes-toolbar-btns">
-                <button id="notes-btn-pin" class="notes-tool-btn" title="Pin/Unpin">📌</button>
-                <button id="notes-btn-move" class="notes-tool-btn" title="Move to folder">📁</button>
-                <button id="notes-btn-delete" class="notes-tool-btn notes-tool-danger" title="Delete note"><span class="notes-delete-icon">✕</span> Delete</button>
-              </div>
             </div>
             <div class="notes-tag-bar" id="notes-tag-bar">
               <div class="notes-editor-tags" id="notes-editor-tags"></div>
