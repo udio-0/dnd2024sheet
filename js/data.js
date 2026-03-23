@@ -276,8 +276,16 @@ async function loadAllData(progressCallback) {
     // MAGIC VARIANTS (Armor of Resistance, Weapon of Warning, etc.)
     const magicVariantsData = await fetchJson(`${DATA_BASE}/magicvariants.json`);
     if (magicVariantsData) {
+      const WEAPON_REQUIRE_KEYS = new Set(['sword','axe','bow','crossbow','spear','hammer','club','dagger','staff','mace','weapon','whip','flail','lance','pike','halberd','glaive','trident','rapier','scimitar','shortsword','longsword','greatsword','handaxe','battleaxe','greataxe','warhammer','maul','morningstar','quarterstaff','javelin','sling','dart']);
       const variants = (magicVariantsData.magicvariant || []).map(v => {
         const item = Object.assign({}, v, v.inherits || {});
+        // Infer weapon category from requires before deleting it
+        if (!item.weaponCategory && Array.isArray(v.requires)) {
+          for (const req of v.requires) {
+            if (req.weaponCategory) { item.weaponCategory = req.weaponCategory; break; }
+            if (Object.keys(req).some(k => WEAPON_REQUIRE_KEYS.has(k))) { item.weaponCategory = 'martial'; break; }
+          }
+        }
         delete item.inherits;
         delete item.requires;
         item._isMagic = true;

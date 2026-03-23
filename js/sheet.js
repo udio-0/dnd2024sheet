@@ -3498,6 +3498,7 @@ window.Sheet = {
         div.innerHTML = `
           <span class="ac-item-name">${item.name} <small style="color:var(--ink-faint)">[${item._src || ''}]</small></span>
           <span class="ac-item-detail">${detail}</span>`;
+        div.addEventListener('mousedown', e => e.preventDefault());
         div.addEventListener('click', () => {
           this.addItemToInventory(item);
           input.value = '';
@@ -3545,6 +3546,7 @@ window.Sheet = {
         div.innerHTML = `
           <span class="ac-item-name">${item.name} <small style="color:var(--ink-faint)">[${item._src || ''}]</small></span>
           <span class="ac-item-detail">${detail}</span>`;
+        div.addEventListener('mousedown', e => e.preventDefault());
         div.addEventListener('click', () => {
           this.addItemToInventory(item);
           input.value = '';

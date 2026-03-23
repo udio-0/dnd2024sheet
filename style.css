@@ -1202,6 +1202,7 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--ink);
   cursor: pointer;
   margin-top: 4px;
+  -webkit-user-select: none;
   user-select: none;
 }
 .rest-sorcery-opt input[type="checkbox"] {
@@ -5556,6 +5557,7 @@ textarea::placeholder { color: var(--ink-faint); }
   align-items: center;
   gap: 4px;
   flex: 1;
+  min-width: 0;
 }
 .wiz-step-dot {
   width: 32px; height: 32px;
@@ -5598,8 +5600,8 @@ textarea::placeholder { color: var(--ink-faint); }
   flex: 1;
   height: 2px;
   background: var(--border);
-  align-self: center;
-  margin-top: -14px;
+  align-self: flex-start;
+  margin-top: 15px;
   min-width: 8px;
 }
 .wiz-step-line.done { background: var(--gold); }
@@ -6008,12 +6010,13 @@ textarea::placeholder { color: var(--ink-faint); }
   border: 2px solid var(--border);
   border-radius: var(--radius);
   background: var(--white);
+  color: var(--ink);
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
 }
 .bg-asi-card:hover { border-color: var(--gold-dark); }
-.bg-asi-card.two { border-color: var(--red); background: var(--parchment-dk); }
-.bg-asi-card.one { border-color: var(--gold-dark); background: var(--parchment-dk); }
+.bg-asi-card.two { border-color: var(--red); background: var(--parchment-dk); color: var(--ink); }
+.bg-asi-card.one { border-color: var(--gold-dark); background: var(--parchment-dk); color: var(--ink); }
 .bg-asi-card-short { font-family: var(--font-title); font-size: 0.78rem; letter-spacing: 1px; color: var(--ink-faint); text-transform: uppercase; }
 .bg-asi-card-name { font-size: 0.8rem; font-weight: 600; color: var(--ink); }
 .bg-asi-card-bonus { font-family: var(--font-display); font-size: 1.4rem; font-weight: 700; color: var(--ink-faint); }
@@ -6424,6 +6427,48 @@ textarea::placeholder { color: var(--ink-faint); }
   background: none; border: none;
   color: #c0392b; cursor: pointer; font-size: 0.85rem;
 }
+.wiz-qty-ctrl {
+  display: flex;
+  align-items: center;
+  margin: 0 8px;
+  border: 1px solid var(--gold-dark);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.wiz-qty-ctrl .qty-btn {
+  background: rgba(201,173,106,0.15);
+  border: none;
+  width: 22px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-light);
+  opacity: 1;
+  flex-shrink: 0;
+}
+.wiz-qty-ctrl .qty-btn:hover:not(:disabled) { background: rgba(201,173,106,0.35); }
+.wiz-qty-ctrl .qty-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.wiz-qty-input {
+  width: 36px;
+  height: 24px;
+  text-align: center;
+  border: none;
+  border-left: 1px solid var(--gold-dark);
+  border-right: 1px solid var(--gold-dark);
+  background: var(--input-bg, #FDF1DC);
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0;
+}
+.wiz-qty-input::-webkit-outer-spin-button,
+.wiz-qty-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.wiz-qty-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .wiz-equip-name { flex: 1; }
 .wiz-equip-dmg { color: var(--ink-faint); font-size: 0.8rem; }
 .wiz-equip-price {

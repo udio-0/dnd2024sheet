@@ -2792,7 +2792,7 @@ window.Wizard = {
       });
     }
 
-    const spentGp = () => (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) / 100, 0);
+    const spentGp = () => (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) / 100 * (it.qty || 1), 0);
 
     const updateGpSummary = () => {
       const spent = spentGp();
@@ -2803,19 +2803,65 @@ window.Wizard = {
       el.innerHTML = `Spent: <strong>${spent.toFixed(2).replace(/\.00$/, '')} gp</strong> &nbsp;|&nbsp; Available: <strong>${available} gp</strong> &nbsp;|&nbsp; Remaining: <strong style="color:${remaining < 0 ? '#c0392b' : 'var(--gold)'}">${remaining.toFixed(2).replace(/\.00$/, '')} gp</strong>`;
     };
 
+    const canAffordOneMore = (idx) => {
+      const item = d.inventory[idx];
+      const unitCp = item._valueCp || 0;
+      const currentSpentCp = (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) * (it.qty || 1), 0);
+      const availableCp = (d.gp || 0) * 100;
+      return (currentSpentCp + unitCp) <= availableCp;
+    };
+
     const renderList = () => {
       const list = document.getElementById('wiz-equip-list');
-      list.innerHTML = (d.inventory || []).map((it, i) => `
+      list.innerHTML = (d.inventory || []).map((it, i) => {
+        const incDisabled = !canAffordOneMore(i) ? 'disabled' : '';
+        return `
         <div class="wiz-equip-item">
           <span class="wiz-equip-name">${it.name}${it.damage ? ' <span class="wiz-equip-dmg">(' + it.damage + ')</span>' : ''}</span>
           <span class="wiz-equip-price">${it.value || ''}</span>
+          <div class="wiz-qty-ctrl">
+            <button class="qty-btn qty-dec" data-idx="${i}">−</button>
+            <input class="wiz-qty-input" type="number" min="1" data-idx="${i}" value="${it.qty || 1}">
+            <button class="qty-btn qty-inc" data-idx="${i}" ${incDisabled}>+</button>
+          </div>
           <button class="del-btn" data-idx="${i}">✕</button>
-        </div>`).join('') || '<div class="wiz-hint">No items added yet</div>';
+        </div>`;
+      }).join('') || '<div class="wiz-hint">No items added yet</div>';
       list.querySelectorAll('.del-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           d.inventory.splice(parseInt(btn.dataset.idx), 1);
           renderList();
           updateGpSummary();
+        });
+      });
+      list.querySelectorAll('.qty-dec').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          if ((d.inventory[idx].qty || 1) > 1) {
+            d.inventory[idx].qty = (d.inventory[idx].qty || 1) - 1;
+            renderList();
+          }
+        });
+      });
+      list.querySelectorAll('.qty-inc').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const idx = parseInt(btn.dataset.idx);
+          d.inventory[idx].qty = (d.inventory[idx].qty || 1) + 1;
+          renderList();
+        });
+      });
+      list.querySelectorAll('.wiz-qty-input').forEach(inp => {
+        inp.addEventListener('change', () => {
+          const idx = parseInt(inp.dataset.idx);
+          const val = parseInt(inp.value);
+          const item = d.inventory[idx];
+          const unitCp = item._valueCp || 0;
+          const availableCp = (d.gp || 0) * 100;
+          const otherSpentCp = (d.inventory || []).reduce((sum, it, j) => j === idx ? sum : sum + (it._valueCp || 0) * (it.qty || 1), 0);
+          const maxQty = unitCp > 0 ? Math.max(1, Math.floor((availableCp - otherSpentCp) / unitCp)) : (isNaN(val) || val < 1 ? 1 : val);
+          item.qty = (isNaN(val) || val < 1) ? 1 : Math.min(val, maxQty);
+          inp.value = item.qty;
+          renderList();
         });
       });
       updateGpSummary();
@@ -2838,7 +2884,12 @@ window.Wizard = {
         div.className = 'ac-item';
         div.innerHTML = `<span class="ac-item-name">${item.name} <small>[${item._src}]</small></span><span class="ac-item-detail">${item._type}${item._dmgStr ? ' | ' + item._dmgStr : ''} | ${item._valueStr}</span>`;
         div.addEventListener('click', () => {
-          d.inventory.push({ name: item.name, type: item._type, damage: item._dmgStr || '', mastery: (item.mastery || []).map(m => m.split('|')[0]).join(', '), properties: item._propStr || '', weight: item.weight || 0, value: item._valueStr || '', _valueCp: item.value || 0, ac: item.ac || 0, rarity: item.rarity || 'none', category: item._category, qty: 1 });
+          const existing = (d.inventory || []).find(e => e.name === item.name);
+          if (existing) {
+            existing.qty = (existing.qty || 1) + 1;
+          } else {
+            d.inventory.push({ name: item.name, type: item._type, damage: item._dmgStr || '', mastery: (item.mastery || []).map(m => m.split('|')[0]).join(', '), properties: item._propStr || '', weight: item.weight || 0, value: item._valueStr || '', _valueCp: item.value || 0, ac: item.ac || 0, rarity: item.rarity || 'none', category: item._category, qty: 1 });
+          }
           renderList();
           input.value = '';
           dropdown.style.display = 'none';
