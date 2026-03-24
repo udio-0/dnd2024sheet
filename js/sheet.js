@@ -131,6 +131,7 @@ window.Sheet = {
     this._initSpellFilters();
     this._initSpellAttackRoll();
     this._initDeathSaves();
+    this._initHpRecalc();
     this._initHitDice();
     this._initRestButtons();
     this._initScrollButtons();
@@ -452,6 +453,30 @@ window.Sheet = {
     this.syncHitDice();
     this._updateEquippedACSummary();
     this.applyConditionEffects();
+
+    // Subclass unarmored defense (e.g. College of Dance: 10 + Dex + Cha)
+    const unarmoredDef = this.lv('subclassUnarmoredDefense', null);
+    if (unarmoredDef?.abilities?.length) {
+      const unarmoredAC = 10 + unarmoredDef.abilities.reduce((sum, ab) => sum + (mods[ab] || 0), 0);
+      const acEl = this.$('armorClass');
+      if (acEl) {
+        // Only auto-set if not wearing armor (check if equipped armor exists)
+        const inv = this.lv('inventory', []) || [];
+        const hasEquippedArmor = inv.some(i => i.equipped && /^(LA|MA|HA)$/.test(i.typeCode));
+        if (!hasEquippedArmor) {
+          const currentAC = parseInt(acEl.value) || 10;
+          // Use the better of current AC or unarmored formula
+          if (unarmoredAC >= currentAC || this._unarmoredACActive) {
+            acEl.value = unarmoredAC;
+            this.sv('armorClass', unarmoredAC);
+            this._baseAC = unarmoredAC;
+            this._unarmoredACActive = true;
+          }
+        } else {
+          this._unarmoredACActive = false;
+        }
+      }
+    }
   },
 
   // ---- BIND SIMPLE FIELDS ----
@@ -5218,6 +5243,143 @@ window.Sheet = {
         return;
       }
     }
+  },
+
+  /* ---- HP RECALCULATION ---- */
+  _initHpRecalc() {
+    const btn = document.getElementById('btn-hp-recalc');
+    if (btn) btn.addEventListener('click', () => this._openHpRecalcModal());
+  },
+
+  _openHpRecalcModal() {
+    const className = this.lv('charClass', '');
+    const classInfo = className ? getClassInfo(className) : null;
+    const hitDieFaces = classInfo?.hitDieFaces || 8;
+    const conMod = this.getModFromScore(this.getAbilityScore('con'));
+    const conStr = conMod >= 0 ? `+${conMod}` : `${conMod}`;
+    const level = Math.max(1, parseInt(this.lv('charLevel', 1)) || 1);
+    const currentMax = parseInt(this.lv('hpMax', 0)) || 0;
+
+    const level1Hp  = Math.max(1, hitDieFaces + conMod);
+    const perLevelMax   = Math.max(1, hitDieFaces + conMod);
+    const perLevelAvg   = Math.max(1, Math.floor(hitDieFaces / 2 + 0.5) + conMod);
+    const perLevelFixed = Math.max(1, Math.floor(hitDieFaces / 2) + 1 + conMod);
+
+    const totalMax   = level1Hp + (level - 1) * perLevelMax;
+    const totalAvg   = level1Hp + (level - 1) * perLevelAvg;
+    const totalFixed = level1Hp + (level - 1) * perLevelFixed;
+
+    const savedMethod = this.lv('hpMethod', 'avg');
+
+    const existing = document.getElementById('hp-recalc-modal');
+    if (existing) existing.remove();
+
+    const modal = document.createElement('div');
+    modal.id = 'hp-recalc-modal';
+    modal.className = 'levelup-backdrop';
+    modal.style.display = 'flex';
+
+    modal.innerHTML = `
+      <div class="levelup-modal" style="max-width:420px;height:auto">
+        <div class="levelup-header">
+          <h2 class="levelup-title">Recalculate Hit Points</h2>
+          <button class="levelup-close" id="hp-recalc-close">&times;</button>
+        </div>
+        <div class="levelup-body">
+          <p style="margin-bottom:0.5rem;font-size:0.85rem;color:var(--ink-faint)">
+            Level ${level} ${className || 'character'} &mdash; d${hitDieFaces} hit die, ${conStr} CON mod
+          </p>
+          <p style="margin-bottom:0.8rem;font-size:0.8rem;color:var(--ink-faint)">
+            Level 1: max die (${level1Hp} HP), Levels 2+: chosen method per level
+          </p>
+          <div class="lu-hp-method-options">
+            <label class="lu-asi-choice${savedMethod === 'max' ? ' selected' : ''}" data-hp-val="${totalMax}">
+              <input type="radio" name="hp-recalc-method" value="max" ${savedMethod === 'max' ? 'checked' : ''}>
+              <div class="lu-asi-label"><strong>Maximum</strong> &mdash; ${level > 1 ? `${level1Hp} + ${level - 1} &times; ${perLevelMax}` : level1Hp} = <strong>${totalMax}</strong></div>
+            </label>
+            <label class="lu-asi-choice${savedMethod === 'avg' ? ' selected' : ''}" data-hp-val="${totalAvg}">
+              <input type="radio" name="hp-recalc-method" value="avg" ${savedMethod === 'avg' ? 'checked' : ''}>
+              <div class="lu-asi-label"><strong>Average</strong> &mdash; ${level > 1 ? `${level1Hp} + ${level - 1} &times; ${perLevelAvg}` : level1Hp} = <strong>${totalAvg}</strong></div>
+            </label>
+            <label class="lu-asi-choice${savedMethod === 'fixed' ? ' selected' : ''}" data-hp-val="${totalFixed}">
+              <input type="radio" name="hp-recalc-method" value="fixed" ${savedMethod === 'fixed' ? 'checked' : ''}>
+              <div class="lu-asi-label"><strong>Fixed Average</strong> &mdash; ${level > 1 ? `${level1Hp} + ${level - 1} &times; ${perLevelFixed}` : level1Hp} = <strong>${totalFixed}</strong></div>
+            </label>
+            <label class="lu-asi-choice${savedMethod === 'manual' ? ' selected' : ''}" data-hp-val="${currentMax}">
+              <input type="radio" name="hp-recalc-method" value="manual" ${savedMethod === 'manual' ? 'checked' : ''}>
+              <div class="lu-asi-label"><strong>Manual</strong> &mdash;
+                <input type="number" id="hp-recalc-manual" min="1" max="999" value="${currentMax}"
+                  ${savedMethod !== 'manual' ? 'disabled' : ''}
+                  style="width:70px;margin-left:8px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg-input,var(--parchment));color:var(--ink)">
+              </div>
+            </label>
+          </div>
+          <div class="lu-hp-gain" style="margin-top:10px">
+            Max HP: ${currentMax} &rarr; <strong id="hp-recalc-new">${savedMethod === 'manual' ? currentMax : (savedMethod === 'max' ? totalMax : (savedMethod === 'fixed' ? totalFixed : totalAvg))}</strong>
+          </div>
+        </div>
+        <div class="levelup-footer">
+          <button class="btn levelup-btn-cancel" id="hp-recalc-cancel">Cancel</button>
+          <button class="btn levelup-btn-confirm" id="hp-recalc-confirm">Apply</button>
+        </div>
+      </div>`;
+
+    document.body.appendChild(modal);
+
+    const newTotalEl = modal.querySelector('#hp-recalc-new');
+    const manualInput = modal.querySelector('#hp-recalc-manual');
+
+    const updatePreview = () => {
+      const checked = modal.querySelector('input[name="hp-recalc-method"]:checked');
+      if (!checked) return;
+      if (checked.value === 'manual') {
+        newTotalEl.textContent = manualInput.value || currentMax;
+      } else {
+        newTotalEl.textContent = checked.closest('label').dataset.hpVal;
+      }
+    };
+
+    modal.querySelectorAll('input[name="hp-recalc-method"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        modal.querySelectorAll('.lu-hp-method-options .lu-asi-choice').forEach(el => el.classList.remove('selected'));
+        radio.closest('.lu-asi-choice').classList.add('selected');
+        manualInput.disabled = radio.value !== 'manual';
+        updatePreview();
+      });
+    });
+
+    manualInput.addEventListener('input', () => {
+      const v = Math.max(1, Math.min(999, parseInt(manualInput.value) || 1));
+      newTotalEl.textContent = v;
+    });
+
+    modal.querySelector('#hp-recalc-close').addEventListener('click', () => modal.remove());
+    modal.querySelector('#hp-recalc-cancel').addEventListener('click', () => modal.remove());
+    modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+    modal.querySelector('#hp-recalc-confirm').addEventListener('click', () => {
+      const checked = modal.querySelector('input[name="hp-recalc-method"]:checked');
+      if (!checked) return;
+      let newMax;
+      if (checked.value === 'manual') {
+        newMax = Math.max(1, Math.min(999, parseInt(manualInput.value) || 1));
+      } else {
+        newMax = parseInt(checked.closest('label').dataset.hpVal) || currentMax;
+      }
+      const hpMaxEl = document.getElementById('hpMax');
+      if (hpMaxEl) hpMaxEl.value = newMax;
+      this.sv('hpMax', newMax);
+      // Also cap current HP if it exceeds new max
+      const curHp = parseInt(this.lv('hpCurrent', 0)) || 0;
+      if (curHp > newMax) {
+        const hpCurEl = document.getElementById('hpCurrent');
+        if (hpCurEl) hpCurEl.value = newMax;
+        this.sv('hpCurrent', newMax);
+      }
+      // Save the chosen method
+      if (checked.value !== 'manual') this.sv('hpMethod', checked.value);
+      modal.remove();
+    });
   },
 
 

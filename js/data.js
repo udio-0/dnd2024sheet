@@ -119,11 +119,8 @@ function parseEntryHtml(entry) {
   if (Array.isArray(entry)) return entry.map(parseEntryHtml).filter(Boolean).join('');
   const addPunctHtml = name => /[.!?:]$/.test(name) ? name : name + '.';
   if (entry.type === 'inset') {
-    // Inset entries are optional/lore sidebars — render as a tooltip badge pointing to step 7
-    const name = entry.name || 'Optional Feature';
-    const tooltipParagraphs = (entry.entries || []).map(e => typeof e === 'string' ? stripTags(e) : '').filter(Boolean);
-    const safeTooltip = tooltipParagraphs.join('||').replace(/"/g, '&quot;');
-    return `<p class="wiz-optional-feature"><span class="wiz-optional-badge" data-wiz-tooltip="${safeTooltip}">Optional: ${name}</span> <span class="wiz-optional-hint">You can select this in Other Character Options (step 7).</span></p>`;
+    // Inset entries are flavour/lore sidebars with no mechanical impact — skip them
+    return '';
   }
   if (entry.type === 'entries') {
     let out = '';

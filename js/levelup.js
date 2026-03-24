@@ -180,6 +180,57 @@ window.LevelUp = {
         spells: [{ name: 'Spirit Guardians', level: 3, prepared: true, alwaysPrepared: true, subclass: true }],
       },
     },
+    // ---- College of Dance (PHB 2024) ----
+    'Bard:College of Dance': {
+      3: {
+        // Dazzling Footwork: unarmored AC = 10 + Dex + Cha, +10 ft speed
+        unarmoredDefense: { abilities: ['dex', 'cha'] },
+        speedBonus: 10,
+      },
+      // Level 6: Inspiring Movement + Tantalizing Tempo (narrative — uses Bardic Inspiration reaction)
+      // Level 14: Leading Evasion (narrative — Evasion aura)
+    },
+    // ---- College of Glamour (PHB 2024) ----
+    'Bard:College of Glamour': {
+      3: {
+        // Beguiling Magic: always have Charm Person & Mirror Image prepared
+        spells: [
+          { name: 'Charm Person', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Mirror Image', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+      },
+      6: {
+        // Mantle of Majesty: always have Command prepared
+        spells: [
+          { name: 'Command', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+      },
+      // Level 14: Unbreakable Majesty (narrative — bonus action, Cha save or retarget)
+    },
+    // ---- College of Lore (PHB 2024) ----
+    'Bard:College of Lore': {
+      3: {
+        // Bonus Proficiencies: choose 3 skill proficiencies
+        skillProficiencyChoices: 3,
+      },
+      6: {
+        // Magical Discoveries: learn 2 spells from any class list, level ≤ your max spell level
+        magicalDiscoveries: { count: 2, label: 'Magical Discoveries' },
+      },
+      // Level 3: Cutting Words (narrative — uses Bardic Inspiration to subtract from enemy roll)
+      // Level 14: Peerless Skill (narrative — add Bardic Inspiration to own ability check)
+    },
+    // ---- College of Valor (PHB 2024) ----
+    'Bard:College of Valor': {
+      3: {
+        // Martial Training: medium armor, shields, martial weapons
+        armorProficiencies: ['{@filter medium armor|items|type=MA}', '{@filter shields|items|type=S}'],
+        weaponProficiencies: ['{@filter martial weapons|items|type=M}'],
+      },
+      // Level 3: Combat Inspiration (narrative — Bardic Inspiration adds to damage or AC)
+      // Level 6: Extra Attack (narrative — attack twice with Attack action)
+      // Level 14: Battle Magic (narrative — bonus action weapon attack after casting Bard spell)
+    },
     'Wizard:Illusionist': {
       3: {
         // Improved Illusions: grant Minor Illusion, or let user pick any Wizard cantrip if already known
@@ -450,6 +501,68 @@ window.LevelUp = {
         });
         CharStore.sv('toolProficiencies', tools);
       }
+
+      // Add armor proficiencies (e.g. College of Valor)
+      if (grants.armorProficiencies?.length) {
+        const arm = Sheet.lv('classArmorProf', []) || [];
+        grants.armorProficiencies.forEach(p => {
+          if (!arm.some(e => e.toLowerCase() === p.toLowerCase())) arm.push(p);
+        });
+        Sheet.sv('classArmorProf', arm);
+      }
+
+      // Add weapon proficiencies (e.g. College of Valor)
+      if (grants.weaponProficiencies?.length) {
+        const wpn = Sheet.lv('classWeaponProf', []) || [];
+        grants.weaponProficiencies.forEach(p => {
+          if (!wpn.some(e => e.toLowerCase() === p.toLowerCase())) wpn.push(p);
+        });
+        Sheet.sv('classWeaponProf', wpn);
+      }
+
+      // Apply speed bonus (e.g. College of Dance +10 ft)
+      if (grants.speedBonus) {
+        const currentBonus = parseInt(Sheet.lv('subclassSpeedBonus', 0)) || 0;
+        const newBonus = Math.max(currentBonus, grants.speedBonus);
+        Sheet.sv('subclassSpeedBonus', newBonus);
+        const speedEl = document.getElementById('speed');
+        if (speedEl) {
+          const cur = parseInt(speedEl.value) || 30;
+          const baseSpeed = cur - currentBonus;
+          speedEl.value = baseSpeed + newBonus;
+          Sheet.sv('speed', baseSpeed + newBonus);
+        }
+      }
+
+      // Apply unarmored defense formula (e.g. College of Dance: 10 + Dex + Cha)
+      if (grants.unarmoredDefense) {
+        Sheet.sv('subclassUnarmoredDefense', grants.unarmoredDefense);
+        // Auto-calculate and apply if character isn't wearing armor
+        this._applyUnarmoredDefense(grants.unarmoredDefense);
+      }
+
+      // Apply skill proficiency choices (handled via UI picker, applied in confirm())
+      // skillProficiencyChoices and magicalDiscoveries are handled by the UI injection
+    }
+  },
+
+  /**
+   * Apply unarmored defense AC formula if character has no armor equipped.
+   * Formula: 10 + sum of ability modifiers for the given abilities.
+   */
+  _applyUnarmoredDefense(config) {
+    if (!config?.abilities?.length) return;
+    const acEl = document.getElementById('armorClass');
+    if (!acEl) return;
+    const total = 10 + config.abilities.reduce((sum, ab) => {
+      return sum + (Sheet.getModFromScore(Sheet.getAbilityScore(ab)) || 0);
+    }, 0);
+    const currentAC = parseInt(acEl.value) || 10;
+    // Only override if unarmored AC is better than current
+    if (total > currentAC) {
+      acEl.value = total;
+      Sheet.sv('armorClass', total);
+      Sheet._baseAC = total;
     }
   },
 
@@ -1443,6 +1556,14 @@ window.LevelUp = {
           }
         }
       }
+      // Include spells chosen at earlier pending levels
+      for (const [lvl, p] of Object.entries(this._pending)) {
+        if (parseInt(lvl) < level) {
+          if (p.newPreparedSpells) p.newPreparedSpells.forEach(n => set.add(n.toLowerCase()));
+          if (p.swapIn) set.add(p.swapIn.toLowerCase());
+          if (p.swapOut) set.delete(p.swapOut.toLowerCase());
+        }
+      }
       return set;
     };
 
@@ -1530,6 +1651,28 @@ window.LevelUp = {
       const swappableSpells = (Sheet.lv('charSpells', []) || []).filter(s =>
         s.level > 0 && !s.alwaysPrepared && !s.racial && !s.featSource && !s.classGranted && !s.subclass
       );
+      // Include spells chosen/swapped at earlier pending levels
+      for (const [lvl, p] of Object.entries(this._pending)) {
+        if (parseInt(lvl) < level) {
+          if (p.newPreparedSpells) {
+            p.newPreparedSpells.forEach(name => {
+              const spell = DndData.spells.find(s => s.name === name);
+              if (spell && !swappableSpells.some(s => s.name === name)) {
+                swappableSpells.push({ name, level: spell.level });
+              }
+            });
+          }
+          if (p.swapIn && !swappableSpells.some(s => s.name === p.swapIn)) {
+            const spell = DndData.spells.find(s => s.name === p.swapIn);
+            if (spell) swappableSpells.push({ name: p.swapIn, level: spell.level });
+          }
+          // Remove spells swapped out at earlier levels
+          if (p.swapOut) {
+            const idx = swappableSpells.findIndex(s => s.name === p.swapOut);
+            if (idx !== -1) swappableSpells.splice(idx, 1);
+          }
+        }
+      }
       swappableSpells.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
         swapOutEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
       });
@@ -1716,6 +1859,27 @@ window.LevelUp = {
     // Populate "replace" dropdown with current class cantrips (non-racial, non-subclass)
     const currentSpells = Sheet.lv('charSpells', []) || [];
     const knownCantrips = currentSpells.filter(s => s.level === 0 && !s.racial && !s.subclass);
+    // Include cantrips chosen/swapped at earlier pending levels
+    for (const [lvl, p] of Object.entries(this._pending)) {
+      if (parseInt(lvl) < level) {
+        if (p.newCantrips) {
+          p.newCantrips.forEach(name => {
+            if (!knownCantrips.some(s => s.name === name)) {
+              knownCantrips.push({ name, level: 0 });
+            }
+          });
+        }
+        if (p.cantripSwapIn && !knownCantrips.some(s => s.name === p.cantripSwapIn)) {
+          knownCantrips.push({ name: p.cantripSwapIn, level: 0 });
+        }
+        // Remove cantrips swapped out at earlier levels
+        if (p.cantripSwapOut) {
+          const idx = knownCantrips.findIndex(s => s.name === p.cantripSwapOut);
+          if (idx !== -1) knownCantrips.splice(idx, 1);
+        }
+      }
+    }
+    knownCantrips.sort((a, b) => a.name.localeCompare(b.name));
     knownCantrips.forEach(s => {
       const opt = document.createElement('option');
       opt.value = s.name;
@@ -1890,16 +2054,20 @@ window.LevelUp = {
     // Always remove old sections first
     sec.querySelector(`#lu-sc-spell-picks-section-${level}`)?.remove();
     sec.querySelector(`#lu-sc-cantrip-section-${level}`)?.remove();
+    sec.querySelector(`#lu-sc-skill-picks-section-${level}`)?.remove();
+    sec.querySelector(`#lu-sc-magical-disc-section-${level}`)?.remove();
     if (this._pending[level]) {
       delete this._pending[level].subclassSpellPicks;
       delete this._pending[level].conditionalCantrip;
+      delete this._pending[level].subclassSkillPicks;
+      delete this._pending[level].magicalDiscoveries;
     }
 
     if (!chosenSubclass) return;
     const scKey = `${className}:${chosenSubclass}`;
     const grants = this.SUBCLASS_GRANTS[scKey]?.[level] || {};
-    const { spellPicks, conditionalCantrip } = grants;
-    if (!spellPicks && !conditionalCantrip) return;
+    const { spellPicks, conditionalCantrip, skillProficiencyChoices, magicalDiscoveries } = grants;
+    if (!spellPicks && !conditionalCantrip && !skillProficiencyChoices && !magicalDiscoveries) return;
 
     if (!this._pending[level]) this._pending[level] = {};
 
@@ -1945,6 +2113,145 @@ window.LevelUp = {
         <div class="lu-points-left" id="lu-sc-spell-msg-${level}">Select ${count} spell${count > 1 ? 's' : ''} (<span id="lu-sc-spell-left-${level}">${count}</span> remaining)</div>`;
       sec.appendChild(div);
       this._bindSubclassSpellPicksForLevel(sec, level, className, spellPicks);
+    }
+
+    // --- Skill proficiency choices (e.g. College of Lore) ---
+    if (skillProficiencyChoices) {
+      const count = typeof skillProficiencyChoices === 'number' ? skillProficiencyChoices : skillProficiencyChoices.count || 3;
+      this._pending[level].subclassSkillPicks = [];
+      const alreadyProficient = new Set(
+        Sheet.SKILLS.filter(s => Sheet.lv(`skillProf_${s.key}`, false)).map(s => s.key)
+      );
+      const eligible = Sheet.SKILLS.filter(s => !alreadyProficient.has(s.key));
+      const div = document.createElement('div');
+      div.className = 'lu-section';
+      div.id = `lu-sc-skill-picks-section-${level}`;
+      div.innerHTML = `
+        <div class="lu-section-title">Bonus Proficiencies — Choose ${count} Skills</div>
+        <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+          Choose ${count} skill${count > 1 ? 's' : ''} you are not already proficient in to gain proficiency.
+        </div>
+        <div class="lu-expertise-grid" id="lu-sc-skill-grid-${level}">
+          ${eligible.length ? eligible.map(s => `
+            <label class="lu-expertise-choice">
+              <input type="checkbox" class="lu-sc-skill-cb" data-skill="${s.key}" value="${s.key}">
+              ${s.label}
+            </label>`).join('') : '<span style="color:var(--ink-faint)">No eligible skills found.</span>'}
+        </div>
+        <div class="lu-points-left" id="lu-sc-skill-msg-${level}">Select ${count} skill${count > 1 ? 's' : ''} (<span id="lu-sc-skill-left-${level}">${count}</span> remaining)</div>`;
+      sec.appendChild(div);
+      this._bindSubclassSkillPicksForLevel(sec, level, count);
+    }
+
+    // --- Magical Discoveries (e.g. College of Lore level 6) ---
+    if (magicalDiscoveries) {
+      const { count = 2, label = 'Magical Discoveries' } = magicalDiscoveries;
+      this._pending[level].magicalDiscoveries = [];
+      const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 3;
+      const div = document.createElement('div');
+      div.className = 'lu-section';
+      div.id = `lu-sc-magical-disc-section-${level}`;
+      div.innerHTML = `
+        <div class="lu-section-title">${label} — ${count} Spell${count > 1 ? 's' : ''} from Any List</div>
+        <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+          Choose ${count} spell${count > 1 ? 's' : ''} from any class's spell list (up to level ${maxSpellLevel}). They count as ${className} spells for you and are always prepared.
+        </div>
+        <input type="text" class="lu-spell-search wiz-search wiz-search-sm" id="lu-sc-magical-disc-search-${level}" placeholder="Search spells..." autocomplete="off" style="margin-bottom:6px">
+        <div class="lu-spellbook-list" id="lu-sc-magical-disc-list-${level}" style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);"></div>
+        <div class="lu-points-left" id="lu-sc-magical-disc-msg-${level}">Select ${count} spell${count > 1 ? 's' : ''} (<span id="lu-sc-magical-disc-left-${level}">${count}</span> remaining)</div>`;
+      sec.appendChild(div);
+      this._bindMagicalDiscoveriesForLevel(sec, level, className, magicalDiscoveries);
+    }
+  },
+
+  // ---- Bind subclass skill proficiency picks (e.g. College of Lore) ----
+  _bindSubclassSkillPicksForLevel(_sectionEl, level, count) {
+    const gridEl = document.getElementById(`lu-sc-skill-grid-${level}`);
+    if (!gridEl) return;
+    const checkboxes = gridEl.querySelectorAll('.lu-sc-skill-cb');
+    checkboxes.forEach(cb => {
+      cb.addEventListener('change', () => {
+        const chosen = [...gridEl.querySelectorAll('.lu-sc-skill-cb:checked')].map(c => c.value);
+        if (chosen.length > count) { cb.checked = false; return; }
+        this._pending[level].subclassSkillPicks = chosen;
+        checkboxes.forEach(c => {
+          if (!c.checked) c.disabled = chosen.length >= count;
+        });
+        const leftEl = document.getElementById(`lu-sc-skill-left-${level}`);
+        if (leftEl) leftEl.textContent = count - chosen.length;
+      });
+    });
+  },
+
+  // ---- Bind Magical Discoveries spell picker (any class spell list) ----
+  _bindMagicalDiscoveriesForLevel(_sectionEl, level, className, config) {
+    const { count = 2 } = config;
+    const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 3;
+    // Gather ALL spells from all classes
+    const allSpells = (DndData.spells || []).filter(s => {
+      if (s.level < 1 || s.level > maxSpellLevel) return false;
+      const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+      const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+      const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+      if (s.source === 'UA2024') return ua && show24;
+      if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+      return show14;
+    }).sort((a, b) => a.level - b.level || a.name.localeCompare(b.name));
+
+    const listEl = document.getElementById(`lu-sc-magical-disc-list-${level}`);
+    const searchEl = document.getElementById(`lu-sc-magical-disc-search-${level}`);
+    if (!listEl) return;
+
+    const currentSpells = new Set((Sheet.lv('charSpells', []) || []).map(s => s.name.toLowerCase()));
+
+    const renderList = (filter) => {
+      listEl.innerHTML = '';
+      const q = (filter || '').toLowerCase();
+      const filtered = allSpells.filter(s => !q || s.name.toLowerCase().includes(q));
+      // Limit displayed to 100 for performance
+      const display = filtered.slice(0, 100);
+      display.forEach(spell => {
+        const alreadyKnown = currentSpells.has(spell.name.toLowerCase());
+        const isSelected = (this._pending[level].magicalDiscoveries || []).includes(spell.name);
+        const atMax = !isSelected && (this._pending[level].magicalDiscoveries || []).length >= count;
+        const row = document.createElement('label');
+        row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax || alreadyKnown ? ' disabled' : '');
+        if (atMax || alreadyKnown) row.style.opacity = '0.45';
+        row.innerHTML = `
+          <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax || alreadyKnown ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? ' <span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${alreadyKnown ? ' <small>(known)</small>' : ''}</span>
+          <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+          <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+          <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+          <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+          <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+        if (typeof _luAttachSpellTooltip === 'function') _luAttachSpellTooltip(row, spell);
+        const cb = row.querySelector('input');
+        cb.addEventListener('change', () => {
+          if (!this._pending[level].magicalDiscoveries) this._pending[level].magicalDiscoveries = [];
+          if (cb.checked) {
+            if (this._pending[level].magicalDiscoveries.length >= count) { cb.checked = false; return; }
+            this._pending[level].magicalDiscoveries.push(spell.name);
+          } else {
+            this._pending[level].magicalDiscoveries = this._pending[level].magicalDiscoveries.filter(n => n !== spell.name);
+          }
+          renderList(searchEl?.value || '');
+          const leftEl = document.getElementById(`lu-sc-magical-disc-left-${level}`);
+          if (leftEl) leftEl.textContent = count - this._pending[level].magicalDiscoveries.length;
+        });
+        listEl.appendChild(row);
+      });
+      if (filtered.length > 100) {
+        listEl.insertAdjacentHTML('beforeend', `<div style="padding:8px;color:var(--ink-faint);font-size:0.8rem;text-align:center;">Showing 100 of ${filtered.length} — type to filter</div>`);
+      }
+      if (!filtered.length) {
+        listEl.innerHTML = '<div style="padding:8px;color:var(--ink-faint);font-size:0.85rem;">No spells found.</div>';
+      }
+    };
+
+    renderList('');
+    if (searchEl) {
+      searchEl.addEventListener('input', () => renderList(searchEl.value));
     }
   },
 
@@ -2957,6 +3264,10 @@ window.LevelUp = {
         const subInput = document.getElementById('charSubclass');
         if (subInput) subInput.value = '';
         Sheet.sv('charSubclass', '');
+        // Clear subclass-granted mechanical bonuses
+        Sheet.sv('subclassSpeedBonus', 0);
+        Sheet.sv('subclassUnarmoredDefense', null);
+        Sheet._unarmoredACActive = false;
         if (typeof Sheet.updateSubclassAccess === 'function') Sheet.updateSubclassAccess();
       }
       // Trim weapon mastery slots to match the new level
@@ -3100,6 +3411,22 @@ window.LevelUp = {
         if (_scGrantsVal.conditionalCantrip && 'conditionalCantrip' in p && !p.conditionalCantrip) {
           alert(`Please choose a bonus cantrip from Improved Illusions at level ${lvl}.`); return;
         }
+        // Subclass skill proficiency picks (e.g. College of Lore)
+        if (_scGrantsVal.skillProficiencyChoices) {
+          const needed = typeof _scGrantsVal.skillProficiencyChoices === 'number'
+            ? _scGrantsVal.skillProficiencyChoices : (_scGrantsVal.skillProficiencyChoices.count || 3);
+          if (!p.subclassSkillPicks || p.subclassSkillPicks.length < needed) {
+            alert(`Please choose ${needed} skill proficienc${needed > 1 ? 'ies' : 'y'} at level ${lvl}.`); return;
+          }
+        }
+        // Magical Discoveries spell picks (e.g. College of Lore level 6)
+        if (_scGrantsVal.magicalDiscoveries) {
+          const needed = _scGrantsVal.magicalDiscoveries.count || 2;
+          if (!p.magicalDiscoveries || p.magicalDiscoveries.length < needed) {
+            const lbl = _scGrantsVal.magicalDiscoveries.label || 'Magical Discoveries';
+            alert(`Please choose ${needed} ${lbl} spell${needed > 1 ? 's' : ''} at level ${lvl}.`); return;
+          }
+        }
       }
 
       // Validate HP
@@ -3179,8 +3506,8 @@ window.LevelUp = {
         if (p.expertise?.length) {
           p.expertise.forEach(sk => {
             Sheet.sv(`skillExpert_${sk}`, true);
-            const el = document.getElementById(`skillExpert_${sk}`);
-            if (el) el.checked = true;
+            const toggle = document.querySelector(`.skill-state-toggle[data-skill="${sk}"]`);
+            if (toggle) toggle.dataset.state = '2';
           });
         }
 
@@ -3268,6 +3595,27 @@ window.LevelUp = {
             if (!spells.some(s => s.name === name)) {
               const spell = DndData.spells.find(s => s.name === name);
               spells.push({ name, level: spell?.level || 1, prepared: false, subclass: true });
+            }
+          });
+          Sheet.sv('charSpells', spells);
+        }
+
+        // Apply subclass skill proficiency picks (e.g. College of Lore)
+        if (p.subclassSkillPicks?.length) {
+          p.subclassSkillPicks.forEach(sk => {
+            Sheet.sv(`skillProf_${sk}`, true);
+            const toggle = document.querySelector(`.skill-state-toggle[data-skill="${sk}"]`);
+            if (toggle && parseInt(toggle.dataset.state || '0') < 1) toggle.dataset.state = '1';
+          });
+        }
+
+        // Apply Magical Discoveries (e.g. College of Lore level 6 — any-class spells, always prepared)
+        if (p.magicalDiscoveries?.length) {
+          const spells = Sheet.lv('charSpells', []) || [];
+          p.magicalDiscoveries.forEach(name => {
+            if (!spells.some(s => s.name === name)) {
+              const spell = DndData.spells.find(s => s.name === name);
+              spells.push({ name, level: spell?.level || 1, prepared: true, alwaysPrepared: true, subclass: true });
             }
           });
           Sheet.sv('charSpells', spells);
@@ -3384,6 +3732,7 @@ window.LevelUp = {
     Sheet.recalcAll();
     Sheet.restoreSpells();
     Sheet.renderInventory();
+    Sheet.refreshProfLanguages();
     if (className) Sheet.displayClassFeatures(className);
     this._xpBeforeLevelUp = undefined;
     // Apply long rest effects on level up

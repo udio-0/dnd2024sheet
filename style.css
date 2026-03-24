@@ -875,7 +875,7 @@ body {
   color: var(--gold-light);
 }
 /* Dark themes: static labels use light ink so text is readable on the dark --ac-bg */
-[data-theme="dark"] .combat-box > .combat-label:not(.ds-roll-label) { color: var(--ink); }
+[data-theme="dark"] .combat-box > .combat-label:not(.ds-roll-label):not(.hp-recalc-label) { color: var(--ink); }
 
 /* ---- HIT POINTS (inside combat-box) ---- */
 .hp-box { display: flex; flex-direction: column; align-items: center; gap: 5px; justify-content: space-between; flex: 1; }
@@ -1621,6 +1621,19 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   transition: background 0.15s;
 }
 .ds-roll-label:hover { background: var(--red-accent); }
+
+/* HP recalc button — same visual treatment as Death Saves label */
+.combat-box > .combat-label.hp-recalc-label {
+  background: var(--combat-border);
+  border-color: var(--combat-border);
+  color: var(--gold-light);
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 10px;
+}
+.hp-recalc-label:hover { background: var(--red-accent); }
 
 /* ---- ATTACKS TABLE ---- */
 .sheet-box:has(.attack-table) { overflow-x: auto; }

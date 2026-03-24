@@ -786,6 +786,10 @@ window.Wizard = {
       d.spellcastingAbility = classInfo.spellcastingAbility;
     }
 
+    // Deduct gold spent on purchased equipment
+    const spentCp = (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) * (it.qty || 1), 0);
+    d.gp = Math.max(0, (d.gp || 0) - spentCp / 100);
+
     // Init combat state
     d.combat = { actionUsed: false, bonusActionUsed: false, reactionUsed: false, movementUsed: 0, freeInteractionUsed: false, concentratingOn: null, conditions: [], exhaustionLevel: 0, equippedMainHand: null, equippedOffHand: null };
 
@@ -909,7 +913,7 @@ window.Wizard = {
               </label>`).join('')}
           </div>
         </div>` : '';
-      const spellHtml = ((hasSpells || racialSpells.cantripChoices) && lineageChosen) ? `
+      const spellHtml = ((hasSpells || racialSpells.cantripChoices || racialSpells.abilityChoices) && lineageChosen) ? `
         <div class="wiz-stat-row" style="margin-top:6px"><strong>Racial Spells:</strong>
           ${cantripChoiceHtml}
           ${!racialSpells.cantripChoices && racialSpells.cantrips.length ? `<div style="font-size:0.82rem">Cantrip: ${racialSpells.cantrips.map(capSpell).join(', ')}</div>` : ''}
