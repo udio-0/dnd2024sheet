@@ -1200,6 +1200,32 @@ window.LevelUp = {
       this._pending[level].expertise = [];
     }
 
+    // Additional Fighting Style (e.g. Champion Fighter level 7)
+    const _hasAdditionalFS = existingSubclass && subclassFeatures.some(f => /fighting style/i.test(f.name));
+    if (_hasAdditionalFS) {
+      this._pending[level].additionalFightingStyle = null;
+      const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
+      const existingFeats = (Sheet.lv('feats', []) || []).map(f => (typeof f === 'string' ? f : f.name).toLowerCase());
+      const availableStyles = styles.filter(s => !existingFeats.includes(s.name.toLowerCase()));
+      if (availableStyles.length) {
+        html += `
+        <div class="lu-section" id="lu-add-fs-section-${level}">
+          <div class="lu-section-title">Additional Fighting Style</div>
+          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+            Choose a second Fighting Style feat.
+          </div>
+          <div class="lu-fs-grid" id="lu-fs-grid-${level}">
+            ${availableStyles.map(f => `
+              <label class="lu-asi-choice" style="cursor:pointer;">
+                <input type="radio" name="lu-add-fs-${level}" value="${f.name}">
+                <div class="lu-asi-label">${f.name} <span style="font-size:0.8rem;color:var(--ink-faint)">${f._src || ''}</span></div>
+              </label>`).join('')}
+          </div>
+          <div id="lu-fs-preview-${level}" style="font-size:0.85rem;color:var(--ink-faint);margin-top:6px;"></div>
+        </div>`;
+      }
+    }
+
     // Spellbook spell selection (Wizard: gain 2 new spells per level)
     const spellbookPerLevel = classInfo?.spellbookSpellsPerLevel || 0;
     const hasNewSpellbookSlots = spellbookPerLevel > 0 && level > 1;
@@ -1396,6 +1422,20 @@ window.LevelUp = {
           this._pending[level].masteryChoices = choices;
         });
       });
+    }
+    // Bind additional fighting style radio buttons
+    if (_hasAdditionalFS) {
+      const fsGrid = sectionEl.querySelector(`#lu-fs-grid-${level}`);
+      const fsPreview = sectionEl.querySelector(`#lu-fs-preview-${level}`);
+      if (fsGrid) {
+        fsGrid.querySelectorAll('input[type="radio"]').forEach(radio => {
+          radio.addEventListener('change', () => {
+            this._pending[level].additionalFightingStyle = radio.value;
+            const fInfo = typeof getFeatInfo === 'function' ? getFeatInfo(radio.value) : null;
+            if (fsPreview && fInfo) fsPreview.innerHTML = `<strong>${fInfo.name}</strong>: ${fInfo.description}`;
+          });
+        });
+      }
     }
     // Bind spellbook spell selection
     if (hasNewSpellbookSlots) {
@@ -3384,6 +3424,10 @@ window.LevelUp = {
             alert(`Please choose ${needed} new spellbook spell${needed > 1 ? 's' : ''} at level ${lvl}.`); return;
           }
         }
+        // Additional Fighting Style — must pick one if section was shown
+        if (p.additionalFightingStyle === null && document.getElementById(`lu-add-fs-section-${lvl}`)) {
+          alert(`Please choose an Additional Fighting Style at level ${lvl}.`); return;
+        }
         // Cantrip gain — must pick the required number
         if (_classInfoLu?.cantripProgression && lvl > 1) {
           const prevC = _classInfoLu.cantripProgression[lvl - 2] ?? 0;
@@ -3517,6 +3561,11 @@ window.LevelUp = {
               Sheet.sv(p.asi.featAbility, Math.min(20, cur + 1));
             }
           }
+        }
+
+        // Apply additional fighting style (e.g. Champion Fighter)
+        if (p.additionalFightingStyle) {
+          if (typeof Sheet.addFeatByName === 'function') Sheet.addFeatByName(p.additionalFightingStyle);
         }
 
         // Apply weapon mastery choices
