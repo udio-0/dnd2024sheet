@@ -865,7 +865,7 @@ window.Wizard = {
       <div class="wiz-section">
         <h2 class="wiz-title">Choose Your Species</h2>
         <p class="wiz-desc">Your species determines your physical traits, innate abilities, and how you interact with the world.</p>
-        <input type="text" id="wiz-species-search" list="species-list" class="wiz-search" placeholder="Search species..." value="${d.charSpecies || ''}" autocomplete="off">
+        <input type="text" id="wiz-species-search" class="wiz-search" placeholder="Search species..." value="${d.charSpecies || ''}" autocomplete="off">
         <div id="wiz-species-preview" class="wiz-preview"></div>
       </div>
       <div id="wiz-optional-tooltip" style="display:none;position:fixed;z-index:9999;width:500px;max-width:min(500px,90vw);background:var(--parchment,#FDF1DC);border:1px solid var(--border,#C4A87A);border-radius:8px;padding:12px 16px;font-size:0.82rem;color:var(--ink-light,#3D2B18);line-height:1.55;box-shadow:0 6px 20px rgba(0,0,0,0.4);pointer-events:none"></div>`;
@@ -1083,6 +1083,7 @@ window.Wizard = {
       preview.addEventListener('mouseleave', () => { _tooltip.style.display = 'none'; }, true);
     }
 
+    if (window.setupAutocomplete) setupAutocomplete(input, 'species-list');
     input.addEventListener('change', () => { d.charSubrace = null; d._racialCantripChoice = undefined; d._racialSpellAbility = undefined; showPreview(input.value); });
     if (d.charSpecies) showPreview(d.charSpecies, d.charSubrace);
     else showPreview('');
@@ -1095,7 +1096,7 @@ window.Wizard = {
       <div class="wiz-section">
         <h2 class="wiz-title">Choose Your Background</h2>
         <p class="wiz-desc">Your background defines where you came from and what skills you've picked up along the way. In 2024 rules, backgrounds also grant your ability score increases and an origin feat.</p>
-        <input type="text" id="wiz-bg-search" list="bg-list" class="wiz-search" placeholder="Search background..." value="${d.charBackground || ''}" autocomplete="off">
+        <input type="text" id="wiz-bg-search" class="wiz-search" placeholder="Search background..." value="${d.charBackground || ''}" autocomplete="off">
         <div id="wiz-bg-preview" class="wiz-preview"></div>
         <div id="wiz-bg-instrument-picker"></div>
         <div id="wiz-bg-gamingset-picker"></div>
@@ -1541,6 +1542,7 @@ window.Wizard = {
     };
 
     renderLangPicker();
+    if (window.setupAutocomplete) setupAutocomplete(input, 'bg-list');
     input.addEventListener('change', () => showPreview(input.value));
     if (d.charBackground) showPreview(d.charBackground);
     else showPreview('');
@@ -1553,7 +1555,7 @@ window.Wizard = {
       <div class="wiz-section">
         <h2 class="wiz-title">Choose Your Class</h2>
         <p class="wiz-desc">Your class is your primary adventuring role — how you fight, what you can do, and how you grow.</p>
-        <input type="text" id="wiz-class-search" list="class-list" class="wiz-search" placeholder="Search class..." value="${d.charClass || ''}" autocomplete="off">
+        <input type="text" id="wiz-class-search" class="wiz-search" placeholder="Search class..." value="${d.charClass || ''}" autocomplete="off">
         <div id="wiz-class-preview" class="wiz-preview"></div>
         <div id="wiz-skill-choices" class="wiz-choices"></div>
       </div>`;
@@ -2101,6 +2103,7 @@ window.Wizard = {
         }
       }
     };
+    if (window.setupAutocomplete) setupAutocomplete(input, 'class-list');
     input.addEventListener('change', () => showPreview(input.value));
     if (d.charClass) showPreview(d.charClass);
     else showPreview('');

@@ -4,10 +4,44 @@
    ============================================= */
 'use strict';
 
-// Blur any datalist input after a selection is made, app-wide
-document.addEventListener('change', e => {
-  if (e.target.tagName === 'INPUT' && e.target.getAttribute('list')) e.target.blur();
-});
+// Replace native <datalist> with a custom fixed-position dropdown on any input.
+// Reads options from the datalist element at query time, dispatches 'change' on pick.
+window.setupAutocomplete = function (input, datalistId) {
+  input.removeAttribute('list');
+  const dd = document.createElement('div');
+  dd.className = 'autocomplete-dropdown wiz-ac-fixed';
+  document.body.appendChild(dd);
+  const show = (q) => {
+    const opts = Array.from(document.getElementById(datalistId)?.options || []);
+    const matches = q ? opts.filter(o => o.value.toLowerCase().includes(q.toLowerCase())) : opts;
+    if (!matches.length) { dd.style.display = 'none'; return; }
+    dd.innerHTML = '';
+    matches.forEach(opt => {
+      const div = document.createElement('div');
+      div.className = 'ac-item';
+      div.textContent = opt.value;
+      div.addEventListener('mousedown', e => e.preventDefault());
+      div.addEventListener('click', () => {
+        input.value = opt.value;
+        dd.style.display = 'none';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      });
+      dd.appendChild(div);
+    });
+    const r = input.getBoundingClientRect();
+    dd.style.top = r.bottom + 'px';
+    dd.style.left = r.left + 'px';
+    dd.style.width = r.width + 'px';
+    dd.style.display = 'block';
+  };
+  input.addEventListener('focus', () => show(''));
+  input.addEventListener('click', () => show(''));
+  input.addEventListener('input', () => show(input.value.trim()));
+  input.addEventListener('blur', () => setTimeout(() => { dd.style.display = 'none'; }, 200));
+  const obs = new MutationObserver(() => { if (!document.contains(input)) { dd.remove(); obs.disconnect(); } });
+  obs.observe(document.body, { childList: true, subtree: true });
+  return dd;
+};
 
 (function () {
   // ---- THEME ----
@@ -77,60 +111,60 @@ document.addEventListener('change', e => {
     // ===== DARK THEMES =====
     // 4 swatch colors: bg, accent (--red / block borders), gold (highlights), ink (text)
     // topbar-bg = darker shade of bg hue (derived, not a 5th color)
-    dungeon: { dark: true, label: 'Dungeon', bg: '#262626', accent: '#6d5858',
+    dungeon: { dark: true, label: 'Dungeon', bg: '#262626', accent: '#725353',
       vars: {
-        '--red':'#6d5858', '--red-accent':'#8d6e6e',
-        '--gold':'#b9ac8d', '--gold-light':'#e0d4b1', '--gold-dark':'#7c7a74',
+        '--red':'#725353', '--red-accent':'#936868',
+        '--gold':'#beae88', '--gold-light':'#e3d5ae', '--gold-dark':'#827d6e',
         '--parchment':'#262626', '--parchment-dk':'#1f1f1f',
-        '--ink':'#dddcdb', '--ink-light':'#a8a8a8', '--ink-faint':'#6c6c6c',
+        '--ink':'#dfdcd9', '--ink-light':'#a8a8a8', '--ink-faint':'#6c6c6c',
         '--white':'#353535', '--border':'#484848',
-        '--body-bg':'#141416', '--topbar-bg':'#1f1f21', '--tab-bar-bg':'#171719',
-        '--combat-border':'#6d5858', '--input-bg':'#2f2f2f',
+        '--body-bg':'#131317', '--topbar-bg':'#1d1d23', '--tab-bar-bg':'#16161a',
+        '--combat-border':'#725353', '--input-bg':'#2f2f2f',
         '--ac-bg':'#353535', '--ac-hover':'#424242',
       }},
-    abyss: { dark: true, label: 'Abyss', bg: '#1e1e1e', accent: '#826646',
+    abyss: { dark: true, label: 'Abyss', bg: '#1e1e1e', accent: '#876641',
       vars: {
-        '--red':'#826646', '--red-accent':'#a37e55',
-        '--gold':'#b09560', '--gold-light':'#d7be81', '--gold-dark':'#7e673c',
+        '--red':'#876641', '--red-accent':'#a97e4f',
+        '--gold':'#b6975a', '--gold-light':'#dbc07d', '--gold-dark':'#836837',
         '--parchment':'#272727', '--parchment-dk':'#1c1c1c',
-        '--ink':'#e4e1dd', '--ink-light':'#acacac', '--ink-faint':'#656565',
+        '--ink':'#e6e1db', '--ink-light':'#acacac', '--ink-faint':'#656565',
         '--white':'#292929', '--border':'#424242',
-        '--body-bg':'#171717', '--topbar-bg':'#1a1917', '--tab-bar-bg':'#131313',
-        '--combat-border':'#826646', '--input-bg':'#272727',
+        '--body-bg':'#171717', '--topbar-bg':'#1b1916', '--tab-bar-bg':'#131313',
+        '--combat-border':'#876641', '--input-bg':'#272727',
         '--ac-bg':'#292929', '--ac-hover':'#353535',
       }},
-    crimson: { dark: true, label: 'Crimson', bg: '#222222', accent: '#894747',
+    crimson: { dark: true, label: 'Crimson', bg: '#222222', accent: '#8e4242',
       vars: {
-        '--red':'#894747', '--red-accent':'#a25e5e',
-        '--gold':'#b39971', '--gold-light':'#dbc295', '--gold-dark':'#816f4f',
+        '--red':'#8e4242', '--red-accent':'#a85858',
+        '--gold':'#b89a6c', '--gold-light':'#dfc391', '--gold-dark':'#86704a',
         '--parchment':'#282828', '--parchment-dk':'#1e1e1e',
-        '--ink':'#e8e5e2', '--ink-light':'#b0b0b0', '--ink-faint':'#747474',
+        '--ink':'#e9e5e1', '--ink-light':'#b0b0b0', '--ink-faint':'#747474',
         '--white':'#2f2f2f', '--border':'#454545',
         '--body-bg':'#151515', '--topbar-bg':'#1b1b1b', '--tab-bar-bg':'#181818',
-        '--combat-border':'#894747', '--input-bg':'#282828',
+        '--combat-border':'#8e4242', '--input-bg':'#282828',
         '--ac-bg':'#2f2f2f', '--ac-hover':'#393939',
       }},
-    emerald: { dark: true, label: 'Emerald', bg: '#242424', accent: '#40604e',
+    emerald: { dark: true, label: 'Emerald', bg: '#242424', accent: '#3c644e',
       vars: {
-        '--red':'#40604e', '--red-accent':'#527a64',
-        '--gold':'#a9a287', '--gold-light':'#cbc3a5', '--gold-dark':'#747060',
+        '--red':'#3c644e', '--red-accent':'#4d7f63',
+        '--gold':'#aea582', '--gold-light':'#cfc5a1', '--gold-dark':'#79735b',
         '--parchment':'#282828', '--parchment-dk':'#1c1c1c',
-        '--ink':'#e2e3e1', '--ink-light':'#b4b4b4', '--ink-faint':'#6c6c6c',
+        '--ink':'#e2e4e0', '--ink-light':'#b4b4b4', '--ink-faint':'#6c6c6c',
         '--white':'#2b2b2b', '--border':'#414141',
         '--body-bg':'#161616', '--topbar-bg':'#1c1c1c', '--tab-bar-bg':'#181818',
-        '--combat-border':'#40604e', '--input-bg':'#292929',
+        '--combat-border':'#3c644e', '--input-bg':'#292929',
         '--ac-bg':'#2b2b2b', '--ac-hover':'#353535',
       }},
-    midnight: { dark: true, label: 'Midnight', bg: '#28292c', accent: '#5b628d',
+    midnight: { dark: true, label: 'Midnight', bg: '#26282e', accent: '#555e93',
       vars: {
-        '--red':'#5b628d', '--red-accent':'#6e78ae',
-        '--gold':'#ada99b', '--gold-light':'#cecaba', '--gold-dark':'#757473',
-        '--parchment':'#2b2b2b', '--parchment-dk':'#212226',
-        '--ink':'#e7e7e9', '--ink-light':'#bcbcbc', '--ink-faint':'#787878',
-        '--white':'#333435', '--border':'#4b4c4f',
-        '--body-bg':'#1b1b1d', '--topbar-bg':'#212329', '--tab-bar-bg':'#1b1d23',
-        '--combat-border':'#5b628d', '--input-bg':'#313131',
-        '--ac-bg':'#333435', '--ac-hover':'#3f3f41',
+        '--red':'#555e93', '--red-accent':'#6874b4',
+        '--gold':'#b2ac96', '--gold-light':'#d1ccb7', '--gold-dark':'#7b746d',
+        '--parchment':'#2b2b2b', '--parchment-dk':'#1f2128',
+        '--ink':'#e6e6ea', '--ink-light':'#bcbcbc', '--ink-faint':'#787878',
+        '--white':'#303438', '--border':'#474a53',
+        '--body-bg':'#1a1a1e', '--topbar-bg':'#1f222b', '--tab-bar-bg':'#191c25',
+        '--combat-border':'#555e93', '--input-bg':'#313131',
+        '--ac-bg':'#303438', '--ac-hover':'#3c3c44',
       }},
   };
 

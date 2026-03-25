@@ -1,8 +1,31 @@
 {
   "permissions": {
     "allow": [
-      "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const items=JSON.parse\\(d\\).baseitem.filter\\(i=>i.name&&i.name.toLowerCase\\(\\).includes\\(''''waterskin''''\\)\\);console.log\\(JSON.stringify\\(items,null,2\\)\\)}\\)\")",
-      "Bash(node -e \"let d='''''''';process.stdin.on\\(''''data'''',c=>d+=c\\);process.stdin.on\\(''''end'''',\\(\\)=>{const items=JSON.parse\\(d\\).item.filter\\(i=>i.name&&i.name.toLowerCase\\(\\).includes\\(''''waterskin''''\\)\\);console.log\\(JSON.stringify\\(items,null,2\\)\\)}\\)\")"
+      "Bash(python -c \":*)",
+      "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/magicvariants.json\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/index.json\")",
+      "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/spells/sources.json\")",
+      "Bash(jq '.background[] | select\(.name == \"\"Acolyte\"\" and .source == \"\"PHB\"\"\) | .entries[3]')",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/index.json)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-rogue.json)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-monk.json)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-bard.json)",
+      "Bash(for class:*)",
+      "Bash(do echo:*)",
+      "Bash(__NEW_LINE_e240534fdfbe6c98__ curl:*)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-artificer.json)",
+      "Bash(__NEW_LINE_b58295928ff36b2f__ curl:*)",
+      "Bash(__NEW_LINE_587051b36374c9a5__ curl:*)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-druid.json)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-2014-src/refs/heads/master/data/feats.json)",
+      "Bash(grep -A 30 \"row.addEventListener\\|row.className = ''''wiz-spell-row''''\" js/levelup.js)",
+      "Bash(grep -n \"Concentration\\|Ritual\\|color.*keyword\\|keyword.*color\" js/*.js)",
+      "Bash(git -C \"c:/Users/claud/Desktop/DnD 2024 Character Sheet\" pull)",
+      "Bash(find 'c:/Users/claud/Desktop/DnD 2024 Character Sheet' -name *.json -o -name *.js)",
+      "Bash(xargs grep:*)",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/backgrounds.json)"
     ]
   }
 }

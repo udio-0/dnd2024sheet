@@ -454,35 +454,19 @@ window.Sheet = {
     this._updateEquippedACSummary();
     this.applyConditionEffects();
 
-    // Subclass unarmored defense (e.g. College of Dance: 10 + Dex + Cha)
-    const unarmoredDef = this.lv('subclassUnarmoredDefense', null);
-    if (unarmoredDef?.abilities?.length) {
-      const unarmoredAC = 10 + unarmoredDef.abilities.reduce((sum, ab) => sum + (mods[ab] || 0), 0);
-      const acEl = this.$('armorClass');
-      if (acEl) {
-        // Only auto-set if not wearing armor (check if equipped armor exists)
-        const inv = this.lv('inventory', []) || [];
-        const hasEquippedArmor = inv.some(i => i.equipped && /^(LA|MA|HA)$/.test(i.typeCode));
-        if (!hasEquippedArmor) {
-          const currentAC = parseInt(acEl.value) || 10;
-          // Use the better of current AC or unarmored formula
-          if (unarmoredAC >= currentAC || this._unarmoredACActive) {
-            acEl.value = unarmoredAC;
-            this.sv('armorClass', unarmoredAC);
-            this._baseAC = unarmoredAC;
-            this._unarmoredACActive = true;
-          }
-        } else {
-          this._unarmoredACActive = false;
-        }
-      }
+    // Sync resource maxes that depend on ability scores (e.g. Bardic Inspiration = CHA mod)
+    if (typeof ClassResources !== 'undefined') {
+      ClassResources.updateResourcesOnLevelUp(level);
+      this.renderResources();
     }
   },
 
   // ---- BIND SIMPLE FIELDS ----
   bindSimpleFields() {
+    const _acMap = { charSubclass: 'subclass-list', charAlignment: 'alignment-list' };
     this.qsa('[data-save]').forEach(el => {
       const key = el.dataset.save;
+      if (_acMap[key] && window.setupAutocomplete) setupAutocomplete(el, _acMap[key]);
       if (el.type === 'checkbox') el.checked = this.lv(key, false);
       else el.value = this.lv(key, '');
       const handler = () => {
@@ -599,7 +583,7 @@ window.Sheet = {
 
     tr.innerHTML = `
       <td class="atk-drag-cell"><span class="atk-drag-handle" title="Drag to reorder">⠿</span></td>
-      <td><input type="text" class="atk-name" placeholder="Weapon name" value="${data.name || ''}" list="attack-list"></td>
+      <td><input type="text" class="atk-name" placeholder="Weapon name" value="${data.name || ''}"></td>
       <td class="atk-ability-cell"><select class="atk-ability">${abilityOpts}</select></td>
       <td class="atk-prof-cell"><span class="skill-state-toggle atk-prof-cb" data-state="${data.prof ? '1' : '0'}" title="Add proficiency bonus to attack roll"></span></td>
       <td class="atk-bonus-cell"><button class="atk-bonus-btn" title="Click to roll attack">+0</button></td>
@@ -618,6 +602,7 @@ window.Sheet = {
     tr.addEventListener('dragend', () => { tr.draggable = false; });
 
     const nameInput    = tr.querySelector('.atk-name');
+    if (window.setupAutocomplete) setupAutocomplete(nameInput, 'attack-list');
     const abilitySelect= tr.querySelector('.atk-ability');
     const profCb       = tr.querySelector('.atk-prof-cb');
     const bonusBtn     = tr.querySelector('.atk-bonus-btn');
@@ -800,6 +785,7 @@ window.Sheet = {
   initClassSelect() {
     const input = this.$('charClass');
     if (!input) return;
+    if (window.setupAutocomplete) setupAutocomplete(input, 'class-list');
     input.addEventListener('change', () => {
       this.sv('charClass', input.value);
       this.applyClassSelection(input.value);
@@ -1208,6 +1194,7 @@ window.Sheet = {
   initSpeciesSelect() {
     const input = this.$('charSpecies');
     if (!input) return;
+    if (window.setupAutocomplete) setupAutocomplete(input, 'species-list');
     input.addEventListener('change', () => {
       this.sv('charSpecies', input.value);
       this.applySpeciesSelection(input.value);
@@ -1472,6 +1459,7 @@ window.Sheet = {
   initBackgroundSelect() {
     const input = this.$('charBackground');
     if (!input) return;
+    if (window.setupAutocomplete) setupAutocomplete(input, 'bg-list');
     input.addEventListener('change', () => {
       this.sv('charBackground', input.value);
       this.applyBackgroundSelection(input.value);
@@ -1577,6 +1565,7 @@ window.Sheet = {
   initCharOptions() {
     const addBtn = this.$('btn-add-charopt');
     const searchInput = this.$('charopt-search');
+    if (searchInput && window.setupAutocomplete) setupAutocomplete(searchInput, 'charopt-list');
     if (addBtn && searchInput) {
       addBtn.addEventListener('click', () => {
         const name = searchInput.value.trim();
@@ -1761,6 +1750,7 @@ window.Sheet = {
   initFeatSystem() {
     const addBtn = this.$('btn-add-feat');
     const searchInput = this.$('feat-search');
+    if (searchInput && window.setupAutocomplete) setupAutocomplete(searchInput, 'feat-list');
     if (addBtn && searchInput) {
       addBtn.addEventListener('click', () => {
         const name = searchInput.value.trim();
@@ -6913,15 +6903,21 @@ window.Sheet = {
       else ac = baseAC + dexMod;
     } else {
       // Check for Unarmored Defense when no armor is equipped
-      const className = (this.lv('charClass', '')).toLowerCase();
-      if (className === 'barbarian') {
-        const conMod = this.getModFromScore(this.getAbilityScore('con'));
-        ac = 10 + dexMod + conMod;
-      } else if (className === 'monk') {
-        const wisMod = this.getModFromScore(this.getAbilityScore('wis'));
-        ac = 10 + dexMod + wisMod;
+      const unarmoredDef = this.lv('subclassUnarmoredDefense', null);
+      if (unarmoredDef?.abilities?.length && !shield) {
+        // Subclass unarmored defense (e.g. College of Dance: 10 + Dex + Cha)
+        ac = 10 + unarmoredDef.abilities.reduce((sum, ab) => sum + (this.getModFromScore(this.getAbilityScore(ab)) || 0), 0);
       } else {
-        ac = 10 + dexMod;
+        const className = (this.lv('charClass', '')).toLowerCase();
+        if (className === 'barbarian') {
+          const conMod = this.getModFromScore(this.getAbilityScore('con'));
+          ac = 10 + dexMod + conMod;
+        } else if (className === 'monk') {
+          const wisMod = this.getModFromScore(this.getAbilityScore('wis'));
+          ac = 10 + dexMod + wisMod;
+        } else {
+          ac = 10 + dexMod;
+        }
       }
     }
     const shieldProf = this.lv('classArmorProf', []).some(p => p.toLowerCase().includes('shield'));

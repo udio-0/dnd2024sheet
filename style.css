@@ -1629,9 +1629,6 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
   color: var(--gold-light);
   cursor: pointer;
   transition: background 0.15s;
-  border: none;
-  border-radius: 4px;
-  padding: 3px 10px;
 }
 .hp-recalc-label:hover { background: var(--red-accent); }
 
@@ -5704,6 +5701,7 @@ textarea::placeholder { color: var(--ink-faint); }
   margin-bottom: 14px;
 }
 
+.wiz-ac-fixed { position: fixed; z-index: 9999; }
 .wiz-search, .wiz-search-input {
   width: 100%;
   border: 2px solid var(--red);

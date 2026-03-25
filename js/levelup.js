@@ -1308,7 +1308,7 @@ window.LevelUp = {
       const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 1;
       const tabsHtml = Array.from({ length: maxSpellLevel }, (_, i) => {
         const sl = i + 1;
-        return `<button class="lu-spell-tab${sl === 1 ? ' active' : ''}" data-splvl="${sl}">${sl === 1 ? '1st' : sl === 2 ? '2nd' : sl === 3 ? '3rd' : sl + 'th'}</button>`;
+        return `<button class="lu-spell-tab${sl === maxSpellLevel ? ' active' : ''}" data-splvl="${sl}">${sl === 1 ? '1st' : sl === 2 ? '2nd' : sl === 3 ? '3rd' : sl + 'th'}</button>`;
       }).join('');
       if (prepGain > 0) {
         const _spellSectionTitle = isKnownSpellsCaster ? `Known Spells (${prevPrepMax} → ${newPrepMax})` : `Prepared Spells (${prevPrepMax} → ${newPrepMax})`;
@@ -1534,7 +1534,7 @@ window.LevelUp = {
     const tabsEl = document.getElementById(`lu-prep-tabs-${level}`);
     if (!listEl) return;
 
-    let activeTabLevel = 1;
+    let activeTabLevel = maxSpellLevel;
     const _baseSpells = new Set((Sheet.lv('charSpells', []) || []).filter(s => s.level > 0).map(s => s.name.toLowerCase()));
 
     // Build currentSpells dynamically to include subclass-granted spells.
@@ -1646,36 +1646,52 @@ window.LevelUp = {
     const swapListEl = document.getElementById(`lu-swap-list-${level}`);
     const swapChosenEl = document.getElementById(`lu-swap-chosen-${level}`);
     if (swapOutEl && swapInSection) {
-      // Populate swap-out: all class-learned spells (level 1+) excluding always-prepared,
-      // racial, feat-sourced, and class-auto-granted spells — prepared flag is irrelevant
-      const swappableSpells = (Sheet.lv('charSpells', []) || []).filter(s =>
-        s.level > 0 && !s.alwaysPrepared && !s.racial && !s.featSource && !s.classGranted && !s.subclass
-      );
-      // Include spells chosen/swapped at earlier pending levels
-      for (const [lvl, p] of Object.entries(this._pending)) {
-        if (parseInt(lvl) < level) {
-          if (p.newPreparedSpells) {
-            p.newPreparedSpells.forEach(name => {
-              const spell = DndData.spells.find(s => s.name === name);
-              if (spell && !swappableSpells.some(s => s.name === name)) {
-                swappableSpells.push({ name, level: spell.level });
-              }
-            });
-          }
-          if (p.swapIn && !swappableSpells.some(s => s.name === p.swapIn)) {
-            const spell = DndData.spells.find(s => s.name === p.swapIn);
-            if (spell) swappableSpells.push({ name: p.swapIn, level: spell.level });
-          }
-          // Remove spells swapped out at earlier levels
-          if (p.swapOut) {
-            const idx = swappableSpells.findIndex(s => s.name === p.swapOut);
-            if (idx !== -1) swappableSpells.splice(idx, 1);
+      // Rebuild swap-out dropdown dynamically so picks made at earlier levels during a
+      // multi-level-up flow appear as replaceable options at later levels.
+      const rebuildSwapOut = () => {
+        const swappable = (Sheet.lv('charSpells', []) || []).filter(s =>
+          s.level > 0 && !s.alwaysPrepared && !s.racial && !s.featSource && !s.classGranted && !s.subclass
+        );
+        // Include spells chosen/swapped at strictly earlier pending levels
+        for (const [lvl, p] of Object.entries(this._pending)) {
+          if (parseInt(lvl) < level) {
+            if (p.newPreparedSpells) {
+              p.newPreparedSpells.forEach(name => {
+                const spell = DndData.spells.find(s => s.name === name);
+                if (spell && !swappable.some(s => s.name === name)) {
+                  swappable.push({ name, level: spell.level });
+                }
+              });
+            }
+            if (p.swapIn && !swappable.some(s => s.name === p.swapIn)) {
+              const spell = DndData.spells.find(s => s.name === p.swapIn);
+              if (spell) swappable.push({ name: p.swapIn, level: spell.level });
+            }
+            if (p.swapOut) {
+              const idx = swappable.findIndex(s => s.name === p.swapOut);
+              if (idx !== -1) swappable.splice(idx, 1);
+            }
           }
         }
-      }
-      swappableSpells.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
-        swapOutEl.insertAdjacentHTML('beforeend', `<option value="${s.name}">${s.name} (Lvl ${s.level})</option>`);
-      });
+        swappable.sort((a, b) => a.name.localeCompare(b.name));
+        const prevValue = swapOutEl.value;
+        swapOutEl.innerHTML = '<option value="">— none —</option>';
+        swappable.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = `${s.name} (Lvl ${s.level})`;
+          if (s.name === prevValue) opt.selected = true;
+          swapOutEl.appendChild(opt);
+        });
+        // If the previously selected spell is no longer in the list, reset the swap
+        if (prevValue && !swappable.some(s => s.name === prevValue)) {
+          swapOutEl.value = '';
+          this._pending[level].swapOut = null;
+          this._pending[level].swapIn = null;
+          swapInSection.style.display = 'none';
+        }
+      };
+      rebuildSwapOut();
 
       let swapActiveTab = 1;
 
@@ -1685,6 +1701,8 @@ window.LevelUp = {
         const outName = swapOutEl.value;
         if (!outName) return;
         const knownSpells = new Set(getCurrentSpells());
+        // Also exclude spells newly chosen at this same level as new picks
+        (this._pending[level].newPreparedSpells || []).forEach(n => knownSpells.add(n.toLowerCase()));
         const q = (filter || '').toLowerCase();
         const _curScSwap = this._getEffectiveSubclass(level);
         eligible
@@ -1716,6 +1734,13 @@ window.LevelUp = {
             swapListEl.appendChild(row);
           });
       };
+      // Re-render swap-out dropdown and swap-in list when any level's picks change,
+      // so spells chosen at earlier levels appear as replaceable options here, and
+      // spells chosen at this same level are excluded from the swap-in list.
+      this._preparedRenderers.push(() => {
+        rebuildSwapOut();
+        renderSwapList(swapSearchEl?.value || '');
+      });
 
       const showSwapInSection = () => {
         const outName = swapOutEl.value;
@@ -2909,6 +2934,7 @@ window.LevelUp = {
           if (selectableCards.length === 1) {
             selectableCards[0].classList.add('selected');
             this._pending[level].asi.featAbility = selectableCards[0].dataset.ab;
+            this._updateHpSection();
           }
 
           selectableCards.forEach(card => {

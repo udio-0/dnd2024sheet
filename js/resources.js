@@ -296,7 +296,7 @@ window.ClassResources = {
       ], refresh: 'lr', startLevel: 1 },
     ],
     Bard: [
-      { name: 'Bardic Inspiration', maxAt: 'PB', refresh: 'lr', refreshAt: [{ level: 5, refresh: 'sr' }], startLevel: 1 },
+      { name: 'Bardic Inspiration', maxAt: 'CHA_MIN1', refresh: 'lr', refreshAt: [{ level: 5, refresh: 'sr' }], startLevel: 1 },
     ],
     Cleric: [
       { name: 'Channel Divinity', maxAt: [
@@ -727,6 +727,13 @@ window.ClassResources = {
   /** Resolve a maxAt definition to a concrete number for a given level */
   _resolveMax(maxAt, level, className) {
     if (maxAt === 'PB') return this._profBonus(level);
+    if (maxAt === 'CHA_MIN1') {
+      if (typeof CharStore !== 'undefined') {
+        const chaScore = parseInt(CharStore.lv('cha', 10)) || 10;
+        return Math.max(1, Math.floor((chaScore - 10) / 2));
+      }
+      return 1;
+    }
     if (maxAt === 'LEVEL') return Math.max(1, parseInt(level) || 1);
     if (maxAt === 'LEVELx5') return (Math.max(1, parseInt(level) || 1)) * 5;
     if (Array.isArray(maxAt)) {
