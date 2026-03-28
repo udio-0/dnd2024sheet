@@ -530,13 +530,25 @@ function formatAbilityBonus(race) {
 function getBackgroundInfo(name) {
   const bg = DndData.backgrounds.find(b => b.name === name);
   if (!bg) return null;
+  const featRaw = bg.feats?.[0] || null;
+  const featKey = featRaw ? Object.keys(featRaw)[0] : null;
+  const parseFeatKey = (raw) => {
+    if (!raw) return { name: '', classHint: null };
+    const withoutSource = raw.split('|')[0].trim();
+    const parts = withoutSource.split(';').map(s => s.trim());
+    const capitalize = s => s.replace(/\b\w/g, c => c.toUpperCase());
+    return { name: capitalize(parts[0]), classHint: parts[1] ? capitalize(parts[1]) : null };
+  };
+  const featParsed = featKey ? parseFeatKey(featKey) : null;
   return {
     name: bg.name,
     source: bg.source,
     src: bg._src,
     skillProf: bg.skillProficiencies?.[0] || {},
     toolProf: bg.toolProficiencies?.[0] || {},
-    feat: bg.feats?.[0] || null,
+    feat: featRaw,
+    featName: featParsed?.name || null,
+    featClassHint: featParsed?.classHint || null,
     ability: bg.ability?.[0] || null,
     description: entriesToText(bg.entries),
   };

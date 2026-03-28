@@ -504,9 +504,9 @@ function applyBackgroundSelection(name) {
     let txt = `Skills: ${Object.keys(info.skillProf).join(', ')}`;
     const tools = Object.keys(info.toolProf);
     if (tools.length) txt += `\nTools: ${tools.join(', ')}`;
-    if (info.feat) {
-      const featName = Object.keys(info.feat)[0]?.split('|')[0] || '';
-      txt += `\nOrigin Feat: ${featName}`;
+    if (info.featName) {
+      const featDisplay = info.featClassHint ? `${info.featName} (${info.featClassHint})` : info.featName;
+      txt += `\nOrigin Feat: ${featDisplay}`;
     }
     txt += '\n\n' + info.description;
     textEl.textContent = txt;

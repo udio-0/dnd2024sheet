@@ -116,6 +116,9 @@ window.ClassResources = {
     'Magic Initiate Spell': {
       text: 'You can cast the 1st-level spell you chose from the Magic Initiate feat once without expending a spell slot. You regain the ability to cast it in this way after a Long Rest.',
     },
+    'Magic Initiate': {
+      text: 'You can cast the 1st-level spell you chose from the Magic Initiate feat once without expending a spell slot. You regain the ability to cast it in this way after a Long Rest.',
+    },
     'Bend Life Energy': {
       text: 'When a spell you cast restores Hit Points to a creature, you can roll 1d4 and add the number rolled to the total Hit Points restored.',
     },
@@ -880,6 +883,14 @@ window.ClassResources = {
         const chosenSpell = featObj.chosenSpells[featObj.chosenSpells.length - 1];
         if (chosenSpell) name = name.replace('Bonus Spell', chosenSpell);
       }
+      // Replace "Magic Initiate Spell" with the actual chosen level-1 spell name
+      if (name === 'Magic Initiate Spell' && featObj?.chosenSpells?.length) {
+        const cantripCount = (this.FEAT_SPELL_CHOICES?.['Magic Initiate']?.picks || [])
+          .filter(p => p.level === 0)
+          .reduce((sum, p) => sum + p.count, 0);
+        const lvl1Spell = featObj.chosenSpells[cantripCount] ?? featObj.chosenSpells[featObj.chosenSpells.length - 1];
+        if (lvl1Spell) name = `Magic Initiate: ${lvl1Spell}`;
+      }
       return { name, max: this._resolveMax(def.maxAt, lvl), used: 0, refresh: def.refresh };
     });
   },
@@ -970,8 +981,14 @@ window.ClassResources = {
 
     // Update existing or add new
     for (const target of allTarget) {
-      const existing = resources.find(r => r.name === target.name);
+      // Also check for stale "Magic Initiate Spell" name when target is "Magic Initiate: <spell>"
+      let existing = resources.find(r => r.name === target.name);
+      if (!existing && target.name.startsWith('Magic Initiate: ')) {
+        existing = resources.find(r => r.name === 'Magic Initiate Spell');
+      }
       if (existing) {
+        // Rename if we matched a stale name
+        if (existing.name !== target.name) existing.name = target.name;
         // Update max if it changed
         if (existing.max !== target.max) {
           existing.max = target.max;

@@ -156,6 +156,7 @@ window.Sheet = {
     this.restoreSpells();
     this.restoreInventory();
     this.restoreFeats();
+    this._syncFeatSpells();
     this.restoreCharOptions();
     this.initPortrait();
     this.applyClassSelection(this.lv('charClass', ''));
@@ -406,13 +407,19 @@ window.Sheet = {
 
     // Skills
     let percBonus = 0;
+    const _divineOrder = this.lv('charDivineOrder', '');
+    const _thaumaturgeBonus = (_className === 'Cleric' && _divineOrder === 'Thaumaturge')
+      ? Math.max(1, mods.wis || 0) : 0;
+
     this.SKILLS.forEach(s => {
       const toggle = this.qs(`.skill-state-toggle[data-skill="${s.key}"]`);
       const state = parseInt(toggle?.dataset.state || '0');
       const isProficient = state >= 1;
       const isExpert = state === 2;
       const bonus = isExpert ? prof * 2 : isProficient ? prof : (_jackOfAllTrades ? halfProf : 0);
-      const total = mods[s.ability] + bonus;
+      let total = mods[s.ability] + bonus;
+      // Thaumaturge: +Wisdom mod (min 1) to Arcana and Religion checks
+      if (_thaumaturgeBonus && (s.key === 'arcana' || s.key === 'religion')) total += _thaumaturgeBonus;
       const el = this.$(`skill-${s.key}`);
       if (el) el.textContent = this.fmtMod(total);
       if (s.key === 'perception') percBonus = bonus;
@@ -815,9 +822,15 @@ window.Sheet = {
     const scInput = this.$('spellcastingClass');
     if (scInput) { scInput.value = className; this.sv('spellcastingClass', className); }
 
-    // Store class weapon/armor proficiencies
-    this.sv('classWeaponProf', info.weaponProf || []);
-    this.sv('classArmorProf', info.armorProf || []);
+    // Store class weapon/armor proficiencies (augmented by Divine Order for Cleric)
+    const _baseWeaponProf = [...(info.weaponProf || [])];
+    const _baseArmorProf  = [...(info.armorProf  || [])];
+    if (className === 'Cleric' && this.lv('charDivineOrder', '') === 'Protector') {
+      if (!_baseWeaponProf.some(p => /martial/i.test(p))) _baseWeaponProf.push('Martial Weapons');
+      if (!_baseArmorProf.some(p => /heavy/i.test(p)))   _baseArmorProf.push('Heavy Armor');
+    }
+    this.sv('classWeaponProf', _baseWeaponProf);
+    this.sv('classArmorProf',  _baseArmorProf);
 
     // Store fixed class tool proficiencies (e.g. Rogue's Thieves' Tools) and merge into toolProficiencies
     const fixedClassTools = info.fixedToolProf || [];
@@ -1500,10 +1513,25 @@ window.Sheet = {
       }
     });
 
-    // Auto-add origin feat
-    if (info.feat) {
-      const featName = Object.keys(info.feat)[0]?.split('|')[0];
-      if (featName) this.addFeat(featName);
+    // Auto-add origin feat (show spell picker if feat has spell choices)
+    if (info.featName) {
+      const featName = info.featName;
+      if (featName) {
+        const canonical = (typeof getFeatInfo === 'function' ? getFeatInfo(featName)?.name : null) || featName;
+        const spellConfig = typeof ClassResources !== 'undefined'
+          ? ClassResources.FEAT_SPELL_CHOICES?.[canonical] : null;
+        const customConfig = typeof ClassResources !== 'undefined'
+          ? ClassResources.FEAT_CUSTOM_CHOICES?.[canonical] : null;
+        const featInfo = typeof getFeatInfo === 'function' ? getFeatInfo(featName) : null;
+        if (spellConfig || customConfig) {
+          const already = this.lv('feats', []).some(f => this._featName(f).toLowerCase() === canonical.toLowerCase());
+          if (!already) {
+            this._showFeatOptionsPicker(canonical, featInfo, [], spellConfig, null, customConfig);
+          }
+        } else {
+          this.addFeat(featName);
+        }
+      }
     }
 
     // Store background tool & language proficiencies, then refresh display
@@ -2337,6 +2365,41 @@ window.Sheet = {
     });
     this.sv('charSpells', nonFeat);
     this.restoreSpells();
+
+    // Migrate any stale "Magic Initiate Spell" resource names to "Magic Initiate: <SpellName>"
+    // and deduplicate in case updateResourcesOnLevelUp already added the new name
+    if (typeof ClassResources !== 'undefined') {
+      const resources = this.lv('resources', []) || [];
+      let resourcesChanged = false;
+      feats.forEach(f => {
+        if (typeof f === 'string' || f.name !== 'Magic Initiate') return;
+        if (!f.chosenSpells?.length) return;
+        const cantripCount = (ClassResources.FEAT_SPELL_CHOICES?.['Magic Initiate']?.picks || [])
+          .filter(p => p.level === 0)
+          .reduce((sum, p) => sum + p.count, 0);
+        const lvl1Spell = f.chosenSpells[cantripCount] ?? f.chosenSpells[f.chosenSpells.length - 1];
+        if (!lvl1Spell) return;
+        const targetName = `Magic Initiate: ${lvl1Spell}`;
+        // Remove any stale "Magic Initiate Spell" entries
+        const staleIdx = resources.findIndex(r => r.name === 'Magic Initiate Spell');
+        if (staleIdx !== -1) {
+          if (resources.some(r => r.name === targetName)) {
+            resources.splice(staleIdx, 1); // target already exists — just delete the stale one
+          } else {
+            resources[staleIdx].name = targetName; // rename stale to correct name
+          }
+          resourcesChanged = true;
+        }
+        // Remove duplicate targetName entries (keep only the first)
+        let firstIdx = resources.findIndex(r => r.name === targetName);
+        if (firstIdx !== -1) {
+          for (let i = resources.length - 1; i > firstIdx; i--) {
+            if (resources[i].name === targetName) { resources.splice(i, 1); resourcesChanged = true; }
+          }
+        }
+      });
+      if (resourcesChanged) { this.sv('resources', resources); this.renderResources(); }
+    }
   },
 
   // ---- FEAT SPELL EDITOR ----

@@ -1495,6 +1495,16 @@ function _extractSuggestedCharacteristics(entries) {
   return result;
 }
 
+// Parse a 5etools background feat key like "magic initiate; cleric|xphb"
+// into { name: "Magic Initiate", classHint: "Cleric" }
+function parseBgFeatKey(raw) {
+  if (!raw) return { name: '', classHint: null };
+  const withoutSource = raw.split('|')[0].trim();
+  const parts = withoutSource.split(';').map(s => s.trim());
+  const capitalize = s => s.replace(/\b\w/g, c => c.toUpperCase());
+  return { name: capitalize(parts[0]), classHint: parts[1] ? capitalize(parts[1]) : null };
+}
+
 function getBackgroundInfo(name) {
   // Support "Name — Source" format for disambiguating duplicates
   let bg = DndData.backgrounds.find(b => b.name === name);
@@ -1503,13 +1513,18 @@ function getBackgroundInfo(name) {
     if (m) bg = DndData.backgrounds.find(b => b.name === m[1] && b._src === m[2]);
   }
   if (!bg) return null;
+  const featRaw = bg.feats?.[0] || null;
+  const featKey = featRaw ? Object.keys(featRaw)[0] : null;
+  const featParsed = featKey ? parseBgFeatKey(featKey) : null;
   return {
     name: bg.name,
     source: bg.source,
     src: bg._src,
     skillProf: bg.skillProficiencies?.[0] || {},
     toolProf: bg.toolProficiencies?.[0] || {},
-    feat: bg.feats?.[0] || null,
+    feat: featRaw,
+    featName: featParsed?.name || null,
+    featClassHint: featParsed?.classHint || null,
     ability: bg.ability || null,
     description: entriesToText(bg.entries),
     descriptionHtml: entriesToHtml(bg.entries),

@@ -256,6 +256,10 @@ window.Wizard = {
         const chosen = (d._psionicDisciplines || []).length;
         if (chosen < count) return `Please choose ${count} Psionic Disciplines (${chosen}/${count} selected).`;
       }
+      if (d.charClass === 'Cleric') {
+        if (!d._divineOrder) return 'Please choose a Divine Order for your Cleric.';
+        if (d._divineOrder === 'Thaumaturge' && !d._divineOrderCantrip) return 'Please choose a cantrip for your Thaumaturge Divine Order.';
+      }
     }
     if (step === 'equipment') {
       const classInfo = d.charClass ? getClassInfo(d.charClass) : null;
@@ -751,11 +755,30 @@ window.Wizard = {
 
     // Apply background origin feat
     if (d._bgInfo?.feat) {
-      const bgFeatName = Object.keys(d._bgInfo.feat)[0]?.split('|')[0];
+      const bgFeatName = d._bgInfo.featName;
       if (bgFeatName) {
         if (!d.feats) d.feats = [];
         if (!d.feats.some(f => (typeof f === 'string' ? f : f.name).toLowerCase() === bgFeatName.toLowerCase())) {
-          d.feats.push(bgFeatName);
+          // If spell choices were made, store as object
+          if (d._bgFeatChosenSpells?.length || d._bgFeatSpellClass) {
+            const featObj = { name: bgFeatName };
+            if (d._bgFeatChosenSpells?.length) featObj.chosenSpells = [...d._bgFeatChosenSpells];
+            if (d._bgFeatSpellClass) featObj.spellClass = d._bgFeatSpellClass;
+            d.feats.push(featObj);
+          } else {
+            d.feats.push(bgFeatName);
+          }
+        }
+      }
+    }
+
+    // Apply Divine Order (Cleric)
+    if (d.charClass === 'Cleric' && d._divineOrder) {
+      d.charDivineOrder = d._divineOrder;
+      if (d._divineOrder === 'Thaumaturge' && d._divineOrderCantrip) {
+        if (!d.charSpells) d.charSpells = [];
+        if (!d.charSpells.some(s => s.name === d._divineOrderCantrip)) {
+          d.charSpells.push({ name: d._divineOrderCantrip, level: 0, prepared: true, divineOrderSource: true });
         }
       }
     }
@@ -1103,6 +1126,7 @@ window.Wizard = {
         <div id="wiz-bg-equip" class="wiz-bg-equip"></div>
         <div id="wiz-bg-lang" class="wiz-bg-equip"></div>
         <div id="wiz-bg-characteristics"></div>
+        <div id="wiz-bg-feat-spells"></div>
       </div>`;
     const input = document.getElementById('wiz-bg-search');
     const preview = document.getElementById('wiz-bg-preview');
@@ -1360,7 +1384,7 @@ window.Wizard = {
         equipDiv.innerHTML = '';
         return;
       }
-      // Reset background equipment gold if background changed
+      // Reset background equipment gold and feat spell choices if background changed
       if (d.charBackground !== name) {
         const prevInfo = d._bgInfo;
         if (prevInfo?.startingEquipment?.length && d._bgEquipChoice) {
@@ -1370,6 +1394,8 @@ window.Wizard = {
         }
         d._bgEquipChoice = null;
         d._bgEquipGoldApplied = false;
+        d._bgFeatChosenSpells = [];
+        d._bgFeatSpellClass = '';
       }
       d.charBackground = name;
       d._bgInfo = info;
@@ -1383,7 +1409,9 @@ window.Wizard = {
         return k;
       });
       const tools = toolDisplayNames.join(', ') || 'None';
-      const feat = info.feat ? Object.keys(info.feat)[0]?.split('|')[0] || '' : 'None';
+      const feat = info.featName
+        ? (info.featClassHint ? `${info.featName} (${info.featClassHint})` : info.featName)
+        : 'None';
       Object.keys(info.skillProf).forEach(sk => {
         const key = _normalizeSkillKey(sk);
         if (key) d['skillProf_' + key] = true;
@@ -1495,6 +1523,193 @@ window.Wizard = {
       }
       renderLangPicker();
       renderCharacteristicsPicker(info);
+      renderBgFeatSpellPicker(info);
+    };
+
+    const renderBgFeatSpellPicker = (info) => {
+      const featSpellDiv = document.getElementById('wiz-bg-feat-spells');
+      if (!featSpellDiv) return;
+      const featName = info?.featName || null;
+      const spellConfig = featName && typeof ClassResources !== 'undefined'
+        ? ClassResources.FEAT_SPELL_CHOICES?.[featName] : null;
+      if (!spellConfig?.picks?.length) { featSpellDiv.innerHTML = ''; return; }
+
+      if (!d._bgFeatChosenSpells) d._bgFeatChosenSpells = [];
+      if (info.featClassHint && !d._bgFeatSpellClass) d._bgFeatSpellClass = info.featClassHint;
+      if (!d._bgFeatSpellClass) d._bgFeatSpellClass = '';
+
+      const chosenSpells = d._bgFeatChosenSpells;
+      const classFixed = !!info.featClassHint;
+
+      // Subclass overlap map built from the character's class (not the feat's class)
+      const _bgFeatOverlapMap = (typeof LevelUp !== 'undefined' && typeof LevelUp._getSubclassOverlapMap === 'function')
+        ? LevelUp._getSubclassOverlapMap(d.charClass || '') : new Map();
+
+      const buildPicker = (selClass) => {
+        d._bgFeatSpellClass = selClass;
+        featSpellDiv.innerHTML = '';
+
+        const section = document.createElement('div');
+        section.className = 'wiz-spell-group';
+        section.style.marginTop = '16px';
+
+        // Section heading
+        const heading = document.createElement('h3');
+        const classHint = info.featClassHint ? ` (${info.featClassHint})` : '';
+        heading.innerHTML = `${featName}${classHint} — Choose Spells`;
+        section.appendChild(heading);
+
+        // Class picker (only if not fixed by background)
+        if (spellConfig.requireClassPick && !classFixed) {
+          const classRow = document.createElement('div');
+          classRow.style.cssText = 'margin-bottom:12px';
+          classRow.innerHTML = `<label style="font-size:0.82rem;font-weight:600;margin-right:8px">Class:</label>`;
+          const sel = document.createElement('select');
+          sel.className = 'wiz-select';
+          sel.style.cssText = 'width:auto;display:inline-block';
+          sel.innerHTML = `<option value="">— Choose class —</option>` +
+            spellConfig.classOptions.map(c =>
+              `<option value="${c}" ${c === selClass ? 'selected' : ''}>${c}</option>`
+            ).join('');
+          sel.addEventListener('change', () => {
+            d._bgFeatChosenSpells = [];
+            buildPicker(sel.value);
+          });
+          classRow.appendChild(sel);
+          section.appendChild(classRow);
+        }
+
+        // Auto-spells
+        if (spellConfig.autoSpells?.length) {
+          const autoDiv = document.createElement('div');
+          autoDiv.style.cssText = 'font-size:0.82rem;margin-bottom:10px;color:var(--ink-light)';
+          autoDiv.innerHTML = `<strong>Always prepared:</strong> ` +
+            spellConfig.autoSpells.map(s => `<span class="feat-spell-tag feat-spell-auto">${s}</span>`).join(' ');
+          section.appendChild(autoDiv);
+        }
+
+        // Append to DOM now so getElementById works inside renderList
+        featSpellDiv.appendChild(section);
+
+        // One spell-list group per pick definition
+        spellConfig.picks.forEach((pickDef, pickIdx) => {
+          if (spellConfig.requireClassPick && !selClass) return; // waiting for class selection
+
+          const pool = ClassResources.getFeatSpellPool(pickDef, selClass);
+          const countSelected = () => pool.filter(s => chosenSpells.includes(s.name)).length;
+          const filterId = `wiz-bg-feat-filter-${pickIdx}`;
+          const listId  = `wiz-bg-feat-list-${pickIdx}`;
+          const cntId   = `wiz-bg-feat-counter-${pickIdx}`;
+
+          const groupLabel = pickDef.label || `Choose ${pickDef.count} spell(s)`;
+          const groupHead = document.createElement('h3');
+          groupHead.innerHTML = `${groupLabel} <span id="${cntId}" style="font-size:0.82rem;margin-left:8px"></span>`;
+          section.appendChild(groupHead);
+
+          const filterInput = document.createElement('input');
+          filterInput.type = 'text';
+          filterInput.id = filterId;
+          filterInput.className = 'wiz-search wiz-search-sm';
+          filterInput.placeholder = `Filter ${groupLabel.toLowerCase()}...`;
+          filterInput.autocomplete = 'off';
+          section.appendChild(filterInput);
+
+          const listEl = document.createElement('div');
+          listEl.id = listId;
+          listEl.className = 'wiz-spell-list';
+          section.appendChild(listEl);
+
+          const renderCounter = () => {
+            const cnt = document.getElementById(cntId);
+            if (!cnt) return;
+            const n = countSelected();
+            cnt.textContent = `${n} / ${pickDef.count} selected`;
+            cnt.style.color = n > pickDef.count ? 'var(--danger,#c00)' : n === pickDef.count ? 'var(--success,#2a7)' : 'var(--ink-faint)';
+          };
+
+          const renderList = (filter) => {
+            const q = (filter || '').toLowerCase();
+            const visible = pool.filter(s => !q || s.name.toLowerCase().includes(q));
+            const el = document.getElementById(listId);
+            if (!el) return;
+            el.innerHTML = '';
+            // Header row
+            const header = document.createElement('div');
+            header.className = 'wiz-spell-row wiz-spell-header';
+            header.innerHTML = `
+              <span class="wiz-spell-col-check"></span>
+              <span class="wiz-spell-col-name">Name</span>
+              <span class="wiz-spell-col-school">School</span>
+              <span class="wiz-spell-col-cast">Casting Time</span>
+              <span class="wiz-spell-col-range">Range</span>
+              <span class="wiz-spell-col-comp">Components</span>
+              <span class="wiz-spell-col-dur">Duration</span>`;
+            el.appendChild(header);
+
+            visible.forEach(spell => {
+              const isSelected = chosenSpells.includes(spell.name);
+              const atMax = countSelected() >= pickDef.count && !isSelected;
+              const row = document.createElement('label');
+              row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (atMax ? ' disabled' : '');
+              if (atMax) row.style.opacity = '0.45';
+              const _warnBadge = (typeof LevelUp !== 'undefined' && typeof LevelUp._subclassWarnBadge === 'function')
+                ? LevelUp._subclassWarnBadge(_bgFeatOverlapMap, spell.name, '') : '';
+              row.innerHTML = `
+                <span class="wiz-spell-col-check"><input type="checkbox" ${isSelected ? 'checked' : ''} ${atMax ? 'disabled' : ''}></span>
+                <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? '<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${_warnBadge}</span>
+                <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+                <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+                <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+                <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+                <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+
+              // Tooltip
+              row.addEventListener('mouseenter', (e) => {
+                let tip = document.getElementById('wiz-spell-tooltip');
+                if (!tip) { tip = document.createElement('div'); tip.id = 'wiz-spell-tooltip'; tip.className = 'wiz-spell-tooltip'; document.body.appendChild(tip); }
+                const desc = entriesToHtml(spell.entries || []);
+                const higher = spell.entriesHigherLevel ? `<p class="wiz-tip-higher"><strong>At Higher Levels.</strong> ${entriesToHtml(spell.entriesHigherLevel)}</p>` : '';
+                tip.innerHTML = `<div class="wiz-tip-header"><span class="wiz-tip-name">${spell.name}</span><span class="wiz-tip-level">${spell._levelStr} ${spell._schoolName ? '— ' + spell._schoolName : ''}</span></div>
+                  <div class="wiz-tip-meta">${spell._castTime || ''} | ${spell._rangeStr || ''} | ${spell._componentsStr || ''} | ${spell._durationStr || ''}</div>
+                  <div class="wiz-tip-body">${typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords(desc + higher) : desc + higher}</div>`;
+                tip.style.display = 'block';
+                _positionSpellTooltip(tip, e);
+              });
+              row.addEventListener('mousemove', (e) => { const tip = document.getElementById('wiz-spell-tooltip'); if (tip) _positionSpellTooltip(tip, e); });
+              row.addEventListener('mouseleave', () => { const tip = document.getElementById('wiz-spell-tooltip'); if (tip) tip.style.display = 'none'; });
+
+              row.querySelector('input').addEventListener('change', function () {
+                if (this.checked) {
+                  if (countSelected() >= pickDef.count) { this.checked = false; return; }
+                  chosenSpells.push(spell.name);
+                } else {
+                  const i = chosenSpells.indexOf(spell.name);
+                  if (i >= 0) chosenSpells.splice(i, 1);
+                }
+                row.classList.toggle('selected', this.checked);
+                renderCounter();
+                renderList(document.getElementById(filterId)?.value);
+              });
+              if (typeof _attachSubclassWarnTooltip === 'function') _attachSubclassWarnTooltip(row);
+              el.appendChild(row);
+            });
+            renderCounter();
+          };
+
+          filterInput.addEventListener('input', function () { renderList(this.value); });
+          renderList('');
+        });
+
+        // If class pick is required but not yet selected, show a prompt
+        if (spellConfig.requireClassPick && !selClass && !classFixed) {
+          const prompt = document.createElement('p');
+          prompt.style.cssText = 'color:var(--ink-faint);font-size:0.85rem;margin-top:8px';
+          prompt.textContent = 'Select a class above to see available spells.';
+          section.appendChild(prompt);
+        }
+      };
+
+      buildPicker(d._bgFeatSpellClass);
     };
 
     const renderCharacteristicsPicker = (info) => {
@@ -1575,6 +1790,8 @@ window.Wizard = {
         d._classToolChoices = [];
         d._classToolCategories = [];
         d._psionicDisciplines = [];
+        d._divineOrder = null;
+        d._divineOrderCantrip = null;
       }
       d.charClass = className;
       d._classInfo = info;
@@ -2101,6 +2318,218 @@ window.Wizard = {
           updateStates();
           skillDiv.appendChild(pdSection);
         }
+      }
+
+      // ---- Divine Order (Cleric level 1) ----
+      if (d.charClass === 'Cleric') {
+        d._divineOrder = d._divineOrder || null;
+        d._divineOrderCantrip = d._divineOrderCantrip || null;
+
+        const DIVINE_ORDERS = [
+          { name: 'Protector', desc: 'Trained for battle, you gain proficiency with Martial weapons and training with Heavy armor.' },
+          { name: 'Thaumaturge', desc: 'You know one extra cantrip from the Cleric spell list. In addition, your mystical connection to the divine gives you a bonus to your Intelligence (Arcana or Religion) checks equal to your Wisdom modifier (minimum of +1).' },
+        ];
+
+        const doSection = document.createElement('div');
+        doSection.className = 'wiz-fighting-style-section';
+
+        const doHeading = document.createElement('h4');
+        doHeading.className = 'wiz-subtitle';
+        doHeading.textContent = 'Divine Order';
+        doSection.appendChild(doHeading);
+
+        const doNote = document.createElement('p');
+        doNote.className = 'wiz-desc';
+        doNote.textContent = 'You have dedicated yourself to one of the following sacred roles of your choice.';
+        doSection.appendChild(doNote);
+
+        // Card container — appended to doSection before building cards so cantrip picker can also append
+        const doCards = document.createElement('div');
+        doCards.className = 'wiz-order-cards';
+        doSection.appendChild(doCards);
+
+        const doCantripSection = document.createElement('div');
+        doCantripSection.style.marginTop = '12px';
+        doSection.appendChild(doCantripSection);
+
+        const renderDivineOrderCantripPicker = () => {
+          doCantripSection.innerHTML = '';
+          if (d._divineOrder !== 'Thaumaturge') return;
+
+          const ua = typeof isUAEnabled === 'function' ? isUAEnabled() : true;
+          const show24 = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
+          const show14 = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
+
+          // Build set of cantrips already granted from other sources so we can exclude them
+          const alreadyGrantedCantrips = new Set();
+
+          // Racial / species cantrips
+          if (d._speciesInfo && typeof parseRacialSpells === 'function') {
+            const _srObj = d.charSubrace ? d._speciesInfo.subraces?.find(sr => sr.name === d.charSubrace) : null;
+            const _racialAddSpells = _srObj?.additionalSpells?.length
+              ? _srObj.additionalSpells : (d._speciesInfo.additionalSpells || []);
+            if (_racialAddSpells.length) {
+              const _rp = parseRacialSpells(_racialAddSpells, d.charSubrace || '', null, d._racialCantripChoice);
+              (_rp.cantrips || []).filter(Boolean).forEach(n => alreadyGrantedCantrips.add(n.toLowerCase()));
+            }
+            // Fallback: chosen cantrip stored directly
+            if (d._racialCantripChoice) alreadyGrantedCantrips.add(d._racialCantripChoice.toLowerCase());
+          }
+
+          // Background feat cantrips (auto-granted + user-chosen)
+          const _bgFeatName = d._bgInfo?.featName;
+          if (_bgFeatName && typeof ClassResources !== 'undefined') {
+            const _fsc = ClassResources.FEAT_SPELL_CHOICES?.[_bgFeatName];
+            if (_fsc) {
+              (_fsc.autoSpells || []).forEach(n => {
+                const sp = DndData?.spells?.find(s => s.name.toLowerCase() === n.toLowerCase());
+                if (!sp || sp.level === 0) alreadyGrantedCantrips.add(n.toLowerCase());
+              });
+              (d._bgFeatChosenSpells || []).forEach(n => {
+                const sp = DndData?.spells?.find(s => s.name.toLowerCase() === n.toLowerCase());
+                if (!sp || sp.level === 0) alreadyGrantedCantrips.add(n.toLowerCase());
+              });
+            }
+          }
+
+          // Class auto-granted cantrips
+          (ClassResources?.CLASS_AUTO_CANTRIPS?.['Cleric'] || []).forEach(n => alreadyGrantedCantrips.add(n.toLowerCase()));
+
+          const allClericCantrips = (typeof getSpellsForClass === 'function' ? getSpellsForClass('Cleric') : DndData.spells)
+            .filter(s => {
+              if (s.level !== 0) return false;
+              if (s.source === 'UA2024') return ua && show24;
+              if (typeof is2024Source === 'function' && is2024Source(s.source)) return show24;
+              return show14;
+            });
+          const clericCantrips = allClericCantrips.filter(s => !alreadyGrantedCantrips.has(s.name.toLowerCase()));
+
+          // If the previously chosen cantrip was excluded (e.g. a racial cantrip), clear it
+          if (d._divineOrderCantrip && alreadyGrantedCantrips.has(d._divineOrderCantrip.toLowerCase())) {
+            d._divineOrderCantrip = null;
+          }
+
+          const cntId = 'wiz-do-cantrip-counter';
+          const listId = 'wiz-do-cantrip-list';
+          const filterId = 'wiz-do-cantrip-filter';
+
+          const doCanLabel = document.createElement('h4');
+          doCanLabel.className = 'wiz-subtitle';
+          doCanLabel.innerHTML = `Thaumaturge Cantrip <span id="${cntId}" style="font-size:0.82rem;margin-left:8px"></span>`;
+          doCantripSection.appendChild(doCanLabel);
+
+          const doCanNote = document.createElement('p');
+          doCanNote.className = 'wiz-desc';
+          doCanNote.textContent = 'Choose one extra cantrip from the Cleric spell list.';
+          doCantripSection.appendChild(doCanNote);
+
+          const doCanFilter = document.createElement('input');
+          doCanFilter.type = 'text';
+          doCanFilter.id = filterId;
+          doCanFilter.className = 'wiz-search wiz-search-sm';
+          doCanFilter.placeholder = 'Filter cantrips...';
+          doCanFilter.autocomplete = 'off';
+          doCantripSection.appendChild(doCanFilter);
+
+          const doCanList = document.createElement('div');
+          doCanList.id = listId;
+          doCanList.className = 'wiz-spell-list';
+          doCantripSection.appendChild(doCanList);
+
+          const renderDoCounter = () => {
+            const cnt = document.getElementById(cntId);
+            if (!cnt) return;
+            const n = d._divineOrderCantrip ? 1 : 0;
+            cnt.textContent = `${n} / 1 selected`;
+            cnt.style.color = n === 1 ? 'var(--success,#2a7)' : 'var(--ink-faint)';
+          };
+
+          const renderDoList = (filter) => {
+            const q = (filter || '').toLowerCase();
+            const visible = clericCantrips.filter(s => !q || s.name.toLowerCase().includes(q));
+            const el = document.getElementById(listId);
+            if (!el) return;
+            el.innerHTML = '';
+            const hdr = document.createElement('div');
+            hdr.className = 'wiz-spell-row wiz-spell-header';
+            hdr.innerHTML = `
+              <span class="wiz-spell-col-check"></span>
+              <span class="wiz-spell-col-name">Name</span>
+              <span class="wiz-spell-col-school">School</span>
+              <span class="wiz-spell-col-cast">Casting Time</span>
+              <span class="wiz-spell-col-range">Range</span>
+              <span class="wiz-spell-col-comp">Components</span>
+              <span class="wiz-spell-col-dur">Duration</span>`;
+            el.appendChild(hdr);
+            visible.forEach(spell => {
+              const isSel = d._divineOrderCantrip === spell.name;
+              const atMax = !isSel && !!d._divineOrderCantrip;
+              const row = document.createElement('label');
+              row.className = 'wiz-spell-row' + (isSel ? ' selected' : '') + (atMax ? ' disabled' : '');
+              if (atMax) row.style.opacity = '0.45';
+              row.innerHTML = `
+                <span class="wiz-spell-col-check"><input type="checkbox" ${isSel ? 'checked' : ''} ${atMax ? 'disabled' : ''}></span>
+                <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? '<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}</span>
+                <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
+                <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
+                <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
+                <span class="wiz-spell-col-comp">${spell._componentsStr || ''}</span>
+                <span class="wiz-spell-col-dur">${spell._durationStr || ''}</span>`;
+              row.addEventListener('mouseenter', (e) => {
+                let tip = document.getElementById('wiz-spell-tooltip');
+                if (!tip) { tip = document.createElement('div'); tip.id = 'wiz-spell-tooltip'; tip.className = 'wiz-spell-tooltip'; document.body.appendChild(tip); }
+                const desc = entriesToHtml(spell.entries || []);
+                const higher = spell.entriesHigherLevel ? `<p class="wiz-tip-higher"><strong>At Higher Levels.</strong> ${entriesToHtml(spell.entriesHigherLevel)}</p>` : '';
+                tip.innerHTML = `<div class="wiz-tip-header"><span class="wiz-tip-name">${spell.name}</span><span class="wiz-tip-level">${spell._levelStr} ${spell._schoolName ? '— ' + spell._schoolName : ''}</span></div>
+                  <div class="wiz-tip-meta">${spell._castTime || ''} | ${spell._rangeStr || ''} | ${spell._componentsStr || ''} | ${spell._durationStr || ''}</div>
+                  <div class="wiz-tip-body">${typeof _highlightSpellKeywords === 'function' ? _highlightSpellKeywords(desc + higher) : desc + higher}</div>`;
+                tip.style.display = 'block';
+                _positionSpellTooltip(tip, e);
+              });
+              row.addEventListener('mousemove', (e) => { const tip = document.getElementById('wiz-spell-tooltip'); if (tip) _positionSpellTooltip(tip, e); });
+              row.addEventListener('mouseleave', () => { const tip = document.getElementById('wiz-spell-tooltip'); if (tip) tip.style.display = 'none'; });
+              row.querySelector('input').addEventListener('change', function () {
+                if (this.checked) {
+                  if (d._divineOrderCantrip) { this.checked = false; return; }
+                  d._divineOrderCantrip = spell.name;
+                } else {
+                  d._divineOrderCantrip = null;
+                }
+                row.classList.toggle('selected', this.checked);
+                renderDoCounter();
+                renderDoList(document.getElementById(filterId)?.value);
+              });
+              el.appendChild(row);
+            });
+            renderDoCounter();
+          };
+
+          doCanFilter.addEventListener('input', function () { renderDoList(this.value); });
+          renderDoList('');
+        };
+
+        DIVINE_ORDERS.forEach(order => {
+          const checked = d._divineOrder === order.name;
+          const card = document.createElement('label');
+          card.className = 'wiz-order-card' + (checked ? ' selected' : '');
+          card.innerHTML = `
+            <input type="radio" name="wiz-divine-order" value="${order.name}" ${checked ? 'checked' : ''}>
+            <div class="wiz-order-card-body">
+              <div class="wiz-order-card-name">${order.name}</div>
+              <div class="wiz-order-card-desc">${order.desc}</div>
+            </div>`;
+          card.querySelector('input').addEventListener('change', function () {
+            d._divineOrder = this.value;
+            doCards.querySelectorAll('.wiz-order-card').forEach(c => c.classList.remove('selected'));
+            card.classList.add('selected');
+            if (order.name !== 'Thaumaturge') d._divineOrderCantrip = null;
+            renderDivineOrderCantripPicker();
+          });
+          doCards.appendChild(card);
+        });
+
+        skillDiv.appendChild(doSection);
+        renderDivineOrderCantripPicker();
       }
     };
     if (window.setupAutocomplete) setupAutocomplete(input, 'class-list');
@@ -2951,6 +3380,18 @@ window.Wizard = {
       }
     }
 
+    // Spells already chosen via background feat or Divine Order — grey out in class spell list
+    const featGrantedSpellNames = new Set();
+    if (d._bgInfo?.featName && typeof ClassResources !== 'undefined') {
+      const _fsc = ClassResources.FEAT_SPELL_CHOICES?.[d._bgInfo.featName];
+      if (_fsc) {
+        (_fsc.autoSpells || []).forEach(n => featGrantedSpellNames.add(n.toLowerCase()));
+        (d._bgFeatChosenSpells || []).forEach(n => featGrantedSpellNames.add(n.toLowerCase()));
+      }
+    }
+    // Thaumaturge extra cantrip
+    if (d._divineOrderCantrip) featGrantedSpellNames.add(d._divineOrderCantrip.toLowerCase());
+
     // Class-auto-granted cantrips (excluded from cantrip picks)
     const classAutoCantrips = (ClassResources?.CLASS_AUTO_CANTRIPS?.[className] || []);
     const classGrantedCantripNames = new Set(classAutoCantrips.map(n => n.toLowerCase()));
@@ -3079,17 +3520,23 @@ window.Wizard = {
       spellsToRender.forEach(spell => {
         const isClassGranted = level === 0 && classGrantedCantripNames.has(spell.name.toLowerCase());
         const isRacial = level === 0 && (racialCantripNames.has(spell.name.toLowerCase()) || isClassGranted);
+        const isFeatGranted = featGrantedSpellNames.has(spell.name.toLowerCase());
         const isSelected = d.charSpells.some(s => s.name === spell.name);
-        const atMax = max !== null && countSelected(level) >= max && !isSelected;
-        const isDisabled = isRacial || atMax;
+        const atMax = max !== null && countSelected(level) >= max && !isSelected && !isFeatGranted;
+        const isDisabled = isRacial || isFeatGranted || atMax;
         const row = document.createElement('label');
         row.className = 'wiz-spell-row' + (isSelected ? ' selected' : '') + (isDisabled ? ' disabled' : '');
         if (isDisabled) row.style.opacity = '0.45';
-        const _wizWarnBadge = (typeof LevelUp !== 'undefined' && typeof LevelUp._subclassWarnBadge === 'function' && !isRacial)
+        const _wizWarnBadge = (typeof LevelUp !== 'undefined' && typeof LevelUp._subclassWarnBadge === 'function' && !isRacial && !isFeatGranted)
           ? LevelUp._subclassWarnBadge(_wizScOverlapMap, spell.name, '') : '';
+        const _isDivineOrderCantrip = d._divineOrderCantrip && spell.name.toLowerCase() === d._divineOrderCantrip.toLowerCase();
+        const _grantedLabel = isClassGranted ? '<small style="color:var(--ink-faint);white-space:nowrap">(from class)</small>'
+          : _isDivineOrderCantrip ? '<small style="color:var(--ink-faint);white-space:nowrap">(from Divine Order)</small>'
+          : isFeatGranted ? '<small style="color:var(--ink-faint);white-space:nowrap">(from feat)</small>'
+          : isRacial ? '<small style="color:var(--ink-faint);white-space:nowrap">(from species)</small>' : '';
         row.innerHTML = `
-          <span class="wiz-spell-col-check"><input type="checkbox" ${isRacial ? 'checked disabled' : (isSelected ? 'checked' : '')} ${atMax ? 'disabled' : ''}></span>
-          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? '<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${_wizWarnBadge}${isClassGranted ? '<small style="color:var(--ink-faint);white-space:nowrap">(from class)</small>' : isRacial ? '<small style="color:var(--ink-faint);white-space:nowrap">(from species)</small>' : ''}</span>
+          <span class="wiz-spell-col-check"><input type="checkbox" ${(isRacial || isFeatGranted) ? 'checked disabled' : (isSelected ? 'checked' : '')} ${atMax ? 'disabled' : ''}></span>
+          <span class="wiz-spell-col-name"><span class="wiz-spell-col-name-text">${spell.name}</span>${spell.meta?.ritual ? '<span class="spell-badge spell-badge-ritual" title="Ritual">R</span>' : ''}${_wizWarnBadge}${_grantedLabel}</span>
           <span class="wiz-spell-col-school">${spell._schoolName || ''}</span>
           <span class="wiz-spell-col-cast">${spell._castTime || ''}</span>
           <span class="wiz-spell-col-range">${spell._rangeStr || ''}</span>
@@ -3121,7 +3568,7 @@ window.Wizard = {
           if (tip) tip.style.display = 'none';
         });
         row.querySelector('input').addEventListener('change', function () {
-          if (isRacial) { this.checked = true; return; } // cannot toggle racial cantrips
+          if (isRacial || isFeatGranted) { this.checked = true; return; } // cannot toggle auto-granted spells
           if (this.checked) {
             if (max !== null && countSelected(level) >= max) { this.checked = false; return; }
             // Cantrips are always prepared; known=prepared classes auto-prepare all spells
