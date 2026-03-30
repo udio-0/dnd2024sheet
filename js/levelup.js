@@ -1200,32 +1200,6 @@ window.LevelUp = {
       this._pending[level].expertise = [];
     }
 
-    // Additional Fighting Style (e.g. Champion Fighter level 7)
-    const _hasAdditionalFS = existingSubclass && subclassFeatures.some(f => /fighting style/i.test(f.name));
-    if (_hasAdditionalFS) {
-      this._pending[level].additionalFightingStyle = null;
-      const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
-      const existingFeats = (Sheet.lv('feats', []) || []).map(f => (typeof f === 'string' ? f : f.name).toLowerCase());
-      const availableStyles = styles.filter(s => !existingFeats.includes(s.name.toLowerCase()));
-      if (availableStyles.length) {
-        html += `
-        <div class="lu-section" id="lu-add-fs-section-${level}">
-          <div class="lu-section-title">Additional Fighting Style</div>
-          <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
-            Choose a second Fighting Style feat.
-          </div>
-          <div class="lu-fs-grid" id="lu-fs-grid-${level}">
-            ${availableStyles.map(f => `
-              <label class="lu-asi-choice" style="cursor:pointer;">
-                <input type="radio" name="lu-add-fs-${level}" value="${f.name}">
-                <div class="lu-asi-label">${f.name} <span style="font-size:0.8rem;color:var(--ink-faint)">${f._src || ''}</span></div>
-              </label>`).join('')}
-          </div>
-          <div id="lu-fs-preview-${level}" style="font-size:0.85rem;color:var(--ink-faint);margin-top:6px;"></div>
-        </div>`;
-      }
-    }
-
     // Spellbook spell selection (Wizard: gain 2 new spells per level)
     const spellbookPerLevel = classInfo?.spellbookSpellsPerLevel || 0;
     const hasNewSpellbookSlots = spellbookPerLevel > 0 && level > 1;
@@ -1423,20 +1397,8 @@ window.LevelUp = {
         });
       });
     }
-    // Bind additional fighting style radio buttons
-    if (_hasAdditionalFS) {
-      const fsGrid = sectionEl.querySelector(`#lu-fs-grid-${level}`);
-      const fsPreview = sectionEl.querySelector(`#lu-fs-preview-${level}`);
-      if (fsGrid) {
-        fsGrid.querySelectorAll('input[type="radio"]').forEach(radio => {
-          radio.addEventListener('change', () => {
-            this._pending[level].additionalFightingStyle = radio.value;
-            const fInfo = typeof getFeatInfo === 'function' ? getFeatInfo(radio.value) : null;
-            if (fsPreview && fInfo) fsPreview.innerHTML = `<strong>${fInfo.name}</strong>: ${fInfo.description}`;
-          });
-        });
-      }
-    }
+    // Inject Additional Fighting Style picker if subclass grants one at this level
+    this._injectFightingStylePicker(sectionEl, level, className, existingSubclass);
     // Bind spellbook spell selection
     if (hasNewSpellbookSlots) {
       this._bindSpellbookForLevel(sectionEl, level, className, classInfo);
@@ -2113,6 +2075,65 @@ window.LevelUp = {
   },
 
   // ---- Subclass spell picks + conditional cantrip injection ----
+  // ---- Additional Fighting Style picker (e.g. Champion Fighter level 7) ----
+  // Called from _appendLevelSection (initial render) and from subclass change handler.
+  // Removes any existing picker first, then injects if the subclass grants one at this level.
+  _injectFightingStylePicker(sec, level, className, chosenSubclass) {
+    // Remove existing picker
+    sec.querySelector(`#lu-add-fs-section-${level}`)?.remove();
+    if (this._pending[level]) delete this._pending[level].additionalFightingStyle;
+
+    if (!chosenSubclass) return;
+    const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, level);
+    if (!feats.some(f => /fighting style/i.test(f.name))) return;
+
+    const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
+    const existingFeats = (Sheet.lv('feats', []) || []).map(f => (typeof f === 'string' ? f : f.name).toLowerCase());
+    // Also exclude styles chosen at other pending levels
+    for (const [, p] of Object.entries(this._pending)) {
+      if (p.additionalFightingStyle) existingFeats.push(p.additionalFightingStyle.toLowerCase());
+    }
+    const availableStyles = styles.filter(s => !existingFeats.includes(s.name.toLowerCase()));
+    if (!availableStyles.length) return;
+
+    this._pending[level].additionalFightingStyle = null;
+
+    const div = document.createElement('div');
+    div.className = 'lu-section';
+    div.id = `lu-add-fs-section-${level}`;
+    div.innerHTML = `
+      <div class="lu-section-title">Additional Fighting Style</div>
+      <div style="font-size:0.85rem;color:var(--ink-faint);margin-bottom:0.5rem;">
+        Choose a second Fighting Style feat.
+      </div>
+      <div class="lu-fs-grid" id="lu-fs-grid-${level}">
+        ${availableStyles.map(f => `
+          <label class="lu-asi-choice" style="cursor:pointer;">
+            <input type="radio" name="lu-add-fs-${level}" value="${f.name}">
+            <div class="lu-asi-label">${f.name} <span style="font-size:0.8rem;color:var(--ink-faint)">${f._src || ''}</span></div>
+          </label>`).join('')}
+      </div>
+      <div id="lu-fs-preview-${level}" style="font-size:0.85rem;color:var(--ink-faint);margin-top:6px;"></div>`;
+
+    // Insert after the subclass features section, or after the subclass picker
+    const scFeatSection = sec.querySelector(`#lu-sc-feat-section-${level}`);
+    const asiSection = sec.querySelector(`#lu-asi-section-${level}`);
+    const insertBefore = asiSection || null;
+    if (scFeatSection) scFeatSection.insertAdjacentElement('afterend', div);
+    else if (insertBefore) sec.insertBefore(div, insertBefore);
+    else sec.appendChild(div);
+
+    // Bind radio buttons
+    const fsPreview = div.querySelector(`#lu-fs-preview-${level}`);
+    div.querySelectorAll('input[type="radio"]').forEach(radio => {
+      radio.addEventListener('change', () => {
+        this._pending[level].additionalFightingStyle = radio.value;
+        const fInfo = typeof getFeatInfo === 'function' ? getFeatInfo(radio.value) : null;
+        if (fsPreview && fInfo) fsPreview.innerHTML = `<strong>${fInfo.name}</strong>: ${fInfo.description}`;
+      });
+    });
+  },
+
   // Called from _appendLevelSection (initial render) and from _bindSubclassForLevel (on change).
   // Removes any existing sections, then re-injects them if the subclass has picks at this level.
   _injectSubclassSpellPicksSections(sec, level, className, chosenSubclass) {
@@ -2822,6 +2843,7 @@ window.LevelUp = {
       document.querySelectorAll('[id^="lu-level-section-"]').forEach(sec => {
         const secLevel = parseInt(sec.id.replace('lu-level-section-', ''));
         injectSubclassFeatures(sec, secLevel);
+        this._injectFightingStylePicker(sec, secLevel, className, chosenSubclass);
         this._injectSubclassSpellPicksSections(sec, secLevel, className, chosenSubclass);
       });
 

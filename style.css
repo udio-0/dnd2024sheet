@@ -6745,6 +6745,7 @@ textarea::placeholder { color: var(--ink-faint); }
 }
 .wiz-review-card p { color: var(--ink-light); margin-bottom: 2px; }
 .wiz-review-skill-tag { font-size: 0.65rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--ink-faint); background: var(--parchment-dk); border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; vertical-align: middle; margin-left: 3px; }
+.wiz-sc-warn-tag { color: #b57a10; background: rgba(200,120,0,0.12); border-color: #c07820; }
 
 .wizard-nav {
   display: flex;

@@ -15,6 +15,14 @@ const _SKILL_DEFS = [
   {key:'religion',      l:'religion'},      {key:'sleightOfHand',  l:'sleight of hand'},
   {key:'stealth',       l:'stealth'},       {key:'survival',       l:'survival'},
 ];
+// Subclass features that grant skill proficiencies — used to warn during character creation
+// so the player doesn't waste a class skill pick on a skill they'll get later.
+const _SUBCLASS_SKILL_WARNINGS = {
+  'Fighter': [
+    { skill: 'athletics', subclass: 'Champion', feature: 'Remarkable Athlete', level: 3 },
+  ],
+};
+
 // Convert any skill key format (spaces/camelCase) to the canonical camelCase key the sheet uses
 function _normalizeSkillKey(sk) {
   if (!sk) return sk;
@@ -236,6 +244,9 @@ window.Wizard = {
         const styles = typeof getFightingStyles === 'function' ? getFightingStyles() : [];
         if (styles.length) return 'Please choose a Fighting Style for your class.';
       }
+      if (d.charClass === 'Cleric' && !d._divineOrder) {
+        return 'Please choose a Divine Order for your Cleric.';
+      }
       if (info?.weaponMasteryCount > 0) {
         const chosen = (d._weaponMasteryChoices || []).length;
         if (chosen < info.weaponMasteryCount) return `Please choose ${info.weaponMasteryCount} weapons for Weapon Mastery (${chosen}/${info.weaponMasteryCount} selected).`;
@@ -298,7 +309,8 @@ window.Wizard = {
       const _nonRacial = (d.charSpells || []).filter(s => !s.racial);
       const _cantripsSel = _nonRacial.filter(s => s.level === 0).length;
       const _prepSel = _nonRacial.filter(s => s.level === 1).length;
-      const _maxC = _ci?.cantripCount ?? null;
+      let _maxC = _ci?.cantripCount ?? null;
+      if (d._divineOrder === 'Thaumaturge' && _maxC !== null) _maxC += 1;
       // Spellbook casters: use spellbook count (6); otherwise known or prepared count
       let _maxP;
       if (_ci?.spellbookSpellsAtL1 != null) {
@@ -789,6 +801,13 @@ window.Wizard = {
       if (!d.feats.some(f => (typeof f === 'string' ? f : f.name).toLowerCase() === d._fightingStyle.toLowerCase())) {
         d.feats.push(d._fightingStyle);
       }
+    }
+
+    // Store Divine Order choice (Cleric level 1)
+    // Protector's bonus profs (Martial weapons + Heavy armor) are applied by sheet.js on class init.
+    // Thaumaturge's extra cantrip is already in d.charSpells from the spell selection step.
+    if (d._divineOrder) {
+      d.divineOrder = d._divineOrder;
     }
 
     // Auto-populate class, species, and feat resources
@@ -1854,6 +1873,8 @@ window.Wizard = {
           });
         };
 
+        const _scSkillWarnings = _SUBCLASS_SKILL_WARNINGS[d.charClass] || [];
+
         from.forEach(sk => {
           const normSk = _normalizeSkillKey(sk);
           const labelText = _skillLabel(normSk);
@@ -1863,9 +1884,11 @@ window.Wizard = {
           const checked = d._classSkillChoices.includes(normSk);
           const div = document.createElement('label');
           const grantTag = fromBg ? 'background' : 'species';
+          const scWarn = _scSkillWarnings.find(w => w.skill === normSk);
+          const scWarnBadge = scWarn ? ` <span class="wiz-bg-tag wiz-sc-warn-tag" title="${scWarn.subclass} grants this via ${scWarn.feature} at level ${scWarn.level}">⚠ ${scWarn.subclass}</span>` : '';
           div.className = 'wiz-checkbox-label' + (isGranted ? ' bg-granted disabled' : (checked ? ' selected' : ''));
           div.title = isGranted ? `Already granted by your ${grantTag}` : '';
-          div.innerHTML = `<input type="checkbox" value="${normSk}" ${isGranted ? 'disabled' : (checked ? 'checked' : '')}> ${labelText}${isGranted ? ` <span class="wiz-bg-tag">${grantTag}</span>` : ''}`;
+          div.innerHTML = `<input type="checkbox" value="${normSk}" ${isGranted ? 'disabled' : (checked ? 'checked' : '')}> ${labelText}${isGranted ? ` <span class="wiz-bg-tag">${grantTag}</span>` : ''}${scWarnBadge}`;
           if (!isGranted) {
             div.querySelector('input').addEventListener('change', function () {
               if (this.checked) {
@@ -2219,6 +2242,67 @@ window.Wizard = {
         });
 
         skillDiv.appendChild(toolSection);
+      }
+
+      // ---- Divine Order (Cleric level 1) ----
+      if (d.charClass === 'Cleric') {
+        d._divineOrder = d._divineOrder || null;
+        const doSection = document.createElement('div');
+        doSection.className = 'wiz-fighting-style-section';
+
+        const doHeading = document.createElement('h4');
+        doHeading.className = 'wiz-subtitle';
+        doHeading.textContent = 'Choose a Divine Order';
+        doSection.appendChild(doHeading);
+
+        const doNote = document.createElement('p');
+        doNote.className = 'wiz-desc';
+        doNote.textContent = 'You have dedicated yourself to one of the following sacred roles of your choice.';
+        doSection.appendChild(doNote);
+
+        const DO_OPTIONS = [
+          {
+            name: 'Protector',
+            desc: 'Trained for battle. You gain proficiency with Martial weapons and training with Heavy armor.',
+          },
+          {
+            name: 'Thaumaturge',
+            desc: 'You know one extra cantrip from the Cleric spell list. In addition, your mystical connection to the divine gives you a bonus to your Intelligence (Arcana or Religion) checks equal to your Wisdom modifier (minimum of +1).',
+          },
+        ];
+
+        const doGrid = document.createElement('div');
+        doGrid.className = 'wiz-checkbox-grid';
+
+        const doDescEl = document.createElement('div');
+        doDescEl.className = 'wiz-fs-desc wiz-preview-card';
+        doDescEl.style.marginTop = '8px';
+
+        const updateDoDesc = (name) => {
+          const opt = DO_OPTIONS.find(o => o.name === name);
+          if (opt) doDescEl.innerHTML = `<strong>${opt.name}</strong>: ${opt.desc}`;
+          else doDescEl.innerHTML = '';
+        };
+
+        DO_OPTIONS.forEach(opt => {
+          const checked = d._divineOrder === opt.name;
+          const lbl = document.createElement('label');
+          lbl.className = 'wiz-checkbox-label' + (checked ? ' selected' : '');
+          lbl.innerHTML = `<input type="radio" name="wiz-divine-order" value="${opt.name}" ${checked ? 'checked' : ''}> ${opt.name}`;
+          lbl.querySelector('input').addEventListener('change', function () {
+            d._divineOrder = this.value;
+            doGrid.querySelectorAll('.wiz-checkbox-label').forEach(l => l.classList.remove('selected'));
+            lbl.classList.add('selected');
+            updateDoDesc(this.value);
+          });
+          doGrid.appendChild(lbl);
+        });
+
+        if (d._divineOrder) updateDoDesc(d._divineOrder);
+
+        doSection.appendChild(doGrid);
+        doSection.appendChild(doDescEl);
+        skillDiv.appendChild(doSection);
       }
 
       // ---- Psionic Disciplines (Psion level 2+) ----
@@ -3404,7 +3488,9 @@ window.Wizard = {
 
     // Determine limits from class data
     const classInfo = className ? getClassInfo(className) : null;
-    const maxCantrips = classInfo?.cantripCount ?? null;
+    let maxCantrips = classInfo?.cantripCount ?? null;
+    // Thaumaturge (Cleric Divine Order) grants one extra cantrip
+    if (d._divineOrder === 'Thaumaturge' && maxCantrips !== null) maxCantrips += 1;
     const isSpellbook = classInfo?.spellbookSpellsAtL1 != null;
 
     // Spell limit at level 1:
@@ -3779,6 +3865,7 @@ window.Wizard = {
             <div>Species: <strong>${d.charSpecies || '—'}</strong></div>
             <div>Background: <strong>${d.charBackground || '—'}</strong></div>
             <div>Class: <strong>${d.charClass || '—'}</strong></div>
+            ${d._divineOrder ? `<div>Divine Order: <strong>${d._divineOrder}</strong></div>` : ''}
             <div>Level: <strong>${d.charLevel || 1}</strong></div>
             ${d._bgLanguages?.length ? `<div>Languages: <strong>${d._bgLanguages.join(', ')}</strong></div>` : ''}
           </div>
@@ -3900,6 +3987,7 @@ window.Wizard = {
               });
               (d._speciesSkillChoices || []).forEach(sk => { const k = _normalizeSkillKey(sk); if (k) speciesFixedSkills.add(k); });
               const allSkills = [...new Set([...bgSkills, ...classSkills, ...speciesFixedSkills])].sort();
+              const _reviewScWarnings = _SUBCLASS_SKILL_WARNINGS[d.charClass] || [];
               const rows = allSkills.map(sk => {
                 const label = _skillLabel(sk);
                 const sources = [
@@ -3908,7 +3996,9 @@ window.Wizard = {
                   classSkills.has(sk) ? 'class' : null,
                 ].filter(Boolean);
                 const tag = sources.length ? ` <span class="wiz-review-skill-tag">${sources.join(' &amp; ')}</span>` : '';
-                return `<div>• ${label}${tag}</div>`;
+                const scWarn = _reviewScWarnings.find(w => w.skill === sk);
+                const warnTag = scWarn && classSkills.has(sk) ? ` <span class="wiz-review-skill-tag wiz-sc-warn-tag" title="${scWarn.subclass} grants this via ${scWarn.feature} at level ${scWarn.level}">⚠ ${scWarn.subclass} L${scWarn.level}</span>` : '';
+                return `<div>• ${label}${tag}${warnTag}</div>`;
               }).join('');
               return `<h4>Skill Proficiencies (${allSkills.length})</h4>${rows || '<div>None</div>'}`;
             })()}
