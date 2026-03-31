@@ -105,11 +105,64 @@ window.LevelUp = {
   _newLevel: 1,
   _startLevel: 1,
   _initialized: false,
+  _activeClassTab: null, // className of the tab currently shown in the modal
+  _statsByClass: {}, // saved state per class tab { pending, hp, newLevel }
+
+  // Returns the class name for the currently active tab.
+  _getActiveClass() {
+    return this._activeClassTab || CharStore.lv('charClass', '');
+  },
+
+  // Returns the CharStore key for the subclass of the active tab.
+  // Primary class uses 'charSubclass'; multiclasses use 'mcSubclass_<ClassName>'.
+  _getActiveSubclassKey() {
+    const primary = CharStore.lv('charClass', '');
+    const active  = this._getActiveClass();
+    return (active === primary || !active) ? 'charSubclass' : `mcSubclass_${active}`;
+  },
+
+  // Returns the current stored level for a given class.
+  _getClassCurrentLevel(className) {
+    const primary = CharStore.lv('charClass', '');
+    if (!className || className === primary) return Sheet.getLevel();
+    if (typeof Multiclass === 'undefined') return 1;
+    return Multiclass.getMulticlasses().find(m => m.className === className)?.level || 1;
+  },
+
+  // Returns the maximum achievable target level for a class, respecting the overall level-20 cap.
+  // Uses pending levels from _statsByClass for other tabs so the cap is enforced across all tabs.
+  _getMaxLevelForClass(className) {
+    if (typeof Multiclass === 'undefined') return 20;
+    const primary      = CharStore.lv('charClass', '');
+    const multiclasses = Multiclass.getMulticlasses();
+    // For each class, prefer the pending level saved in _statsByClass over the stored level.
+    const pendingLevel = (cls) => {
+      const saved = this._statsByClass[cls];
+      return saved ? saved.newLevel : null;
+    };
+    const effectivePrimaryLevel = pendingLevel(primary) ?? Sheet.getLevel();
+    let otherLevels;
+    if (className === primary || !className) {
+      otherLevels = multiclasses.reduce((s, m) => s + (pendingLevel(m.className) ?? (parseInt(m.level) || 1)), 0);
+    } else {
+      otherLevels = effectivePrimaryLevel
+        + multiclasses.filter(m => m.className !== className)
+                      .reduce((s, m) => s + (pendingLevel(m.className) ?? (parseInt(m.level) || 1)), 0);
+    }
+    return Math.max(1, 20 - otherLevels);
+  },
 
   open() {
-    this._startLevel = Sheet.getLevel();
-    this._newLevel = Math.min(20, this._startLevel + 1);
+    // Restore the last leveled class tab, falling back to the primary class.
+    const primary    = CharStore.lv('charClass', '');
+    const lastClass  = Sheet.lv('lastLeveledClass', '') || primary;
+    const mcClasses  = typeof Multiclass !== 'undefined' ? Multiclass.getMulticlasses().map(m => m.className) : [];
+    this._activeClassTab = (lastClass === primary || mcClasses.includes(lastClass)) ? lastClass : primary;
+
+    this._startLevel = this._getClassCurrentLevel(this._getActiveClass());
+    this._newLevel   = Math.min(this._getMaxLevelForClass(this._getActiveClass()), this._startLevel + 1);
     this._pending = {};
+    this._statsByClass = {};
     this._cantripRenderers = [];
     this._preparedRenderers = [];
     const savedHpMethod = Sheet.lv('hpMethod', null);
@@ -118,6 +171,126 @@ window.LevelUp = {
     document.getElementById('levelup-backdrop').style.display = 'flex';
     const levelupBody = document.getElementById('levelup-body');
     if (levelupBody) levelupBody.scrollTop = 0;
+  },
+
+  // Switch the active class tab, saving/restoring state per class.
+  // Pass isNew=true when switching to a freshly-added multiclass (starts at level 0→1).
+  _selectTab(className, isNew = false) {
+    // Save current tab's state before switching
+    const currentClass = this._getActiveClass();
+    this._statsByClass[currentClass] = {
+      pending:    this._pending,
+      hp:         { ...this._hp, rolls: [...this._hp.rolls] },
+      newLevel:   this._newLevel,
+      startLevel: this._startLevel,
+    };
+
+    this._activeClassTab = className;
+    this._cantripRenderers = [];
+    this._preparedRenderers = [];
+
+    // Restore saved state for this tab, or initialize fresh
+    const saved = this._statsByClass[className];
+    if (saved) {
+      this._pending    = saved.pending;
+      this._hp         = saved.hp;
+      this._newLevel   = saved.newLevel;
+      this._startLevel = saved.startLevel ?? this._getClassCurrentLevel(className);
+    } else if (isNew) {
+      // Brand-new multiclass: show level 1 features from scratch
+      this._pending    = {};
+      const savedHpMethod = Sheet.lv('hpMethod', null);
+      this._hp         = { choice: savedHpMethod || 'avg', rolls: [], manualValue: null };
+      this._startLevel = 0;
+      this._newLevel   = 1;
+    } else {
+      this._pending    = {};
+      const savedHpMethod = Sheet.lv('hpMethod', null);
+      this._hp         = { choice: savedHpMethod || 'avg', rolls: [], manualValue: null };
+      this._startLevel = this._getClassCurrentLevel(className);
+      this._newLevel   = Math.min(this._getMaxLevelForClass(className), this._startLevel + 1);
+    }
+    this._buildModal();
+    const levelupBody = document.getElementById('levelup-body');
+    if (levelupBody) levelupBody.scrollTop = 0;
+  },
+
+  // Build the HTML string for the tab bar (primary class + multiclasses + "+" button).
+  _buildTabsHTML() {
+    const primaryClass = CharStore.lv('charClass', '');
+    const multiclasses = typeof Multiclass !== 'undefined' ? Multiclass.getMulticlasses() : [];
+    const active       = this._getActiveClass();
+    const atCap        = this._getPendingTotalLevel() >= 20;
+
+    let html = '';
+
+    // Primary class tab (no remove button)
+    html += `<button class="lu-tab${active === primaryClass ? ' lu-tab-active' : ''}" data-lu-tab="${primaryClass}">`
+      + `${primaryClass || 'Class'}`
+      + `</button>`;
+
+    // Multiclass tabs — wrapped in a div so the × remove button sits as a sibling
+    multiclasses.forEach(mc => {
+      const isActive = active === mc.className;
+      html += `<div class="lu-tab-wrap${isActive ? ' lu-tab-wrap-active' : ''}">`
+        + `<button class="lu-tab lu-tab-mc${isActive ? ' lu-tab-active' : ''}" data-lu-tab="${mc.className}">`
+        + `${mc.className}`
+        + `</button>`
+        + `<button class="lu-tab-remove" data-lu-remove="${mc.className}" title="Remove ${mc.className} multiclass">×</button>`
+        + `</div>`;
+    });
+
+    // "+" add multiclass button
+    html += `<button class="lu-tab lu-tab-add" id="lu-tab-add"${atCap ? ' disabled title="Level 20 reached"' : ''}>+ Multiclass</button>`;
+
+    return html;
+  },
+
+  // Bind click events on all tab buttons (called after tab bar is injected into the DOM).
+  _bindTabEvents() {
+    const slot = document.getElementById('levelup-tabs');
+    if (!slot) return;
+    slot.querySelectorAll('[data-lu-tab]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        // If the click landed on the × remove span, let that handler take over
+        if (e.target.closest('[data-lu-remove]')) return;
+        const cls = btn.dataset.luTab;
+        if (cls !== this._getActiveClass()) this._selectTab(cls);
+      });
+    });
+    // × spans inside multiclass tabs
+    slot.querySelectorAll('[data-lu-remove]').forEach(span => {
+      span.addEventListener('click', e => {
+        e.stopPropagation();
+        this._removeMulticlassTab(span.dataset.luRemove);
+      });
+    });
+    document.getElementById('lu-tab-add')?.addEventListener('click', () => {
+      if (typeof Multiclass !== 'undefined') {
+        Multiclass._pendingTotalLevel = this._getPendingTotalLevel();
+        Multiclass._pendingTabCallback = (newClass) => {
+          this._selectTab(newClass, true); // isNew=true: start at level 0→1
+        };
+        Multiclass._openPicker();
+      }
+    });
+  },
+
+  // Remove a multiclass and switch back to the primary class tab.
+  _removeMulticlassTab(className) {
+    if (typeof Multiclass === 'undefined') return;
+    Multiclass.removeMulticlass(className);
+    // If we were on this tab, fall back to the primary class
+    if (this._activeClassTab === className) {
+      this._activeClassTab = CharStore.lv('charClass', '');
+    }
+    this._startLevel = this._getClassCurrentLevel(this._getActiveClass());
+    this._newLevel   = Math.min(this._getMaxLevelForClass(this._getActiveClass()), this._startLevel + 1);
+    this._pending    = {};
+    this._hp         = { choice: Sheet.lv('hpMethod', null) || 'avg', rolls: [], manualValue: null };
+    this._buildModal();
+    const body = document.getElementById('levelup-body');
+    if (body) body.scrollTop = 0;
   },
 
   close() {
@@ -578,7 +751,7 @@ window.LevelUp = {
     for (const [lvl, p] of Object.entries(this._pending)) {
       if (parseInt(lvl) <= level && p.subclass) return p.subclass;
     }
-    return Sheet.lv('charSubclass', '') || '';
+    return Sheet.lv(this._getActiveSubclassKey(), '') || '';
   },
 
   // Maps alias subclass names → canonical display name (prevents duplicate warnings)
@@ -689,7 +862,7 @@ window.LevelUp = {
   },
 
   _getHpStats() {
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const classInfo = className ? getClassInfo(className) : null;
     const hitDieFaces = classInfo?.hitDieFaces || 8;
     // Account for pending CON increases from ASI/feats in this level-up
@@ -829,19 +1002,39 @@ window.LevelUp = {
     return this._getStandardSubclassFeaturesByLevel(subclassName, className, level);
   },
 
+  // Sum of all pending level deltas across every class tab (active + all visited tabs in _statsByClass).
+  _getPendingTotalLevel() {
+    const saved       = (typeof Multiclass !== 'undefined') ? Multiclass.getTotalLevel() : this._startLevel;
+    const activeClass = this._getActiveClass();
+    let delta = this._newLevel - this._getClassCurrentLevel(activeClass);
+    for (const [cls, state] of Object.entries(this._statsByClass)) {
+      if (cls === activeClass) continue;
+      delta += state.newLevel - this._getClassCurrentLevel(cls);
+    }
+    return Math.min(20, saved + delta);
+  },
+
   // ---- Full modal rebuild ----
   _buildModal() {
     const body = document.getElementById('levelup-body');
     body.innerHTML = '';
-    const cl = this._startLevel;
-    const nl = this._newLevel;
-    const className = Sheet.lv('charClass', '');
-    const isDown = nl < cl;
-    const isSame = nl === cl;
+    const cl        = this._startLevel;
+    const nl        = this._newLevel;
+    const className = this._getActiveClass();
+    const maxLvl    = this._getMaxLevelForClass(className);
+    const isDown    = nl < cl;
+    const isSame    = nl === cl;
 
-    document.getElementById('levelup-title').textContent = isDown
-      ? `Adjust Level — ${className || 'Character'}`
-      : `Level Up to ${nl}${className ? ' — ' + className : ''}`;
+    // Update title bar with pending total character level
+    const totalLvlEl = document.getElementById('levelup-total-level');
+    if (totalLvlEl) totalLvlEl.textContent = `Character Level ${this._getPendingTotalLevel()}`;
+
+    // Render tab bar into the modal header slot
+    const tabsSlot = document.getElementById('levelup-tabs');
+    if (tabsSlot) {
+      tabsSlot.innerHTML = this._buildTabsHTML();
+      this._bindTabEvents();
+    }
 
     // Level picker
     body.insertAdjacentHTML('beforeend', `
@@ -850,7 +1043,7 @@ window.LevelUp = {
         <div class="lu-level-row">
           <button class="lu-level-btn" id="lu-lvl-dec" ${nl <= 1 ? 'disabled' : ''}>−</button>
           <div class="lu-level-value" id="lu-level-val">${nl}</div>
-          <button class="lu-level-btn" id="lu-lvl-inc" ${nl >= 20 ? 'disabled' : ''}>+</button>
+          <button class="lu-level-btn" id="lu-lvl-inc" ${nl >= maxLvl ? 'disabled' : ''}>+</button>
           <div class="lu-level-note" id="lu-level-note">${this._levelNote(cl, nl)}</div>
         </div>
       </div>`);
@@ -881,19 +1074,22 @@ window.LevelUp = {
   },
 
   _updatePickerUI() {
-    const cl = this._startLevel, nl = this._newLevel;
-    const className = Sheet.lv('charClass', '');
+    const cl        = this._startLevel, nl = this._newLevel;
+    const className = this._getActiveClass();
+    const maxLvl    = this._getMaxLevelForClass(className);
     document.getElementById('lu-level-val').textContent = nl;
     document.getElementById('lu-lvl-dec').disabled = nl <= 1;
-    document.getElementById('lu-lvl-inc').disabled = nl >= 20;
+    document.getElementById('lu-lvl-inc').disabled = nl >= maxLvl;
     document.getElementById('lu-level-note').innerHTML = this._levelNote(cl, nl);
-    document.getElementById('levelup-title').textContent = nl < cl
-      ? `Adjust Level — ${className || 'Character'}`
-      : `Level Up to ${nl}${className ? ' — ' + className : ''}`;
+    const totalLvlEl = document.getElementById('levelup-total-level');
+    if (totalLvlEl) totalLvlEl.textContent = `Character Level ${this._getPendingTotalLevel()}`;
+    const addBtn = document.getElementById('lu-tab-add');
+    if (addBtn) addBtn.disabled = this._getPendingTotalLevel() >= 20;
   },
 
   _incLevel() {
-    if (this._newLevel >= 20) return;
+    const maxLvl = this._getMaxLevelForClass(this._getActiveClass());
+    if (this._newLevel >= maxLvl) return;
     const cl = this._startLevel;
     this._newLevel++;
     this._updatePickerUI();
@@ -942,7 +1138,7 @@ window.LevelUp = {
     const container = document.getElementById('lu-levels-container');
     if (!container) return;
 
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const classInfo = className ? getClassInfo(className) : null;
     const features = className ? getClassFeaturesByLevel(className) : {};
     const featuresAtLevel = features[level] || [];
@@ -950,7 +1146,7 @@ window.LevelUp = {
     if (!this._pending[level]) this._pending[level] = {};
 
     const subclassLevel = this.SUBCLASS_LEVELS[className] || 3;
-    const storedSubclass = (Sheet.lv('charSubclass', '') || '').trim();
+    const storedSubclass = (Sheet.lv(this._getActiveSubclassKey(), '') || '').trim();
     // Also check pending subclass choice (user may have picked one during this session)
     const pendingSubclass = this._pending[subclassLevel]?.subclass || '';
     const existingSubclass = pendingSubclass || storedSubclass;
@@ -1547,7 +1743,7 @@ window.LevelUp = {
         for (const [lvl, p] of Object.entries(this._pending)) {
           if (parseInt(lvl) <= level && p.subclass) return p.subclass;
         }
-        return Sheet.lv('charSubclass', '');
+        return Sheet.lv(this._getActiveSubclassKey(), '');
       })();
       if (_pendingSubclass) {
         const _scKey = `${className}:${_pendingSubclass}`;
@@ -2630,7 +2826,7 @@ window.LevelUp = {
 
   // ---- Level-down section ----
   _renderLevelDownSection(body) {
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const classInfo = className ? getClassInfo(className) : null;
     const hitDieFaces = classInfo?.hitDieFaces || 8;
     const conMod = Sheet.getModFromScore(Sheet.getAbilityScore('con'));
@@ -2650,7 +2846,7 @@ window.LevelUp = {
     const lostItems = [];
     const subclassLevel = this.SUBCLASS_LEVELS[className] || 3;
     if (nl < subclassLevel && cl >= subclassLevel) {
-      const sc = (Sheet.lv('charSubclass', '') || '').trim();
+      const sc = (Sheet.lv(this._getActiveSubclassKey(), '') || '').trim();
       lostItems.push(`Subclass${sc ? ' (' + sc + ')' : ''}`);
     }
     for (let lvl = nl + 1; lvl <= cl; lvl++) {
@@ -2712,9 +2908,9 @@ window.LevelUp = {
 
   // ---- Refresh the consolidated subclass feature desc when level range changes ----
   _refreshSubclassDesc() {
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const subclassLevel = this.SUBCLASS_LEVELS[className] || 3;
-    const chosenSubclass = this._pending[subclassLevel]?.subclass || (Sheet.lv('charSubclass', '') || '').trim();
+    const chosenSubclass = this._pending[subclassLevel]?.subclass || (Sheet.lv(this._getActiveSubclassKey(), '') || '').trim();
     if (!chosenSubclass) return;
 
     // Inject/refresh per-level subclass feature sections
@@ -2756,7 +2952,7 @@ window.LevelUp = {
     const uaBtn   = sectionEl.querySelector(`#lu-ua-toggle-${level}`);
     if (!sel) return;
 
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const classInfo = className ? getClassInfo(className) : null;
 
     // Local UA override: starts at the global toggle value
@@ -3253,7 +3449,7 @@ window.LevelUp = {
 
   // ---- Expertise binding ----
   _bindExpertiseForLevel(sectionEl, level) {
-    const className = Sheet.lv('charClass', '');
+    const className = this._getActiveClass();
     const maxPicks = this._expertiseCount(className);
     const checkboxes = sectionEl.querySelectorAll('.lu-expertise-cb');
     checkboxes.forEach(cb => {
@@ -3330,13 +3526,30 @@ window.LevelUp = {
 
   // ---- Confirm ----
   confirm() {
-    const newLevel = this._newLevel;
-    const currentLevel = this._startLevel;
-    const className = Sheet.lv('charClass', '');
-    const classInfo = className ? getClassInfo(className) : null;
-    const isLevelDown = newLevel < currentLevel;
+    // Save current tab, then process every tab that has a pending level change
+    const _activeNow = this._getActiveClass();
+    this._statsByClass[_activeNow] = {
+      pending:    this._pending,
+      hp:         { ...this._hp, rolls: [...this._hp.rolls] },
+      newLevel:   this._newLevel,
+      startLevel: this._startLevel,
+    };
+    const tabs = Object.entries(this._statsByClass).filter(([, s]) => s.newLevel !== s.startLevel);
+    if (tabs.length === 0) { this.close(); return; }
+    const primaryClass = CharStore.lv('charClass', '');
 
-    if (newLevel === currentLevel) { this.close(); return; }
+    for (const [cls, tabState] of tabs) {
+      this._activeClassTab = cls;
+      this._pending    = tabState.pending;
+      this._hp         = tabState.hp;
+      this._newLevel   = tabState.newLevel;
+      this._startLevel = tabState.startLevel;
+
+      const newLevel     = this._newLevel;
+      const currentLevel = this._startLevel;
+      const className    = cls;
+      const classInfo    = className ? getClassInfo(className) : null;
+      const isLevelDown  = newLevel < currentLevel;
 
     if (isLevelDown) {
       if (this._hp.choice !== 'none' && this._hp.manualValue) {
@@ -3384,7 +3597,7 @@ window.LevelUp = {
         const p = this._pending[lvl] || {};
         const subclassLevel = this.SUBCLASS_LEVELS[className] || 3;
         const showsSubclass = lvl === subclassLevel && classInfo?.subclasses?.length > 0;
-        const existingSubclass = (Sheet.lv('charSubclass', '') || '').trim();
+        const existingSubclass = (Sheet.lv(this._getActiveSubclassKey(), '') || '').trim();
         if (showsSubclass && !p.subclass && !existingSubclass) {
           alert(`Please choose a subclass at level ${lvl} before confirming.`); return;
         }
@@ -3490,7 +3703,7 @@ window.LevelUp = {
           }
         }
         // Subclass spell picks (e.g. Illusion Savant)
-        const _scKeyVal = `${className}:${p.subclass || existingSubclass || (Sheet.lv('charSubclass', '') || '').trim()}`;
+        const _scKeyVal = `${className}:${p.subclass || existingSubclass || (Sheet.lv(this._getActiveSubclassKey(), '') || '').trim()}`;
         const _scGrantsVal = this.SUBCLASS_GRANTS[_scKeyVal]?.[lvl] || {};
         if (_scGrantsVal.spellPicks) {
           const needed = _scGrantsVal.spellPicks.count || 1;
@@ -3532,13 +3745,17 @@ window.LevelUp = {
 
         // Apply subclass (update even if same, allows changing mind)
         if (p.subclass) {
-          const subInput = document.getElementById('charSubclass');
-          if (subInput) subInput.value = p.subclass;
-          Sheet.sv('charSubclass', p.subclass);
+          const scKey = this._getActiveSubclassKey();
+          Sheet.sv(scKey, p.subclass);
+          // Only update the header UI input for the primary class subclass
+          if (scKey === 'charSubclass') {
+            const subInput = document.getElementById('charSubclass');
+            if (subInput) subInput.value = p.subclass;
+          }
         }
 
         // Apply subclass grants at every level (spells, proficiencies, etc.)
-        const activeSubclass = p.subclass || Sheet.lv('charSubclass', '');
+        const activeSubclass = p.subclass || Sheet.lv(this._getActiveSubclassKey(), '');
         if (activeSubclass) {
           this._applySubclassGrants(activeSubclass, className, lvl);
         }
@@ -3761,22 +3978,30 @@ window.LevelUp = {
       }
     }
 
-    // Apply level
-    const levelEl = document.getElementById('charLevel');
-    if (levelEl) levelEl.value = newLevel;
-    Sheet.sv('charLevel', newLevel);
-    const display = document.getElementById('charLevel-display');
-    if (display) display.textContent = newLevel;
+    // Apply level to the correct class (primary or multiclass)
+    const isPrimaryTab = !className || className === primaryClass;
+    Sheet.sv('lastLeveledClass', className || primaryClass);
 
-    // Auto-populate XP to match the new level
-    const xpEl = document.getElementById('charXP');
-    if (xpEl && Sheet.XP_THRESHOLDS) {
-      const minXP = Sheet.XP_THRESHOLDS[newLevel - 1] || 0;
-      const currentXP = parseInt(xpEl.value) || 0;
-      if (currentXP < minXP) {
-        xpEl.value = minXP;
-        Sheet.sv('charXP', minXP);
+    if (isPrimaryTab) {
+      const levelEl = document.getElementById('charLevel');
+      if (levelEl) levelEl.value = newLevel;
+      Sheet.sv('charLevel', newLevel);
+      const display = document.getElementById('charLevel-display');
+      if (display) display.textContent = (typeof Multiclass !== 'undefined') ? Multiclass.getTotalLevel() : newLevel;
+
+      // Auto-populate XP to match the new level
+      const xpEl = document.getElementById('charXP');
+      if (xpEl && Sheet.XP_THRESHOLDS) {
+        const minXP = Sheet.XP_THRESHOLDS[newLevel - 1] || 0;
+        const currentXP = parseInt(xpEl.value) || 0;
+        if (currentXP < minXP) {
+          xpEl.value = minXP;
+          Sheet.sv('charXP', minXP);
+        }
       }
+    } else {
+      // Multiclass tab — update that class's level in the multiclasses array
+      if (typeof Multiclass !== 'undefined') Multiclass._applyLevelDirect(className, newLevel);
     }
 
     Combat.syncHitDice();
@@ -3786,9 +4011,6 @@ window.LevelUp = {
     if (typeof ClassResources !== 'undefined') {
       ClassResources.updateResourcesOnLevelUp(newLevel);
     }
-
-    const btn = document.getElementById('btn-level-up');
-    if (btn) btn.disabled = newLevel >= 20;
 
     // Racial spells
     if (!isLevelDown) {
@@ -3826,11 +4048,20 @@ window.LevelUp = {
       }
     }
 
+      if (className) Sheet.displayClassFeatures(className);
+    } // end for (const [cls, tabState] of tabs)
+
+    // Final cleanup — runs once after all tabs are confirmed
+    const totalLevel = typeof Multiclass !== 'undefined' ? Multiclass.getTotalLevel() : Sheet.getLevel();
+    const btn = document.getElementById('btn-level-up');
+    if (btn) btn.disabled = totalLevel >= 20;
+    const lvDisplay = document.getElementById('charLevel-display');
+    if (lvDisplay) lvDisplay.textContent = totalLevel;
     Sheet.recalcAll();
     Sheet.restoreSpells();
     Sheet.renderInventory();
     Sheet.refreshProfLanguages();
-    if (className) Sheet.displayClassFeatures(className);
+    this._statsByClass = {};
     this._xpBeforeLevelUp = undefined;
     // Apply long rest effects on level up
     if (typeof Combat !== 'undefined') Combat._doLongRest(null);
@@ -3839,11 +4070,12 @@ window.LevelUp = {
 
   init() {
     if (this._initialized) {
-      const stored = parseInt(CharStore.lv('charLevel', 1)) || 1;
-      const display = document.getElementById('charLevel-display');
-      if (display) display.textContent = stored;
-      const btn = document.getElementById('btn-level-up');
-      if (btn) btn.disabled = stored >= 20;
+      const stored     = parseInt(CharStore.lv('charLevel', 1)) || 1;
+      const totalLevel = typeof Multiclass !== 'undefined' ? Multiclass.getTotalLevel() : stored;
+      const display    = document.getElementById('charLevel-display');
+      if (display) display.textContent = totalLevel;
+      const btn        = document.getElementById('btn-level-up');
+      if (btn) btn.disabled = totalLevel >= 20;
       return;
     }
     this._initialized = true;
@@ -3854,10 +4086,11 @@ window.LevelUp = {
     document.getElementById('levelup-confirm')?.addEventListener('click', () => this.confirm());
     // Backdrop click intentionally does nothing — use Cancel button to close
 
-    const stored = parseInt(CharStore.lv('charLevel', 1)) || 1;
-    const display = document.getElementById('charLevel-display');
-    if (display) display.textContent = stored;
-    const btn = document.getElementById('btn-level-up');
-    if (stored >= 20 && btn) btn.disabled = true;
+    const stored     = parseInt(CharStore.lv('charLevel', 1)) || 1;
+    const totalLevel = typeof Multiclass !== 'undefined' ? Multiclass.getTotalLevel() : stored;
+    const display    = document.getElementById('charLevel-display');
+    if (display) display.textContent = totalLevel;
+    const btn        = document.getElementById('btn-level-up');
+    if (totalLevel >= 20 && btn) btn.disabled = true;
   },
 };

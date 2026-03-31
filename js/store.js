@@ -98,7 +98,10 @@ window.CharStore = {
 
     // Update level display
     const display = document.getElementById('charLevel-display');
-    if (display) display.textContent = this.activeData.charLevel || 1;
+    if (display) {
+      const totalLv = (typeof Multiclass !== 'undefined') ? Multiclass.getTotalLevel() : (this.activeData.charLevel || 1);
+      display.textContent = totalLv;
+    }
 
     // Recalculate everything
     Sheet.recalcAll();

@@ -126,6 +126,7 @@ window.Sheet = {
     this.initFeatSystem();
     this.initCharOptions();
     this.initResources();
+    this.initHpControls();
     this.initWeightTracking();
     this._initSpellConcentration();
     this._initSpellFilters();
@@ -142,6 +143,7 @@ window.Sheet = {
     this.updateSubclassAccess();
     this.initEquippedGear();
     if (typeof LevelUp !== 'undefined') LevelUp.init();
+    if (typeof Multiclass !== 'undefined') Multiclass.init();
     if (typeof NotesManager !== 'undefined') NotesManager.init();
     this.migrateSubclassGrants();
 
@@ -358,7 +360,11 @@ window.Sheet = {
   // ---- RECALCULATION ENGINE ----
   recalcAll() {
     const level = this.getLevel();
-    const prof = this.getProfBonus(level);
+    // Proficiency bonus is based on total character level (primary + multiclass levels).
+    const totalLevel = (typeof Multiclass !== 'undefined') ? Multiclass.getTotalLevel() : level;
+    const lvDisplay = this.$('charLevel-display');
+    if (lvDisplay) lvDisplay.textContent = totalLevel;
+    const prof = this.getProfBonus(totalLevel);
     const mods = {};
 
     this.ABILITIES.forEach(ab => {
@@ -466,6 +472,9 @@ window.Sheet = {
       ClassResources.updateResourcesOnLevelUp(level);
       this.renderResources();
     }
+
+    // Re-render multiclass section on main sheet
+    if (typeof Multiclass !== 'undefined') Multiclass.renderSection();
   },
 
   // ---- BIND SIMPLE FIELDS ----
@@ -7032,6 +7041,7 @@ window.Sheet = {
   /* ---- CONDITION EFFECTS: glow on affected roll buttons ---- */
   applyConditionEffects() {
     // Clear all condition glow classes, tooltips, and event listeners
+    this.$('speed-effective')?.remove();
     document.querySelectorAll('.cond-fail-glow, .cond-dis-glow, .cond-pen-glow, .cond-adv-glow').forEach(el => {
       el.classList.remove('cond-fail-glow', 'cond-dis-glow', 'cond-pen-glow', 'cond-adv-glow');
       el.removeAttribute('data-cond-tip');
@@ -7121,10 +7131,10 @@ window.Sheet = {
       if (initEl) this._applyCondGlow(initEl, 'dis', label);
     }
 
-    // Exhaustion — yellow penalty glow on all d20 test buttons
+    // Exhaustion — yellow penalty glow on all d20 test buttons, and apply penalty directly to displayed numbers
     if (exhaustionLevel > 0) {
       const penalty = 2 * exhaustionLevel;
-      const label = `Exhaustion ${exhaustionLevel}: −${penalty} to d20 rolls`;
+      const label = `Exhaustion ${exhaustionLevel}: −${penalty} (included in modifier)`;
       // Apply penalty glow to initiative, saves, skills, attacks (only if not already glowing)
       const penTargets = [];
       const initEl = this.$('initiative');
@@ -7144,6 +7154,32 @@ window.Sheet = {
           penTargets.push(btn);
       });
       penTargets.forEach(el => this._applyCondGlow(el, 'pen', label));
+
+      // Apply penalty directly to displayed d20 modifier numbers
+      const applyPen = el => {
+        if (!el) return;
+        const base = parseInt(el.textContent) || 0;
+        el.textContent = this.fmtMod(base - penalty);
+      };
+      applyPen(this.$('initiative'));
+      this.ABILITIES.forEach(ab => applyPen(this.$(`save-${ab}`)));
+      this.qsa('.stat-val-btn').forEach(btn => {
+        if (btn.id && (btn.id.startsWith('skill-') || btn.id.startsWith('tool-val-'))) applyPen(btn);
+      });
+      this.qsa('.atk-bonus-btn').forEach(btn => applyPen(btn));
+      applyPen(this.$('spellAttackBonus'));
+
+      // Show effective speed below the speed input
+      const speedInput = this.$('speed');
+      if (speedInput) {
+        const baseSpeed = parseInt(speedInput.value) || 30;
+        const effectiveSpeed = Math.max(0, baseSpeed - 5 * exhaustionLevel);
+        const effEl = document.createElement('div');
+        effEl.id = 'speed-effective';
+        effEl.className = 'speed-effective-display';
+        effEl.textContent = `→ ${effectiveSpeed} ft`;
+        speedInput.closest('.combat-box')?.appendChild(effEl);
+      }
     }
   },
 
@@ -7212,7 +7248,7 @@ window.Sheet = {
 
   _conditionRollD20(label, modifier, rollType, abilityKey, callback) {
     const { mode, disSources, advSources, penalty } = this._getConditionRollMode(rollType, abilityKey);
-    const adjMod = modifier - penalty;
+    const adjMod = modifier; // penalty already applied to displayed modifier
 
     // Check if any condition has a rollPrompt (needs DM confirmation)
     const active = this.lv('conditions', []);
@@ -7411,7 +7447,7 @@ window.Sheet = {
         const newLevel = cur === i ? i - 1 : i;
         this.sv('combat_exhaustion', newLevel);
         this._renderConditions();
-        this.applyConditionEffects();
+        this.recalcAll();
       });
 
       // Tooltip on hover for current effect
@@ -7512,6 +7548,419 @@ window.Sheet = {
 
   _hideConditionTooltip() {
     document.getElementById('condition-tooltip-active')?.remove();
+  },
+
+  // =============================================
+  // HP CONTROLS & RESISTANCES / VULNERABILITIES
+  // =============================================
+
+  _GI_BASE: 'https://cdn.jsdelivr.net/gh/game-icons/icons@master/',
+
+  DAMAGE_TYPES: [
+    { key: 'slashing',            label: 'Slashing',    gi: 'lorc/quick-slash.svg',          color: '#6b6b6b' },
+    { key: 'piercing',            label: 'Piercing',    gi: 'lorc/chained-arrow-heads.svg',  color: '#6b6b6b' },
+    { key: 'bludgeoning',         label: 'Bludgeoning', gi: 'lorc/punch.svg',                color: '#6b6b6b' },
+    { key: 'fire',                label: 'Fire',        gi: 'lorc/small-fire.svg',           color: '#c0522a',
+      gradient: 'linear-gradient(145deg, #ff8c42 0%, #c0522a 55%, #7a1a00 100%)' },
+    { key: 'slashing-magical',    label: 'Slashing',    gi: 'lorc/serrated-slash.svg',       color: '#7b5ea7', magical: true,
+      gradient: 'linear-gradient(145deg, #b39ddb 0%, #7b5ea7 55%, #4a2c80 100%)' },
+    { key: 'piercing-magical',    label: 'Piercing',    gi: 'lorc/fast-arrow.svg',           color: '#7b5ea7', magical: true,
+      gradient: 'linear-gradient(145deg, #b39ddb 0%, #7b5ea7 55%, #4a2c80 100%)' },
+    { key: 'bludgeoning-magical', label: 'Bludgeoning', gi: 'lorc/punch-blast.svg',          color: '#7b5ea7', magical: true,
+      gradient: 'linear-gradient(145deg, #b39ddb 0%, #7b5ea7 55%, #4a2c80 100%)' },
+    { key: 'cold',                label: 'Cold',        gi: 'lorc/beveled-star.svg',         color: '#3a88c5',
+      gradient: 'linear-gradient(145deg, #c8eaf8 0%, #3a88c5 55%, #1a4f80 100%)' },
+    { key: 'acid',                label: 'Acid',        gi: 'lorc/acid-blob.svg',            color: '#3d8b3d',
+      gradient: 'linear-gradient(145deg, #8fd68f 0%, #3d8b3d 55%, #1a4f1a 100%)' },
+    { key: 'radiant',             label: 'Radiant',     gi: 'lorc/sun.svg',                  color: '#c8960c',
+      gradient: 'linear-gradient(145deg, #f5d060 0%, #c8960c 55%, #7a5500 100%)' },
+    { key: 'lightning',           label: 'Lightning',   gi: 'lorc/lightning-tree.svg',       color: '#28388d',
+      gradient: 'linear-gradient(145deg, #7b9fe8 0%, #28388d 55%, #0d1f5c 100%)' },
+    { key: 'force',               label: 'Force',       gi: 'lorc/rolling-energy.svg',       color: '#8b2a2a',
+      gradient: 'linear-gradient(145deg, #e06060 0%, #8b2a2a 55%, #4a0000 100%)' },
+    { key: 'poison',              label: 'Poison',      gi: 'lorc/poison-bottle.svg',        color: '#7b3fa0',
+      gradient: 'linear-gradient(145deg, #c090e0 0%, #7b3fa0 55%, #3e1060 100%)' },
+    { key: 'necrotic',            label: 'Necrotic',    gi: 'lorc/dread-skull.svg',          color: '#9faf6c',
+      gradient: 'linear-gradient(145deg, #d4e090 0%, #9faf6c 55%, #5a6f30 100%)' },
+    { key: 'thunder',             label: 'Thunder',     gi: 'lorc/resonance.svg',            color: '#6a0dad',
+      gradient: 'linear-gradient(145deg, #c070e8 0%, #6a0dad 55%, #35006e 100%)' },
+    { key: 'psychic',             label: 'Psychic',     gi: 'lorc/brain.svg',                color: '#a04080',
+      gradient: 'linear-gradient(145deg, #e090c0 0%, #a04080 55%, #5c1040 100%)' },
+  ],
+
+  // Active category in the resistance editor modal
+  _resistEditorCat: 'resistances',
+
+  _giCache: {},
+
+  // Fetch all game-icons SVGs, strip the opaque background path, and cache transparent data URLs.
+  // Re-renders the damage grid/summary once all are ready.
+  async _loadGiIcons() {
+    const unique = [...new Set(this.DAMAGE_TYPES.map(dt => dt.gi))];
+    await Promise.all(unique.map(async gi => {
+      if (this._giCache[gi]) return;
+      try {
+        const resp = await fetch(this._GI_BASE + gi);
+        const text = await resp.text();
+        // Remove the solid black background rect so the SVG has a transparent bg
+        const transparent = text.replace(/<path d="M0 0h512v512H0z"\/>/g, '');
+        this._giCache[gi] = 'data:image/svg+xml,' + encodeURIComponent(transparent);
+      } catch {
+        this._giCache[gi] = this._GI_BASE + gi; // fallback to original
+      }
+    }));
+    this._buildDamageTypeGrid();
+    this._updateResistSummary();
+  },
+
+  _giIconHtml(dt, pillSize = false) {
+    const cls = pillSize ? 'dmg-gi-icon dmg-gi-pill' : 'dmg-gi-icon';
+    const url = this._giCache[dt.gi] || this._GI_BASE + dt.gi;
+    // Darken dt.color ~50% for the icon tint so it contrasts against the button
+    const hex = dt.color.replace('#', '');
+    const r = Math.round(parseInt(hex.slice(0, 2), 16) * 0.5).toString(16).padStart(2, '0');
+    const g = Math.round(parseInt(hex.slice(2, 4), 16) * 0.5).toString(16).padStart(2, '0');
+    const b = Math.round(parseInt(hex.slice(4, 6), 16) * 0.5).toString(16).padStart(2, '0');
+    const darkColor = `#${r}${g}${b}`;
+    const spread = pillSize ? '-3px' : '-7px';
+    return `<span class="dmg-gi-wrap" style="--gi-glow:${dt.color};--gi-spread:${spread}"><span class="${cls}" aria-label="${dt.label}" style="background-color:${darkColor};-webkit-mask-image:url('${url}');mask-image:url('${url}')"></span></span>`;
+  },
+
+  initHpControls() {
+    this._loadGiIcons(); // fetch transparent SVG data URLs, then re-renders grid/summary
+    this._buildDamageTypeGrid();
+    this._updateResistSummary();
+
+    this.$('btn-do-heal')?.addEventListener('click', () => {
+      const amt = parseInt(this.$('hp-action-amount')?.value) || 0;
+      if (amt <= 0) { this._flashInput(); return; }
+      this._applyHeal(amt);
+    });
+
+    this.$('btn-do-temp')?.addEventListener('click', () => {
+      const amt = parseInt(this.$('hp-action-amount')?.value) || 0;
+      if (amt <= 0) { this._flashInput(); return; }
+      this._applyTempHP(amt);
+    });
+
+    this.$('btn-do-damage')?.addEventListener('click', () => {
+      const amt = parseInt(this.$('hp-action-amount')?.value) || 0;
+      if (amt <= 0) { this._flashInput(); return; }
+      this._openDamageTypeModal(amt);
+    });
+
+    // Open resistance editor
+    this.$('btn-edit-resistances')?.addEventListener('click', () => this._openResistEditor());
+
+    // Damage modal close
+    this.$('dmg-modal-close')?.addEventListener('click', () => this._closeDamageTypeModal());
+    this.$('dmg-cancel-btn')?.addEventListener('click', () => this._closeDamageTypeModal());
+    this.$('damage-type-modal')?.addEventListener('click', (e) => {
+      if (e.target === this.$('damage-type-modal')) this._closeDamageTypeModal();
+    });
+
+    // Resistance editor modal
+    this.$('resist-editor-close')?.addEventListener('click', () => this._closeResistEditor());
+    this.$('resist-editor-done')?.addEventListener('click', () => this._closeResistEditor());
+    this.$('resist-editor-modal')?.addEventListener('click', (e) => {
+      if (e.target === this.$('resist-editor-modal')) this._closeResistEditor();
+    });
+
+    // Category toggle buttons
+    this.$('resist-editor-modal')?.querySelectorAll('.resist-cat-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        this._resistEditorCat = btn.dataset.cat;
+        this.$('resist-editor-modal').querySelectorAll('.resist-cat-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this._updateResistEditorLabel();
+        this._buildResistEditorGrid();
+      });
+    });
+
+    // Escape key closes whichever modal is open
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      if (this.$('damage-type-modal')?.style.display !== 'none') this._closeDamageTypeModal();
+      if (this.$('resist-editor-modal')?.style.display !== 'none') this._closeResistEditor();
+    });
+  },
+
+  _flashInput() {
+    const el = this.$('hp-action-amount');
+    if (!el) return;
+    el.style.borderColor = 'var(--red)';
+    el.focus();
+    setTimeout(() => { el.style.borderColor = ''; }, 800);
+  },
+
+  // ---- Resistance Editor ----
+
+  _openResistEditor() {
+    const modal = this.$('resist-editor-modal');
+    if (!modal) return;
+    // Reset to Resistances tab
+    this._resistEditorCat = 'resistances';
+    modal.querySelectorAll('.resist-cat-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.cat === 'resistances');
+    });
+    this._updateResistEditorLabel();
+    this._buildResistEditorGrid();
+    modal.style.display = 'flex';
+  },
+
+  _closeResistEditor() {
+    const modal = this.$('resist-editor-modal');
+    if (modal) modal.style.display = 'none';
+    this._updateResistSummary();
+  },
+
+  _updateResistEditorLabel() {
+    const labels = { resistances: 'Resistance', vulnerabilities: 'Vulnerability', immunities: 'Immunity' };
+    const el = this.$('resist-editor-cat-label');
+    if (el) el.textContent = labels[this._resistEditorCat] || this._resistEditorCat;
+  },
+
+  _buildResistEditorGrid() {
+    const grid = this.$('resist-editor-grid');
+    if (!grid) return;
+    grid.innerHTML = '';
+    const active = new Set(this.lv(this._resistEditorCat, []));
+
+    this.DAMAGE_TYPES.forEach(dt => {
+      const btn = document.createElement('button');
+      btn.className = 'dmg-type-btn' + (active.has(dt.key) ? ' selected' : '');
+      btn.style.background = dt.gradient || dt.color;
+      btn.style.borderColor = dt.color;
+
+      btn.innerHTML = `
+        ${this._giIconHtml(dt)}
+        <span class="dmg-label">${dt.label}${dt.magical ? '<span class="dmg-magical-tag">✦ Magical</span>' : ''}</span>
+      `;
+      btn.title = (active.has(dt.key) ? 'Remove' : 'Add') + ` ${dt.label}${dt.magical ? ' (Magical)' : ''}`;
+
+      btn.addEventListener('click', () => {
+        const current = new Set(this.lv(this._resistEditorCat, []));
+        if (current.has(dt.key)) {
+          current.delete(dt.key);
+        } else {
+          current.add(dt.key);
+          // Enforce mutual exclusivity — remove from the other two categories
+          const ALL_CATS = ['resistances', 'vulnerabilities', 'immunities'];
+          ALL_CATS.filter(c => c !== this._resistEditorCat).forEach(otherCat => {
+            const other = new Set(this.lv(otherCat, []));
+            if (other.has(dt.key)) {
+              other.delete(dt.key);
+              this.sv(otherCat, [...other]);
+            }
+          });
+        }
+        this.sv(this._resistEditorCat, [...current]);
+        btn.classList.toggle('selected', current.has(dt.key));
+        this._buildDamageTypeGrid();
+      });
+
+      grid.appendChild(btn);
+    });
+  },
+
+  // Show compact summary pills below the edit button
+  _updateResistSummary() {
+    const container = this.$('resist-summary');
+    if (!container) return;
+    container.innerHTML = '';
+
+    const cats = [
+      { key: 'resistances',     cls: 'cat-r', label: 'Resistance' },
+      { key: 'vulnerabilities', cls: 'cat-v', label: 'Vulnerability' },
+      { key: 'immunities',      cls: 'cat-i', label: 'Immunity' },
+    ];
+
+    cats.forEach(({ key, cls, label }) => {
+      const types = this.lv(key, []);
+      types.forEach(typeKey => {
+        const dt = this.DAMAGE_TYPES.find(d => d.key === typeKey);
+        if (!dt) return;
+        const pill = document.createElement('span');
+        pill.className = `resist-summary-pill ${cls}`;
+        pill.style.background = dt.color;
+        pill.title = `${label}: ${dt.label}${dt.magical ? ' (Magical)' : ''}`;
+        pill.innerHTML = this._giIconHtml(dt, true);
+        container.appendChild(pill);
+      });
+    });
+  },
+
+  // ---- Damage Type Modal ----
+
+  _buildDamageTypeGrid() {
+    const grid = this.$('dmg-type-grid');
+    if (!grid) return;
+    const pendingAmt = parseInt(this.$('dmg-modal-amount')?.textContent) || 0;
+    grid.innerHTML = '';
+
+    this.DAMAGE_TYPES.forEach(dt => {
+      const btn = document.createElement('button');
+      btn.className = 'dmg-type-btn';
+      btn.style.background = dt.gradient || dt.color;
+      btn.style.borderColor = dt.color;
+
+      btn.dataset.dmgType = dt.key;
+
+      const resultText = pendingAmt > 0 ? this._calcDamageResult(pendingAmt, dt.key) : '';
+      btn.innerHTML = `
+        ${this._giIconHtml(dt)}
+        <span class="dmg-label">${dt.label}${dt.magical ? '<span class="dmg-magical-tag">✦ Magical</span>' : ''}</span>
+        ${resultText ? `<span class="dmg-result">${resultText}</span>` : ''}
+      `;
+
+      btn.addEventListener('click', () => {
+        const amt = parseInt(this.$('dmg-modal-amount')?.textContent) || 0;
+        this._applyDamage(amt, dt.key);
+        this._closeDamageTypeModal();
+      });
+
+      grid.appendChild(btn);
+    });
+  },
+
+  _calcDamageResult(amount, typeKey) {
+    const resistances    = new Set(this.lv('resistances', []));
+    const vulnerabilities = new Set(this.lv('vulnerabilities', []));
+    const immunities     = new Set(this.lv('immunities', []));
+
+    if (immunities.has(typeKey))      return `→ 0 (immune)`;
+    if (resistances.has(typeKey))     return `→ ${Math.floor(amount / 2)} (resist)`;
+    if (vulnerabilities.has(typeKey)) return `→ ${amount * 2} (vuln!)`;
+    return `→ ${amount}`;
+  },
+
+  _openDamageTypeModal(amount) {
+    const modal = this.$('damage-type-modal');
+    const amtEl = this.$('dmg-modal-amount');
+    if (!modal || !amtEl) return;
+    amtEl.textContent = amount;
+    this._buildDamageTypeGrid();
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => modal.querySelector('.dmg-type-btn')?.focus());
+  },
+
+  _closeDamageTypeModal() {
+    const modal = this.$('damage-type-modal');
+    if (modal) modal.style.display = 'none';
+  },
+
+  // ---- Apply HP changes ----
+
+  _applyDamage(rawAmount, typeKey) {
+    const resistances    = new Set(this.lv('resistances', []));
+    const vulnerabilities = new Set(this.lv('vulnerabilities', []));
+    const immunities     = new Set(this.lv('immunities', []));
+
+    let finalAmount = rawAmount;
+    let note = '';
+
+    if (immunities.has(typeKey)) {
+      finalAmount = 0; note = 'immune';
+    } else if (resistances.has(typeKey)) {
+      finalAmount = Math.floor(rawAmount / 2); note = 'resistant';
+    } else if (vulnerabilities.has(typeKey)) {
+      finalAmount = rawAmount * 2; note = 'vulnerable';
+    }
+
+    if (finalAmount <= 0) {
+      this._showHpToast(`Immune — 0 damage taken!`, 'heal');
+      if (this.$('hp-action-amount')) this.$('hp-action-amount').value = '';
+      return;
+    }
+
+    // Temp HP absorbs damage first
+    let tempHP = parseInt(this.lv('hpTemp', 0)) || 0;
+    if (tempHP > 0) {
+      const absorbed = Math.min(tempHP, finalAmount);
+      tempHP -= absorbed;
+      finalAmount -= absorbed;
+      this.sv('hpTemp', tempHP);
+      const tempEl = this.$('hpTemp');
+      if (tempEl) tempEl.value = tempHP;
+    }
+
+    let curHP = parseInt(this.lv('hpCurrent', 0)) || 0;
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    curHP = Math.max(0, curHP - finalAmount);
+    this.sv('hpCurrent', curHP);
+    const hpEl = this.$('hpCurrent');
+    if (hpEl) {
+      hpEl.value = curHP;
+      hpEl.dispatchEvent(new Event('change'));
+      this._flashHpElement(hpEl, 'damage');
+    }
+
+    const dt = this.DAMAGE_TYPES.find(d => d.key === typeKey);
+    const label = dt ? `${dt.emoji} ${dt.label}${dt.magical ? ' (Magical)' : ''}` : typeKey;
+    const noteStr = note ? ` [${note}]` : '';
+    const dmgShown = rawAmount !== finalAmount + (parseInt(this.lv('hpTemp',0)) < tempHP ? (tempHP - parseInt(this.lv('hpTemp',0))) : 0)
+      ? `${rawAmount}→${finalAmount}` : `${finalAmount}`;
+    this._showHpToast(`${label}${noteStr}: −${dmgShown} damage${curHP === 0 ? ' (down!)' : ''}`, 'damage');
+    if (this.$('hp-action-amount')) this.$('hp-action-amount').value = '';
+  },
+
+  _applyHeal(amount) {
+    const maxHP = parseInt(this.lv('hpMax', 0)) || 0;
+    let curHP = parseInt(this.lv('hpCurrent', 0)) || 0;
+    const newHP = Math.min(maxHP, curHP + amount);
+    this.sv('hpCurrent', newHP);
+    const hpEl = this.$('hpCurrent');
+    if (hpEl) {
+      hpEl.value = newHP;
+      hpEl.dispatchEvent(new Event('change'));
+      this._flashHpElement(hpEl, 'heal');
+    }
+    this._showHpToast(`💚 Healed ${newHP - curHP} HP (${newHP}/${maxHP})`, 'heal');
+    if (this.$('hp-action-amount')) this.$('hp-action-amount').value = '';
+  },
+
+  _applyTempHP(amount) {
+    const curTemp = parseInt(this.lv('hpTemp', 0)) || 0;
+    const newTemp = Math.max(curTemp, amount); // doesn't stack — take higher
+    this.sv('hpTemp', newTemp);
+    const tempEl = this.$('hpTemp');
+    if (tempEl) {
+      tempEl.value = newTemp;
+      tempEl.dispatchEvent(new Event('change'));
+    }
+    const msg = newTemp === amount
+      ? `🛡️ Set Temp HP to ${newTemp}`
+      : `🛡️ Kept existing Temp HP (${curTemp} > ${amount})`;
+    this._showHpToast(msg, 'heal');
+    if (this.$('hp-action-amount')) this.$('hp-action-amount').value = '';
+  },
+
+  _flashHpElement(el, type) {
+    el.classList.remove('hp-flash-damage', 'hp-flash-heal');
+    void el.offsetWidth;
+    el.classList.add(type === 'damage' ? 'hp-flash-damage' : 'hp-flash-heal');
+    el.addEventListener('animationend', () => {
+      el.classList.remove('hp-flash-damage', 'hp-flash-heal');
+    }, { once: true });
+  },
+
+  _showHpToast(message, type) {
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+      position:fixed; bottom:80px; right:20px; z-index:10000;
+      background:${type === 'damage' ? '#7b1a1a' : '#155724'};
+      color:#fff; border-radius:8px; padding:10px 16px;
+      font-family:var(--font-ui); font-size:0.88rem; font-weight:600;
+      box-shadow:0 4px 16px rgba(0,0,0,0.35);
+      max-width:280px; word-break:break-word;
+      transition: opacity 0.4s;
+    `;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 400);
+    }, 2800);
   },
 
 };

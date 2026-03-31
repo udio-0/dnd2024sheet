@@ -204,6 +204,8 @@
               <div class="field-label">XP</div>
             </div>
           </div>
+          <!-- Multiclass row: rendered by Multiclass.renderSection() -->
+          <div class="mc-section" id="mc-section"></div>
         </div>
 
         <div class="sheet-body">
@@ -295,6 +297,29 @@
                   </div>
                 </div>
                 <button class="combat-label ds-roll-label" id="btn-death-save-roll" title="Roll Death Saving Throw (DC 10)">Death Saves</button>
+              </div>
+            </div>
+
+            <!-- HP Controls & Resistances -->
+            <div class="sheet-box" id="hp-actions-box">
+              <div class="box-title">Combat Controls</div>
+              <div class="hp-actions-layout">
+                <!-- Left: Heal / Damage controls -->
+                <div class="hp-controls-col">
+                  <div class="hp-action-top-btns">
+                    <button id="btn-do-heal" class="hp-action-btn heal-btn" title="Heal HP">💚 Heal</button>
+                    <button id="btn-do-temp" class="hp-action-btn temp-btn" title="Add Temporary HP">🛡️ Temp HP</button>
+                  </div>
+                  <input type="number" id="hp-action-amount" class="hp-action-input" min="0" placeholder="Amount">
+                  <button id="btn-do-damage" class="hp-action-btn damage-btn" title="Apply damage (choose type)">🗡️ Damage</button>
+                </div>
+                <!-- Divider -->
+                <div class="hp-actions-divider"></div>
+                <!-- Right: Resistances / Vulnerabilities / Immunities summary + edit button -->
+                <div class="resist-summary-col">
+                  <button id="btn-edit-resistances" class="hp-action-btn resist-edit-btn" title="Edit resistances, vulnerabilities &amp; immunities">🛡️ Resistances…</button>
+                  <div class="resist-summary" id="resist-summary"></div>
+                </div>
               </div>
             </div>
 
@@ -685,9 +710,15 @@
   <!-- LEVEL UP MODAL -->
   <div id="levelup-backdrop" class="levelup-backdrop">
     <div class="levelup-modal">
-      <div class="levelup-header">
-        <h2 class="levelup-title" id="levelup-title">Level Up!</h2>
-        <button class="levelup-close" id="levelup-close">&times;</button>
+      <!-- Title row: total level display + close button -->
+      <div class="levelup-title-bar">
+        <span class="levelup-title-label">Level Up</span>
+        <span class="levelup-total-level" id="levelup-total-level"></span>
+        <button class="levelup-close" id="levelup-close" title="Close">&times;</button>
+      </div>
+      <!-- Tab bar: one tab per class -->
+      <div class="levelup-header" id="levelup-header">
+        <div id="levelup-tabs" class="levelup-tabs-slot"></div>
       </div>
       <div class="levelup-body" id="levelup-body"></div>
       <div class="levelup-footer">
@@ -732,10 +763,61 @@
   </div>
 
 
+  <!-- MULTICLASS PICKER MODAL -->
+  <div id="mc-picker-backdrop" class="mc-picker-backdrop" style="display:none">
+    <div class="mc-picker-modal">
+      <div class="mc-picker-header">
+        <h2 class="mc-picker-title">Add Multiclass</h2>
+        <button class="mc-picker-close-btn" id="mc-picker-close" title="Close">×</button>
+      </div>
+      <div class="mc-picker-body">
+        <p class="mc-picker-hint">Select a class to multiclass into. You must meet that class's ability score prerequisites (D&amp;D 2024 PHB).</p>
+        <div class="mc-picker-list" id="mc-picker-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Damage Type Selection Modal -->
+  <div id="damage-type-modal" class="dmg-modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="dmg-modal-title">
+    <div class="dmg-modal">
+      <div class="dmg-modal-header">
+        <span class="dmg-modal-title" id="dmg-modal-title">🗡️ Select Damage Type</span>
+        <button class="dmg-modal-close" id="dmg-modal-close" title="Cancel">✕</button>
+      </div>
+      <div class="dmg-modal-subtitle">Applying <strong id="dmg-modal-amount">0</strong> damage — choose the type:</div>
+      <div class="dmg-type-grid" id="dmg-type-grid"></div>
+      <div class="dmg-modal-footer">
+        <button class="btn btn-sm" id="dmg-cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Resistance / Vulnerability / Immunity Editor Modal -->
+  <div id="resist-editor-modal" class="dmg-modal-backdrop" style="display:none" role="dialog" aria-modal="true" aria-labelledby="resist-editor-title">
+    <div class="dmg-modal resist-editor-modal">
+      <div class="dmg-modal-header">
+        <span class="dmg-modal-title" id="resist-editor-title">🛡️ Damage Modifiers</span>
+        <button class="dmg-modal-close" id="resist-editor-close" title="Close">✕</button>
+      </div>
+      <!-- Category toggle bar -->
+      <div class="resist-cat-bar">
+        <button class="resist-cat-btn active" data-cat="resistances">Resistance <span class="resist-cat-hint">½</span></button>
+        <button class="resist-cat-btn" data-cat="vulnerabilities">Vulnerability <span class="resist-cat-hint">2×</span></button>
+        <button class="resist-cat-btn" data-cat="immunities">Immunity <span class="resist-cat-hint">0</span></button>
+      </div>
+      <div class="dmg-modal-subtitle resist-editor-subtitle">Toggle damage types for <strong id="resist-editor-cat-label">Resistance</strong>:</div>
+      <div class="dmg-type-grid" id="resist-editor-grid"></div>
+      <div class="dmg-modal-footer">
+        <button class="btn btn-sm" id="resist-editor-done">Done</button>
+      </div>
+    </div>
+  </div>
+
   <script src="js/combat.js"></script>
   <script src="js/notes.js"></script>
   <script src="js/sheet.js"></script>
   <script src="js/levelup.js"></script>
+  <script src="js/multiclass.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
