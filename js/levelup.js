@@ -598,6 +598,36 @@ window.LevelUp = {
       15: { spellPicks: { count: 1, school: 'I', minLevel: 8, maxLevel: 8, label: 'Illusion Savant' } },
       17: { spellPicks: { count: 1, school: 'I', minLevel: 9, maxLevel: 9, label: 'Illusion Savant' } },
     },
+    // ---- Cleric: Pestilence Domain (UA 2026) ----
+    'Cleric:Pestilence Domain': {
+      3: {
+        spells: [
+          { name: 'Detect Poison and Disease', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Protection from Poison', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Ray of Enfeeblement', level: 2, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Ray of Sickness', level: 1, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+        resistances: ['necrotic', 'poison'],
+      },
+      5: {
+        spells: [
+          { name: 'Stinking Cloud', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Vampiric Touch', level: 3, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+      },
+      7: {
+        spells: [
+          { name: 'Blight', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Giant Insect', level: 4, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+      },
+      9: {
+        spells: [
+          { name: 'Contagion', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+          { name: 'Insect Plague', level: 5, prepared: true, alwaysPrepared: true, subclass: true },
+        ],
+      },
+    },
   },
 
   _applySubclassGrants(subclassName, className, level) {
@@ -712,6 +742,13 @@ window.LevelUp = {
         Sheet.sv('subclassUnarmoredDefense', grants.unarmoredDefense);
         // Auto-calculate and apply if character isn't wearing armor
         this._applyUnarmoredDefense(grants.unarmoredDefense);
+      }
+
+      // Apply damage resistances (e.g. Pestilence Domain: Necrotic, Poison)
+      if (grants.resistances?.length) {
+        const current = new Set(Sheet.lv('resistances', []));
+        grants.resistances.forEach(r => current.add(r));
+        Sheet.sv('resistances', [...current]);
       }
 
       // Apply skill proficiency choices (handled via UI picker, applied in confirm())

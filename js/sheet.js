@@ -1595,7 +1595,79 @@ window.Sheet = {
       textEl.innerHTML = flavorHtml;
     }
 
+    // Faceless: show fake persona picker in Chronicle
+    const facelessBox = this.$('faceless-persona-box');
+    if (facelessBox) {
+      if (info?.name === 'Faceless') {
+        facelessBox.style.display = '';
+        this._renderFacelessPersonaSection();
+      } else {
+        facelessBox.style.display = 'none';
+      }
+    }
+
     this.recalcAll();
+  },
+
+  _renderFacelessPersonaSection() {
+    const contentDiv = this.$('faceless-persona-content');
+    if (!contentDiv) return;
+    const savedBg = this.lv('facelessPersonaBg', '');
+    contentDiv.innerHTML = `
+      <p style="font-size:0.82rem;color:var(--ink-light);margin:0 0 8px">Choose a background for your fake persona. Click any trait to add it to the fields on the left.</p>
+      <input type="text" id="faceless-persona-bg-input" class="sheet-input" placeholder="Search background..." value="${savedBg}" autocomplete="off" style="width:100%;box-sizing:border-box">
+      <div id="faceless-persona-traits" style="margin-top:8px"></div>`;
+    const input = contentDiv.querySelector('#faceless-persona-bg-input');
+    if (window.setupAutocomplete) setupAutocomplete(input, 'bg-list');
+    input.addEventListener('change', () => {
+      const bgName = input.value.trim();
+      this.sv('facelessPersonaBg', bgName);
+      this._renderFacelessPersonaTraits(bgName);
+    });
+    if (savedBg) this._renderFacelessPersonaTraits(savedBg);
+  },
+
+  _renderFacelessPersonaTraits(bgName) {
+    const traitsDiv = this.$('faceless-persona-traits');
+    if (!traitsDiv) return;
+    if (!bgName) { traitsDiv.innerHTML = ''; return; }
+    const info = typeof getBackgroundInfo === 'function' ? getBackgroundInfo(bgName) : null;
+    if (!info) { traitsDiv.innerHTML = ''; return; }
+    const sc = info.suggestedCharacteristics;
+    if (!sc || !(sc.traits.length || sc.ideals.length || sc.bonds.length || sc.flaws.length)) {
+      traitsDiv.innerHTML = '<p style="color:var(--ink-faint);font-size:0.82rem">No suggested characteristics for this background.</p>';
+      return;
+    }
+    const fieldMap = { traits: 'personalityTraits', ideals: 'ideals', bonds: 'bonds', flaws: 'flaws' };
+    const sections = [
+      { key: 'traits', label: 'Personality Traits', items: sc.traits },
+      { key: 'ideals', label: 'Ideals',             items: sc.ideals },
+      { key: 'bonds',  label: 'Bonds',              items: sc.bonds  },
+      { key: 'flaws',  label: 'Flaws',              items: sc.flaws  },
+    ].filter(s => s.items.length);
+    traitsDiv.innerHTML = sections.map(sec => `
+      <div style="margin-bottom:10px">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--ink-light);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px">${sec.label}</div>
+        ${sec.items.map((text, i) => `
+          <div class="faceless-trait-chip" data-field="${fieldMap[sec.key]}" data-text="${text.replace(/"/g, '&quot;')}" title="Click to add to ${sec.label}" style="font-size:0.8rem;padding:4px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px;cursor:pointer;color:var(--ink-light);display:flex;align-items:flex-start;gap:6px">
+            <span style="color:var(--ink-faint);flex-shrink:0;min-width:1.4em;text-align:right">${i + 1}.</span><span>${text}</span>
+          </div>`).join('')}
+      </div>`).join('');
+    traitsDiv.querySelectorAll('.faceless-trait-chip').forEach(chip => {
+      chip.addEventListener('mouseenter', () => { chip.style.background = 'var(--parchment-dk)'; chip.style.borderColor = 'var(--gold)'; });
+      chip.addEventListener('mouseleave', () => { chip.style.background = ''; chip.style.borderColor = 'var(--border)'; });
+      chip.addEventListener('click', () => {
+        const fieldId = chip.dataset.field;
+        const text = chip.dataset.text;
+        const textarea = this.$(fieldId);
+        if (!textarea) return;
+        const current = textarea.value.trim();
+        textarea.value = current ? current + '\n' + text : text;
+        this.sv(fieldId, textarea.value);
+        chip.style.background = 'rgba(var(--gold-rgb,180,140,60),0.15)';
+        chip.style.borderColor = 'var(--gold)';
+      });
+    });
   },
 
   // ---- CHAR OPTIONS SYSTEM ----

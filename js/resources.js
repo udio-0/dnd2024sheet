@@ -437,6 +437,10 @@ window.ClassResources = {
       { name: 'Phantasmal Creatures (Free Cast)', maxAt: [{ level: 6, max: 1 }], refresh: 'lr', startLevel: 6 },
       { name: 'Illusory Self', maxAt: [{ level: 10, max: 1 }], refresh: 'sr', startLevel: 10 },
     ],
+    'Cleric:Pestilence Domain': [
+      { name: 'Virulent Burst', maxAt: 'WIS_MIN1', refresh: 'lr', startLevel: 6 },
+      { name: 'Vermin Form', maxAt: [{ level: 17, max: 1 }], refresh: 'lr', startLevel: 17 },
+    ],
   },
 
   /* ================================================================
@@ -734,6 +738,13 @@ window.ClassResources = {
       if (typeof CharStore !== 'undefined') {
         const chaScore = parseInt(CharStore.lv('cha', 10)) || 10;
         return Math.max(1, Math.floor((chaScore - 10) / 2));
+      }
+      return 1;
+    }
+    if (maxAt === 'WIS_MIN1') {
+      if (typeof CharStore !== 'undefined') {
+        const wisScore = parseInt(CharStore.lv('wis', 10)) || 10;
+        return Math.max(1, Math.floor((wisScore - 10) / 2));
       }
       return 1;
     }

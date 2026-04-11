@@ -5,7 +5,7 @@
       "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/magicvariants.json\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/index.json\")",
       "Bash(curl -s \"https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/spells/sources.json\")",
-      "Bash(jq '.background[] | select\(.name == \"\"Acolyte\"\" and .source == \"\"PHB\"\"\) | .entries[3]')",
+      "Bash(jq '.background[] | select(.name == \"Acolyte\" and .source == \"PHB\") | .entries[3]')",
       "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/index.json)",
       "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-rogue.json)",
       "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-monk.json)",

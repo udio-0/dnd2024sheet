@@ -430,6 +430,24 @@ window.Wizard = {
       if (d._bgCharacteristics.flaws.length)   d.flaws   = pick(sc.flaws,   d._bgCharacteristics.flaws);
     }
 
+    // Faceless: apply fake persona background traits (appended to any true-self traits chosen above)
+    if (d._bgInfo?.name === 'Faceless' && d._facelessPersonaBg) {
+      d.facelessPersonaBg = d._facelessPersonaBg;
+      const pc = d._facelessPersonaCharacteristics;
+      if (pc?._bg === d._facelessPersonaBg) {
+        const personaInfo = getBackgroundInfo(d._facelessPersonaBg);
+        if (personaInfo?.suggestedCharacteristics) {
+          const psc = personaInfo.suggestedCharacteristics;
+          const pick = (items, indices) => indices.map(i => items[i]).filter(Boolean).join('\n');
+          const appendOrSet = (field, text) => { if (!text) return; d[field] = d[field] ? d[field] + '\n' + text : text; };
+          if (pc.traits.length) appendOrSet('personalityTraits', pick(psc.traits, pc.traits));
+          if (pc.ideals.length) appendOrSet('ideals', pick(psc.ideals, pc.ideals));
+          if (pc.bonds.length)  appendOrSet('bonds',  pick(psc.bonds,  pc.bonds));
+          if (pc.flaws.length)  appendOrSet('flaws',  pick(psc.flaws,  pc.flaws));
+        }
+      }
+    }
+
     // Apply background ability score increases
     if (d._bgAsi) {
       const clamp = (ab, n) => Math.min(20, (d[ab] || 10) + n);
@@ -1145,6 +1163,7 @@ window.Wizard = {
         <div id="wiz-bg-equip" class="wiz-bg-equip"></div>
         <div id="wiz-bg-lang" class="wiz-bg-equip"></div>
         <div id="wiz-bg-characteristics"></div>
+        <div id="wiz-bg-faceless-persona"></div>
         <div id="wiz-bg-feat-spells"></div>
       </div>`;
     const input = document.getElementById('wiz-bg-search');
@@ -1542,6 +1561,7 @@ window.Wizard = {
       }
       renderLangPicker();
       renderCharacteristicsPicker(info);
+      renderFacelessPersonaPicker(info);
       renderBgFeatSpellPicker(info);
     };
 
@@ -1773,6 +1793,81 @@ window.Wizard = {
           cb.closest('label').classList.toggle('selected', cb.checked);
         });
       });
+    };
+
+    const renderFacelessPersonaPicker = (info) => {
+      const personaDiv = document.getElementById('wiz-bg-faceless-persona');
+      if (!personaDiv) return;
+      if (info?.name !== 'Faceless') { personaDiv.innerHTML = ''; return; }
+
+      if (!d._facelessPersonaBg) d._facelessPersonaBg = '';
+      if (!d._facelessPersonaCharacteristics || typeof d._facelessPersonaCharacteristics !== 'object') {
+        d._facelessPersonaCharacteristics = { _bg: '', traits: [], ideals: [], bonds: [], flaws: [] };
+      }
+
+      const renderPersonaTraits = (personaBgName) => {
+        const traitsDiv = document.getElementById('wiz-faceless-persona-traits');
+        if (!traitsDiv) return;
+        if (!personaBgName) { traitsDiv.innerHTML = ''; return; }
+        const personaInfo = getBackgroundInfo(personaBgName);
+        if (!personaInfo) { traitsDiv.innerHTML = ''; return; }
+        const sc = personaInfo.suggestedCharacteristics;
+        const hasAny = sc && (sc.traits.length || sc.ideals.length || sc.bonds.length || sc.flaws.length);
+        if (!hasAny) {
+          traitsDiv.innerHTML = '<p style="color:var(--ink-faint);font-size:0.82rem;margin-top:8px">No suggested characteristics found for this background.</p>';
+          return;
+        }
+        if (d._facelessPersonaCharacteristics._bg !== personaBgName) {
+          d._facelessPersonaCharacteristics = { _bg: personaBgName, traits: [], ideals: [], bonds: [], flaws: [] };
+        }
+        const sections = [
+          { key: 'traits', label: 'Personality Traits', items: sc.traits },
+          { key: 'ideals', label: 'Ideals',             items: sc.ideals },
+          { key: 'bonds',  label: 'Bonds',              items: sc.bonds  },
+          { key: 'flaws',  label: 'Flaws',              items: sc.flaws  },
+        ].filter(s => s.items.length);
+        traitsDiv.innerHTML = sections.map(sec => `
+          <div style="margin-top:10px">
+            <div style="font-size:0.82rem;font-weight:600;margin-bottom:4px;color:var(--ink-light)">${sec.label}</div>
+            <div class="wiz-char-list" data-pkey="${sec.key}">
+              ${sec.items.map((text, i) => {
+                const sel = d._facelessPersonaCharacteristics[sec.key].includes(i);
+                return `<label class="lu-asi-choice${sel ? ' selected' : ''}" style="font-size:0.8rem;padding:5px 10px;align-items:flex-start">
+                  <input type="checkbox" data-pkey="${sec.key}" data-idx="${i}" ${sel ? 'checked' : ''} style="margin-top:2px;flex-shrink:0">
+                  <span>${text}</span>
+                </label>`;
+              }).join('')}
+            </div>
+          </div>`).join('');
+        traitsDiv.querySelectorAll('input[type="checkbox"][data-pkey]').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const key = cb.dataset.pkey, idx = parseInt(cb.dataset.idx);
+            const arr = d._facelessPersonaCharacteristics[key];
+            if (cb.checked) { if (!arr.includes(idx)) arr.push(idx); }
+            else { const i = arr.indexOf(idx); if (i >= 0) arr.splice(i, 1); }
+            cb.closest('label').classList.toggle('selected', cb.checked);
+          });
+        });
+      };
+
+      personaDiv.innerHTML = `
+        <div class="lu-section" style="margin-top:16px;border-top:2px dashed var(--border);padding-top:16px">
+          <div class="lu-section-title">Fake Persona Background <span style="font-size:0.75rem;font-weight:400;color:var(--ink-faint)">(Faceless feature — optional)</span></div>
+          <p style="font-size:0.82rem;color:var(--ink-light);margin:6px 0 10px">As a Faceless character you operate under a disguised persona. Choose a second background to use its suggested characteristics for your fake identity.</p>
+          <input type="text" id="wiz-faceless-persona-bg" class="wiz-search" placeholder="Search background for fake persona..." value="${d._facelessPersonaBg || ''}" autocomplete="off">
+          <div id="wiz-faceless-persona-traits"></div>
+        </div>`;
+
+      const personaInput = personaDiv.querySelector('#wiz-faceless-persona-bg');
+      if (window.setupAutocomplete) setupAutocomplete(personaInput, 'bg-list');
+      personaInput.addEventListener('change', () => {
+        d._facelessPersonaBg = personaInput.value.trim();
+        if (!d._facelessPersonaBg) {
+          d._facelessPersonaCharacteristics = { _bg: '', traits: [], ideals: [], bonds: [], flaws: [] };
+        }
+        renderPersonaTraits(d._facelessPersonaBg);
+      });
+      if (d._facelessPersonaBg) renderPersonaTraits(d._facelessPersonaBg);
     };
 
     renderLangPicker();

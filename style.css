@@ -6143,6 +6143,14 @@ textarea::placeholder { color: var(--ink-faint); }
   color: var(--ink-light);
   vertical-align: top;
 }
+.entry-table td:first-child,
+.entry-table th:first-child {
+  text-align: center;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--ink);
+  width: 1%;
+}
 .wiz-lineage-picker { margin-top: 12px; }
 .wiz-lineage-title {
   font-family: var(--font-display);

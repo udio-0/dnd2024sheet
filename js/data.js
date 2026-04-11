@@ -73,10 +73,19 @@ function parseEntry(entry) {
   }
   if (entry.type === 'table') {
     const headers = (entry.colLabels || []).map(h => typeof h === 'string' ? stripTags(h) : '').join(' | ');
+    const resolveRollText = roll => {
+      if (!roll) return '';
+      if (roll.exact != null) return String(roll.exact);
+      if (roll.min != null && roll.max != null) return `${roll.min}–${roll.max}`;
+      return '';
+    };
     const rows = (entry.rows || []).map(row => {
-      const cells = (Array.isArray(row) ? row : (row.row || [])).map(c =>
-        typeof c === 'string' ? stripTags(c) : (c?.entry ? stripTags(c.entry) : '')
-      ).join(' | ');
+      const cells = (Array.isArray(row) ? row : (row.row || [])).map(c => {
+        if (typeof c === 'string') return stripTags(c);
+        if (typeof c === 'number') return String(c);
+        if (c?.type === 'cell') return c.entry != null ? stripTags(String(c.entry)) : resolveRollText(c.roll);
+        return c?.entry ? stripTags(c.entry) : resolveRollText(c?.roll);
+      }).join(' | ');
       return cells;
     }).filter(Boolean).join('\n');
     return (entry.caption ? entry.caption + '\n' : '') + (headers ? headers + '\n' : '') + rows;
@@ -135,11 +144,25 @@ function parseEntryHtml(entry) {
     const caption = entry.caption ? `<caption class="entry-table-caption">${stripTags(entry.caption)}</caption>` : '';
     const headers = (entry.colLabels || []).map(h => `<th>${stripTags(typeof h === 'string' ? h : (h.label || ''))}</th>`).join('');
     const thead = headers ? `<thead><tr>${headers}</tr></thead>` : '';
+    const resolveRoll = roll => {
+      if (!roll) return '';
+      if (roll.exact != null) return String(roll.exact);
+      if (roll.min != null && roll.max != null) return `${roll.min}–${roll.max}`;
+      return '';
+    };
     const renderCell = c => {
       let text = '';
       if (typeof c === 'string') text = c;
-      else if (c && c.type === 'cell') text = typeof c.entry === 'string' ? c.entry : parseEntry(c.entry);
-      else if (c && typeof c === 'object') text = c.entry || c.text || '';
+      else if (typeof c === 'number') text = String(c);
+      else if (c && c.type === 'cell') {
+        if (c.entry != null) text = typeof c.entry === 'string' ? c.entry : parseEntry(c.entry);
+        else text = resolveRoll(c.roll);
+      }
+      else if (c && typeof c === 'object') {
+        if (c.entry != null) text = typeof c.entry === 'string' ? c.entry : parseEntry(c.entry);
+        else if (c.roll) text = resolveRoll(c.roll);
+        else text = c.text || '';
+      }
       // Extract {@b ...} bold markers before stripTags removes them
       const bolds = [];
       text = text.replace(/\{@b ([^}]+)\}/g, (_, inner) => { const id = `__BOLD${bolds.length}__`; bolds.push(inner); return id; });
