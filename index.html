@@ -815,6 +815,13 @@
     </div>
   </div>
 
+  <script>
+    // Force any [hidden] modal to stay hidden at boot, even if a cached
+    // stylesheet's display rule overrides the user-agent [hidden] style.
+    document.querySelectorAll('#damage-type-modal, #resist-editor-modal, #mc-picker-backdrop').forEach(el => {
+      if (el.hasAttribute('hidden')) el.style.display = 'none';
+    });
+  </script>
   <script src="js/combat.js"></script>
   <script src="js/notes.js"></script>
   <script src="js/sheet.js"></script>
