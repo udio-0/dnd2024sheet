@@ -914,7 +914,6 @@ function initTopButtons() {
   });
 
   $('btn-print')?.addEventListener('click', () => window.print());
-  $('btn-add-attack')?.addEventListener('click', () => addAttackRow());
 }
 
 // ---- DICE ROLLER ----

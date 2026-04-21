@@ -2093,7 +2093,7 @@ textarea::placeholder { color: var(--ink-faint); }
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   box-shadow: 0 3px 10px rgba(0,0,0,0.22);
-  pointer-events: auto;
+  pointer-events: none;
 }
 .cf-tooltip p { margin: 0 0 6px; }
 .cf-tooltip p:last-child { margin: 0; }
@@ -3353,7 +3353,7 @@ textarea::placeholder { color: var(--ink-faint); }
   font-size: 0.85rem;
   line-height: 1.5;
   opacity: 0;
-  pointer-events: auto;
+  pointer-events: none;
 }
 .spell-hover-tooltip.show { opacity: 1; }
 

@@ -739,6 +739,7 @@ window.Sheet = {
     const id = this.attackId++;
     const tr = document.createElement('tr');
     tr.dataset.id = id;
+    if (data.isSpell) tr.dataset.isSpell = '1';
 
     const abilities = ['str','dex','con','int','wis','cha'];
     const savedAb = data.ability || 'str';
@@ -777,6 +778,16 @@ window.Sheet = {
     const srcBtn       = tr.querySelector('.atk-src-btn');
 
     const DMG_NAMES = { S:'Slashing', P:'Piercing', B:'Bludgeoning', N:'Necrotic', R:'Radiant', F:'Fire', C:'Cold', L:'Lightning', T:'Thunder', O:'Force', A:'Acid', Y:'Psychic', I:'Poison' };
+    const MASTERY_DESCS = {
+      Cleave: 'If you hit a creature with a melee attack and roll damage, you can make the same attack against a second creature within 5 feet of the first that is also within your reach. You can\'t add your ability modifier to the damage of the second attack unless that modifier is negative. You can use this property only once per turn.',
+      Graze: 'If your attack roll misses a creature, you can deal damage to that creature equal to the ability modifier you used to make the attack. The damage is the same type dealt by the weapon, and the damage can be increased only by increasing the modifier.',
+      Nick: 'When you make the extra attack of the Light property, you can make it as part of the Attack action, instead of as a Bonus Action. You can make this extra attack only once per turn.',
+      Push: 'If you hit a creature with this weapon, you can push the creature up to 10 feet straight away from yourself if it is Large or smaller.',
+      Sap: 'If you hit a creature with this weapon, that creature has Disadvantage on its next attack roll before the start of your next turn.',
+      Slow: 'If you hit a creature with this weapon and deal damage to it, you can reduce its Speed by 10 feet until the start of your next turn. If the creature is hit more than once by weapons that have this property, the Speed reduction doesn\'t exceed 10 feet.',
+      Topple: 'If you hit a creature with this weapon, you can force the creature to make a Constitution saving throw (DC 8 + your ability modifier + your proficiency bonus). On a failed save, the creature has the Prone condition.',
+      Vex: 'If you hit a creature with this weapon and deal damage to the creature, you have Advantage on your next attack roll against that creature before the end of your next turn.',
+    };
 
     // ---- refreshRow: recalculate bonus and damage display ----
     const refreshRow = () => {
@@ -784,22 +795,46 @@ window.Sheet = {
       const prof  = this.getProfBonus(level);
       const ab    = abilitySelect.value;
       const mod   = this.getModFromScore(this.getAbilityScore(ab));
-      const bonus = mod + (profCb.dataset.state === '1' ? prof : 0);
+      const isSpellRow = tr.dataset.isSpell === '1';
+      const abName = this.ABILITY_NAMES[ab] || ab;
+      const tipParts = [{ label: `${abName} modifier`, value: mod }];
+      if (profCb.dataset.state === '1') tipParts.push({ label: 'Proficiency bonus', value: prof });
+      let bonus = mod + (profCb.dataset.state === '1' ? prof : 0);
+      if (isSpellRow) {
+        const inv = this.lv('inventory', []) || [];
+        const allItems = (typeof DndData !== 'undefined' && (DndData.allItems || DndData.items)) || [];
+        inv.filter(i => i.attuned).forEach(i => {
+          let atk = i.bonusSpellAttack || 0;
+          if (!atk) {
+            const src = allItems.find(x => x.name === i.name);
+            if (src) atk = src._bonusSpellAttack || 0;
+          }
+          if (atk) { bonus += atk; tipParts.push({ label: i.name, value: atk, note: 'attuned item' }); }
+        });
+      }
       bonusBtn.textContent = this.fmtMod(bonus);
+      this._setCalcTip(bonusBtn, {
+        title: `${nameInput.value || (isSpellRow ? 'Spell' : 'Attack')} — To Hit`,
+        subtitle: isSpellRow ? 'Spell attack bonus' : 'Attack bonus',
+        parts: tipParts,
+        total: bonus,
+        totalFormatted: this.fmtMod(bonus),
+      });
 
       const baseDice = diceEdit.value.trim();
+      const isSpell = tr.dataset.isSpell === '1';
       if (baseDice) {
-        diceBtn.textContent = mod !== 0
+        diceBtn.textContent = (!isSpell && mod !== 0)
           ? `${baseDice}${mod >= 0 ? '+' : ''}${mod}`
           : baseDice;
       } else {
         diceBtn.textContent = '—';
       }
 
-      // Mastery enabled only when edition is XPHB
+      // Mastery enabled only when edition is XPHB (and not a spell)
       const src = srcBtn.dataset.src || '';
       const isXphb = /^xphb$/i.test(src);
-      masteryInput.disabled = !isXphb;
+      masteryInput.disabled = isSpell || !isXphb;
 
       // Highlight mastery input if weapon is in character's weaponMastery list
       const weaponName = nameInput.value.trim();
@@ -808,7 +843,15 @@ window.Sheet = {
         charMastery.some(m => m.toLowerCase() === weaponName.toLowerCase()) &&
         masteryInput.value.trim();
       masteryInput.classList.toggle('active-mastery', !!isActive);
-      masteryInput.title = isActive ? 'Weapon Mastery active: ' + masteryInput.value.trim() : '';
+      const masteryVal = masteryInput.value.trim();
+      const firstMastery = masteryVal.split(/[,/]/)[0].trim();
+      const key = Object.keys(MASTERY_DESCS).find(k => k.toLowerCase() === firstMastery.toLowerCase());
+      const desc = key ? MASTERY_DESCS[key] : '';
+      if (desc) {
+        masteryInput.title = (isActive ? `Weapon Mastery active — ${key}\n\n` : `${key}\n\n`) + desc;
+      } else {
+        masteryInput.title = isActive ? 'Weapon Mastery active: ' + masteryVal : '';
+      }
     };
     tr._refreshRow = refreshRow;
 
@@ -822,8 +865,9 @@ window.Sheet = {
     diceBtn.addEventListener('click', () => {
       const baseDice = diceEdit.value.trim();
       if (!baseDice) return;
+      const isSpell = tr.dataset.isSpell === '1';
       const mod = this.getModFromScore(this.getAbilityScore(abilitySelect.value));
-      const expr = mod !== 0 ? `${baseDice}${mod >= 0 ? '+' : ''}${mod}` : baseDice;
+      const expr = (!isSpell && mod !== 0) ? `${baseDice}${mod >= 0 ? '+' : ''}${mod}` : baseDice;
       const result = Dice.rollDamageString(expr);
       if (result && result.total !== undefined) Dice.showResult(`${nameInput.value || 'Attack'} Damage`, result);
     });
@@ -886,6 +930,7 @@ window.Sheet = {
       const val = nameInput.value.trim().toLowerCase();
       if (val === '✕ delete this entry') { tr.remove(); this.saveAttacks(); this.refreshAttackList(); return; }
       if (!val) return;
+      if (tr.dataset.isSpell === '1') { this.saveAttacks(); return; }
 
       if (val === 'unarmed strike') {
         abilitySelect.value = 'str'; diceEdit.value = '';
@@ -918,7 +963,28 @@ window.Sheet = {
     });
 
     // ---- restore saved state on load ----
-    if (data.name) {
+    if (data.isSpell) {
+      srcBtn.textContent = 'Spell';
+      srcBtn.dataset.src = '';
+      srcBtn.disabled = true;
+      const typeInput = tr.querySelector('.atk-type');
+      if (typeInput) typeInput.placeholder = '—';
+      // Hover tooltip showing spell details (matches spell list behavior)
+      const getSpell = () => {
+        const nm = nameInput.value.trim().toLowerCase();
+        if (!nm || !(typeof DndData !== 'undefined' && DndData.spells)) return null;
+        return DndData.spells.find(sp => sp.name.toLowerCase() === nm) || null;
+      };
+      nameInput.addEventListener('mouseenter', e => {
+        const sp = getSpell();
+        if (sp) { this._cancelSpellHoverHide(); this._showSpellHover(sp, e); }
+      });
+      nameInput.addEventListener('mousemove', e => {
+        if (document.getElementById('spell-hover-active')) this._moveSpellHover(e);
+      });
+      nameInput.addEventListener('mouseleave', () => this._scheduleSpellHoverHide());
+      nameInput.addEventListener('focus', () => this._hideSpellHover());
+    } else if (data.name) {
       variants = (DndData.allItems || []).filter(i =>
         i.name.toLowerCase() === data.name.toLowerCase() && i.weaponCategory
       );
@@ -940,6 +1006,7 @@ window.Sheet = {
         damageType: tr.querySelector('.atk-type')?.value || '',
         mastery:    tr.querySelector('.atk-mastery')?.value || '',
         _src:       srcBtn?.dataset.src || '',
+        isSpell:    tr.dataset.isSpell === '1',
       });
     });
     this.sv('attacks', rows);
@@ -5310,6 +5377,88 @@ window.Sheet = {
     });
 
     this.$('btn-add-attack')?.addEventListener('click', () => this.addAttackRow());
+    this.$('btn-add-spell-attack')?.addEventListener('click', () => this._openSpellAttackPicker());
+  },
+
+  _spellToAttackData(spell) {
+    const DMG_NAMES = { S:'Slashing', P:'Piercing', B:'Bludgeoning', N:'Necrotic', R:'Radiant', F:'Fire', C:'Cold', L:'Lightning', T:'Thunder', O:'Force', A:'Acid', Y:'Psychic', I:'Poison' };
+    const dice = this._extractDice(spell);
+    const dmgArr = spell.damageInflict || [];
+    const dmgType = dmgArr.length
+      ? dmgArr.map(d => d.charAt(0).toUpperCase() + d.slice(1)).join(', ')
+      : '';
+    const ab = (this.lv('spellcastingAbility', '') || 'int').toLowerCase();
+    return {
+      name: spell.name,
+      ability: ab,
+      prof: true,
+      damageDice: dice[0] || '',
+      damageType: dmgType,
+      mastery: '',
+      isSpell: true,
+    };
+  },
+
+  _openSpellAttackPicker() {
+    const charSpells = this.lv('charSpells', []) || [];
+    if (!charSpells.length || !(typeof DndData !== 'undefined' && DndData.spells)) {
+      alert('No known spells available.'); return;
+    }
+    const resolved = charSpells
+      .map(cs => DndData.spells.find(s => s.name.toLowerCase() === cs.name.toLowerCase()))
+      .filter(Boolean);
+
+    const existing = document.getElementById('spell-atk-picker');
+    if (existing) existing.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.id = 'spell-atk-picker';
+    backdrop.className = 'modal-backdrop';
+    backdrop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;z-index:9999;color:var(--ink);';
+    backdrop.innerHTML = `
+      <div class="rest-modal" style="max-width:560px;width:90%;max-height:80vh;display:flex;flex-direction:column;color:var(--ink);">
+        <div class="rest-modal-header">
+          <h2 class="rest-modal-title">Add Spell to Attacks</h2>
+          <button class="rest-modal-close" title="Close">✕</button>
+        </div>
+        <div class="rest-modal-body" style="overflow-y:auto;padding:10px;">
+          <input type="text" id="spell-atk-search" placeholder="Search spells..." autocomplete="off" style="width:100%;margin-bottom:8px;padding:6px;background:var(--bg);color:var(--ink);border:1px solid var(--border);border-radius:4px;">
+          <div id="spell-atk-list"></div>
+        </div>
+      </div>`;
+    document.body.appendChild(backdrop);
+
+    const close = () => backdrop.remove();
+    backdrop.querySelector('.rest-modal-close').addEventListener('click', close);
+    backdrop.addEventListener('click', e => { if (e.target === backdrop) close(); });
+
+    const listEl = backdrop.querySelector('#spell-atk-list');
+    const searchInput = backdrop.querySelector('#spell-atk-search');
+
+    const render = () => {
+      const q = searchInput.value.toLowerCase().trim();
+      const filtered = q ? resolved.filter(s => s.name.toLowerCase().includes(q)) : resolved;
+      filtered.sort((a, b) => (a.level - b.level) || a.name.localeCompare(b.name));
+      listEl.innerHTML = '';
+      if (!filtered.length) { listEl.innerHTML = '<p style="color:var(--ink-faint);text-align:center;padding:20px;">No spells found.</p>'; return; }
+      filtered.forEach(s => {
+        const dice = this._extractDice(s);
+        const btn = document.createElement('button');
+        btn.className = 'add-spell-item';
+        btn.style.cssText = 'display:flex;justify-content:space-between;width:100%;padding:6px 10px;margin-bottom:4px;text-align:left;background:var(--bg-alt,var(--bg));color:var(--ink);border:1px solid var(--border);border-radius:4px;cursor:pointer;';
+        btn.innerHTML = `<span><strong>${s.name}</strong> <span style="color:var(--ink-faint);font-size:.8rem;">${s.level === 0 ? 'Cantrip' : 'Lv ' + s.level}${s._schoolName ? ' · ' + s._schoolName : ''}</span></span>
+          <span style="color:var(--ink-faint);font-size:.8rem;">${dice[0] || '—'}</span>`;
+        btn.addEventListener('click', () => {
+          this.addAttackRow(this._spellToAttackData(s));
+          this.saveAttacks();
+          close();
+        });
+        listEl.appendChild(btn);
+      });
+    };
+    searchInput.addEventListener('input', render);
+    render();
+    searchInput.focus();
   },
 
   // ---- DICE ROLLER ----
@@ -7478,7 +7627,12 @@ window.Sheet = {
 
   _buildCalcTipHTML(b) {
     const fmt = v => (v >= 0 ? '+' + v : '' + v);
-    const rows = (b.parts || []).map(p => {
+    const rows = (b.parts || []).filter(p => {
+      // Hide zero-valued signed modifiers — they contribute nothing to the total.
+      if (p.formatted != null) return true;
+      if (p.signed === false) return true;
+      return p.value !== 0;
+    }).map(p => {
       const valTxt = p.formatted != null ? p.formatted : (p.signed === false ? String(p.value) : fmt(p.value));
       const valClass = (p.value < 0) ? 'neg' : (p.signed === false || p.value === 0 ? 'neu' : 'pos');
       const note = p.note ? `<div class="calc-tip-note">${p.note}</div>` : '';
