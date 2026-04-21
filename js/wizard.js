@@ -846,9 +846,14 @@ window.Wizard = {
       d.spellcastingAbility = classInfo.spellcastingAbility;
     }
 
-    // Deduct gold spent on purchased equipment
+    // Deduct gold spent on purchased equipment, converting leftover fractions to sp/cp
     const spentCp = (d.inventory || []).reduce((sum, it) => sum + (it._valueCp || 0) * (it.qty || 1), 0);
-    d.gp = Math.max(0, (d.gp || 0) - spentCp / 100);
+    const startingCp = Math.round((d.gp || 0) * 100);
+    const remainingCp = Math.max(0, startingCp - spentCp);
+    d.gp = Math.floor(remainingCp / 100);
+    const leftoverCp = remainingCp - d.gp * 100;
+    d.sp = (d.sp || 0) + Math.floor(leftoverCp / 10);
+    d.cp = (d.cp || 0) + (leftoverCp % 10);
 
     // Init combat state
     d.combat = { actionUsed: false, bonusActionUsed: false, reactionUsed: false, movementUsed: 0, freeInteractionUsed: false, concentratingOn: null, conditions: [], exhaustionLevel: 0, equippedMainHand: null, equippedOffHand: null };
@@ -3437,8 +3442,11 @@ window.Wizard = {
         const div = document.createElement('div');
         div.className = 'ac-item';
         div.innerHTML = `<span class="ac-item-name">${item.name} <small>[${item._src}]</small></span><span class="ac-item-detail">${item._type}${item._dmgStr ? ' | ' + item._dmgStr : ''} | ${item._valueStr}</span>`;
-        div.addEventListener('click', () => {
-          const existing = (d.inventory || []).find(e => e.name === item.name);
+        // Use mousedown + preventDefault so the input doesn't blur (which would tear down the dropdown before click fires)
+        div.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          if (!d.inventory) d.inventory = [];
+          const existing = d.inventory.find(e => e.name === item.name);
           if (existing) {
             existing.qty = (existing.qty || 1) + 1;
           } else {
@@ -3691,8 +3699,12 @@ window.Wizard = {
           if (isRacial || isFeatGranted) { this.checked = true; return; } // cannot toggle auto-granted spells
           if (this.checked) {
             if (max !== null && countSelected(level) >= max) { this.checked = false; return; }
-            // Cantrips are always prepared; known=prepared classes auto-prepare all spells
-            const autoPrepare = level === 0 || (typeof Sheet !== 'undefined' && Sheet._isKnownEqualsPrepared(className));
+            // Cantrips are always prepared; known=prepared classes auto-prepare all spells.
+            // Spells explicitly chosen during character creation are marked prepared for
+            // full-list preparers (cleric/druid/paladin/artificer) since the user's pick
+            // is a clear intent to have them prepared on day one.
+            const autoPrepare = level === 0 || (typeof Sheet !== 'undefined'
+              && (Sheet._isKnownEqualsPrepared(className) || Sheet._isFullListPreparer(className)));
             d.charSpells.push({ name: spell.name, level, prepared: autoPrepare });
           } else {
             d.charSpells = d.charSpells.filter(s => s.name !== spell.name);
