@@ -2339,67 +2339,6 @@ window.Wizard = {
         skillDiv.appendChild(toolSection);
       }
 
-      // ---- Divine Order (Cleric level 1) ----
-      if (d.charClass === 'Cleric') {
-        d._divineOrder = d._divineOrder || null;
-        const doSection = document.createElement('div');
-        doSection.className = 'wiz-fighting-style-section';
-
-        const doHeading = document.createElement('h4');
-        doHeading.className = 'wiz-subtitle';
-        doHeading.textContent = 'Choose a Divine Order';
-        doSection.appendChild(doHeading);
-
-        const doNote = document.createElement('p');
-        doNote.className = 'wiz-desc';
-        doNote.textContent = 'You have dedicated yourself to one of the following sacred roles of your choice.';
-        doSection.appendChild(doNote);
-
-        const DO_OPTIONS = [
-          {
-            name: 'Protector',
-            desc: 'Trained for battle. You gain proficiency with Martial weapons and training with Heavy armor.',
-          },
-          {
-            name: 'Thaumaturge',
-            desc: 'You know one extra cantrip from the Cleric spell list. In addition, your mystical connection to the divine gives you a bonus to your Intelligence (Arcana or Religion) checks equal to your Wisdom modifier (minimum of +1).',
-          },
-        ];
-
-        const doGrid = document.createElement('div');
-        doGrid.className = 'wiz-checkbox-grid';
-
-        const doDescEl = document.createElement('div');
-        doDescEl.className = 'wiz-fs-desc wiz-preview-card';
-        doDescEl.style.marginTop = '8px';
-
-        const updateDoDesc = (name) => {
-          const opt = DO_OPTIONS.find(o => o.name === name);
-          if (opt) doDescEl.innerHTML = `<strong>${opt.name}</strong>: ${opt.desc}`;
-          else doDescEl.innerHTML = '';
-        };
-
-        DO_OPTIONS.forEach(opt => {
-          const checked = d._divineOrder === opt.name;
-          const lbl = document.createElement('label');
-          lbl.className = 'wiz-checkbox-label' + (checked ? ' selected' : '');
-          lbl.innerHTML = `<input type="radio" name="wiz-divine-order" value="${opt.name}" ${checked ? 'checked' : ''}> ${opt.name}`;
-          lbl.querySelector('input').addEventListener('change', function () {
-            d._divineOrder = this.value;
-            doGrid.querySelectorAll('.wiz-checkbox-label').forEach(l => l.classList.remove('selected'));
-            lbl.classList.add('selected');
-            updateDoDesc(this.value);
-          });
-          doGrid.appendChild(lbl);
-        });
-
-        if (d._divineOrder) updateDoDesc(d._divineOrder);
-
-        doSection.appendChild(doGrid);
-        doSection.appendChild(doDescEl);
-        skillDiv.appendChild(doSection);
-      }
-
       // ---- Psionic Disciplines (Psion level 2+) ----
       if (d.charClass === 'Psion' && parseInt(d.charLevel || 1) >= 2) {
         const level = parseInt(d.charLevel || 1);
