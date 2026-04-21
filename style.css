@@ -9022,6 +9022,7 @@ textarea::placeholder { color: var(--ink-faint); }
   justify-content: center;
   padding: 16px;
 }
+.dmg-modal-backdrop[hidden] { display: none; }
 
 .dmg-modal {
   background: var(--parchment);
