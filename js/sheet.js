@@ -555,32 +555,50 @@ window.Sheet = {
       const abName = this.ABILITY_NAMES[spellAb] || spellAb;
       const dcEl = this.$('spellSaveDC');
       const atkEl = this.$('spellAttackBonus');
+      // Sum magic-item bonuses from attuned inventory (e.g. Amulet of the Devout)
+      const inv = this.lv('inventory', []) || [];
+      const allItems = (typeof DndData !== 'undefined' && (DndData.allItems || DndData.items)) || [];
+      const itemBonuses = inv.filter(i => i.attuned).map(i => {
+        let atk = i.bonusSpellAttack || 0;
+        let dc = i.bonusSpellSaveDc || 0;
+        if (!atk && !dc) {
+          const src = allItems.find(x => x.name === i.name);
+          if (src) { atk = src._bonusSpellAttack || 0; dc = src._bonusSpellSaveDc || 0; }
+        }
+        return { name: i.name, atk, dc };
+      }).filter(b => b.atk || b.dc);
+      const bonusAtk = itemBonuses.reduce((s, b) => s + b.atk, 0);
+      const bonusDc = itemBonuses.reduce((s, b) => s + b.dc, 0);
       if (dcEl) {
-        const dc = 8 + prof + sm;
+        const dc = 8 + prof + sm + bonusDc;
         dcEl.textContent = dc;
+        const parts = [
+          { label: 'Base', value: 8, signed: false },
+          { label: 'Proficiency bonus', value: prof },
+          { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
+        ];
+        itemBonuses.filter(b => b.dc).forEach(b => parts.push({ label: b.name, value: b.dc, note: 'attuned item' }));
         this._setCalcTip(dcEl, {
           title: 'Spell Save DC',
           subtitle: '8 + proficiency + spellcasting modifier',
-          parts: [
-            { label: 'Base', value: 8, signed: false },
-            { label: 'Proficiency bonus', value: prof },
-            { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
-          ],
+          parts,
           total: dc,
           totalFormatted: String(dc),
           signedTotal: false,
         });
       }
       if (atkEl) {
-        const atk = prof + sm;
+        const atk = prof + sm + bonusAtk;
         atkEl.textContent = this.fmtMod(atk);
+        const parts = [
+          { label: 'Proficiency bonus', value: prof },
+          { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
+        ];
+        itemBonuses.filter(b => b.atk).forEach(b => parts.push({ label: b.name, value: b.atk, note: 'attuned item' }));
         this._setCalcTip(atkEl, {
           title: 'Spell Attack Bonus',
           subtitle: 'proficiency + spellcasting modifier',
-          parts: [
-            { label: 'Proficiency bonus', value: prof },
-            { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
-          ],
+          parts,
           total: atk,
           totalFormatted: this.fmtMod(atk),
         });
@@ -1055,7 +1073,9 @@ window.Sheet = {
       for (let l = 1; l <= level; l++) {
         if (features[l]) {
           features[l].forEach(f => {
-            const isPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name);
+            const subclassTitle = details?.class?.subclassTitle;
+            const isPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name)
+              || (subclassTitle && f.name === subclassTitle);
             if (isPlaceholder && subclassName && details) {
               const scFeatures = (details.subclassFeatures || []).filter(sf =>
                 sf.level === l && (
@@ -1153,7 +1173,9 @@ window.Sheet = {
       for (let l = 1; l <= 20; l++) {
         if (!features[l]) continue;
         features[l].forEach(f => {
-          const isSubclassPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name);
+          const subclassTitle = details?.class?.subclassTitle;
+          const isSubclassPlaceholder = /subclass feature/i.test(f.name) || /\bsubclass$/i.test(f.name)
+            || (subclassTitle && f.name === subclassTitle);
 
           if (isSubclassPlaceholder && subclassName && details) {
             // Find actual subclass features for this level (standard 5etools data)
@@ -2931,7 +2953,11 @@ window.Sheet = {
       pool = [];
       const seen = new Set();
       classes.forEach(cls => {
+        const fullList = this._isFullListPreparer(cls);
         getSpellsForClass(cls).forEach(s => {
+          // Full-list preparers: level 1+ spells are always available on the sheet,
+          // so the modal only needs to offer cantrips (which remain individually learned).
+          if (fullList && s.level > 0) return;
           const key = s.name.toLowerCase();
           if (!seen.has(key)) { seen.add(key); pool.push(s); }
         });
@@ -3121,6 +3147,10 @@ window.Sheet = {
   // These classes pick specific spells and all of them are "prepared" at all times.
   _KNOWN_EQUALS_PREPARED: ['bard', 'sorcerer', 'warlock', 'ranger', 'psion'],
 
+  // Classes that prepare from the entire class spell list after each long rest.
+  // These render the full class list as selectable cards at levels 1+.
+  _FULL_LIST_PREPARERS: ['cleric', 'druid', 'paladin', 'artificer'],
+
   /**
    * Returns true if the current character's class auto-prepares all known spells.
    * For these classes, every spell in charSpells should have prepared: true.
@@ -3128,6 +3158,49 @@ window.Sheet = {
   _isKnownEqualsPrepared(className) {
     const cls = (className || this.lv('charClass', '') || '').toLowerCase().trim();
     return this._KNOWN_EQUALS_PREPARED.includes(cls);
+  },
+
+  _isFullListPreparer(className) {
+    const cls = (className || '').toLowerCase().trim();
+    return this._FULL_LIST_PREPARERS.includes(cls);
+  },
+
+  // Returns the combined full class-list spells (level 1+) for every full-list-preparer
+  // class the character has (primary + multiclass). Cantrips are excluded; those remain
+  // individually learned via the Add Spell modal.
+  _getFullListPreparerSpells() {
+    const primary = this.lv('charClass', '');
+    const primaryLevel = parseInt(this.lv('charLevel', 1)) || 1;
+    const mc = (typeof Multiclass !== 'undefined' ? Multiclass.getMulticlasses() : []);
+    const entries = [];
+    if (this._isFullListPreparer(primary)) entries.push({ cls: primary, level: primaryLevel });
+    mc.forEach(m => { if (this._isFullListPreparer(m.className)) entries.push({ cls: m.className, level: parseInt(m.level) || 1 }); });
+    if (!entries.length) return [];
+    const seen = new Set();
+    const result = [];
+    entries.forEach(({ cls, level }) => {
+      const maxLvl = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(cls, level) : 9;
+      const pool = typeof getSpellsForClass === 'function' ? getSpellsForClass(cls) : [];
+      pool.forEach(s => {
+        if (s.level === 0 || s.level > maxLvl) return;
+        const key = s.name.toLowerCase();
+        if (!seen.has(key)) { seen.add(key); result.push(s); }
+      });
+    });
+    return result;
+  },
+
+  _isOnFullClassList(spell) {
+    if (!spell || spell.level === 0) return false;
+    const primary = this.lv('charClass', '');
+    const mc = (typeof Multiclass !== 'undefined' ? Multiclass.getMulticlasses() : []).map(m => m.className);
+    const classes = [primary, ...mc].filter(c => this._isFullListPreparer(c));
+    if (!classes.length) return false;
+    const nm = spell.name.toLowerCase();
+    return classes.some(cls => {
+      const pool = typeof getSpellsForClass === 'function' ? getSpellsForClass(cls) : [];
+      return pool.some(s => s.name.toLowerCase() === nm);
+    });
   },
 
   // 2024 PHB prepared spell tables for fixed-list casters
@@ -3218,6 +3291,9 @@ window.Sheet = {
     const autoPrepare = level === 0 || this._isKnownEqualsPrepared();
     spells.push({ name: spell.name, level, prepared: autoPrepare });
     this.sv('charSpells', spells);
+    // A virtual card may already be on screen for full-list preparers — avoid duplicating.
+    const existing = this.qsa(`.spell-card[data-spell-name="${spell.name.replace(/"/g, '\\"')}"]`);
+    if (existing.length) existing.forEach(c => c.remove());
     this.renderSpellCard(spell, level);
     this._updatePreparedCount();
   },
@@ -3296,7 +3372,7 @@ window.Sheet = {
       <span class="spell-card-range" title="${spell._rangeStr || ''}">${this._shortRange(spell)}</span>
       <span class="spell-card-comp" title="${spell._componentsStr || ''}">${this._shortComp(spell)}</span>
       <span class="spell-card-dur" title="${spell._durationStr || ''}">${this._shortDur(spell)}</span>
-      ${isRacial ? '<span></span>' : '<button class="del-btn" title="Remove spell">✕</button>'}`;
+      ${(isRacial || this._isOnFullClassList(spell)) ? '<span></span>' : '<button class="del-btn" title="Remove spell">✕</button>'}`;
 
     // Concentration click — set this spell as concentration target
     if (isConc && !isRacial) {
@@ -3349,13 +3425,17 @@ window.Sheet = {
           }
         }
         const spells = CharStore.lv('charSpells', []);
-        const s = spells.find(s => s.name === spell.name);
-        if (s) s.prepared = this.checked;
+        let s = spells.find(s => s.name === spell.name);
+        if (s) {
+          s.prepared = this.checked;
+        } else {
+          spells.push({ name: spell.name, level: spell.level, prepared: this.checked });
+        }
         CharStore.sv('charSpells', spells);
         card.dataset.isPrepared = this.checked ? '1' : '';
         if (typeof Sheet !== 'undefined') Sheet._updatePreparedCount();
       });
-      card.querySelector('.del-btn').addEventListener('click', () => {
+      card.querySelector('.del-btn')?.addEventListener('click', () => {
         const spells = this.lv('charSpells', []).filter(s => s.name !== spell.name);
         this.sv('charSpells', spells);
         card.remove();
@@ -3373,10 +3453,19 @@ window.Sheet = {
       if (container) container.innerHTML = '';
     }
     const spells = this.lv('charSpells', []);
+    const rendered = new Set();
     spells.forEach(s => {
       const spell = DndData.spells.find(sp => sp.name.toLowerCase() === s.name.toLowerCase())
         || { name: s.name, level: s.level, _schoolName: s.racial ? 'Racial' : '', _castTime: '' };
       this.renderSpellCard(spell, s.level);
+      rendered.add(s.name.toLowerCase());
+    });
+    // Full-list preparers (cleric/druid/paladin/artificer): render the rest of the class
+    // list as unprepared cards so users can toggle prep directly from the sheet.
+    this._getFullListPreparerSpells().forEach(spell => {
+      if (rendered.has(spell.name.toLowerCase())) return;
+      this.renderSpellCard(spell, spell.level);
+      rendered.add(spell.name.toLowerCase());
     });
     this._updatePreparedCount();
     this._refreshConcentrationHighlight();
@@ -3965,6 +4054,8 @@ window.Sheet = {
       value: item._valueStr || '', ac: item.ac || 0,
       rarity: item.rarity || 'none', category: item._category, qty: 1,
       reqAttune: item._reqAttune || false, attuned: false,
+      bonusSpellAttack: item._bonusSpellAttack || 0,
+      bonusSpellSaveDc: item._bonusSpellSaveDc || 0,
       description: typeof entriesToHtml === 'function' ? entriesToHtml(item.entries) : '',
       isContainer, containerOpen: true, containerId: null,
       itemId: Date.now().toString(36) + Math.random().toString(36).slice(2),
@@ -6648,6 +6739,10 @@ window.Sheet = {
       this.sv('inventory', inv);
       this._pendingAttune = null;
       this.renderMagicItems();
+      // Recalculate derived stats so attunement-based bonuses (e.g.
+      // Amulet of the Devout's +1 to spell attack and save DC) take effect
+      // immediately after the Long Rest, without needing another edit to trigger refresh.
+      this.recalcAll?.();
     }
 
     if (body) {
