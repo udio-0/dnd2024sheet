@@ -647,10 +647,19 @@ async function loadAllData(progressCallback) {
             // Check for exact name+source match (allow same name from different sources, e.g. UA2024 vs VRGR)
             const already = DndData.classDetails[key].subclasses.some(s => s.name === sc.name && s.source === sc.source);
             if (!already) DndData.classDetails[key].subclasses.push(scEntry);
-            // Merge extracted features into subclassFeatures (avoid duplicates)
+            // Merge extracted features into subclassFeatures. If an existing feature
+            // has the same name but empty/placeholder entries (common in official
+            // 5etools stubs), replace it with the UA version that has real text.
+            const isEmptyEntries = (arr) => !Array.isArray(arr) || arr.every(e =>
+              (typeof e === 'string' && !e.trim()) ||
+              (e && typeof e === 'object' && Array.isArray(e.entries) && isEmptyEntries(e.entries))
+            );
             for (const f of extractedFeatures) {
-              if (!DndData.classDetails[key].subclassFeatures.some(x => x.name === f.name)) {
+              const existingIdx = DndData.classDetails[key].subclassFeatures.findIndex(x => x.name === f.name);
+              if (existingIdx === -1) {
                 DndData.classDetails[key].subclassFeatures.push(f);
+              } else if (isEmptyEntries(DndData.classDetails[key].subclassFeatures[existingIdx].entries)) {
+                DndData.classDetails[key].subclassFeatures[existingIdx] = f;
               }
             }
           }
