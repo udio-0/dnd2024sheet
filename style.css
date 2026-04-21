@@ -511,6 +511,10 @@ body {
   display: flex; align-items: center; justify-content: center;
   padding: 16px;
 }
+.mc-picker-backdrop[hidden] { display: none; }
+
+/* Ensure the hidden attribute always wins, regardless of other display rules. */
+[hidden] { display: none !important; }
 
 .mc-picker-modal {
   background: var(--parchment);
