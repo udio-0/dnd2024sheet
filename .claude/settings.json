@@ -18,7 +18,7 @@
       "Bash(__NEW_LINE_587051b36374c9a5__ curl:*)",
       "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-src/main/data/class/class-druid.json)",
       "Bash(curl -s https://raw.githubusercontent.com/5etools-mirror-3/5etools-2014-src/refs/heads/master/data/feats.json)",
-      "Bash(grep -A 30 \"row.addEventListener\\|row.className = ''''wiz-spell-row''''\" js/levelup.js)",
+      "Bash(grep -A 30 \"row.addEventListener\\|row.className = 'wiz-spell-row'\" js/levelup.js)",
       "Bash(grep -n \"Concentration\\|Ritual\\|color.*keyword\\|keyword.*color\" js/*.js)",
       "Bash(git -C \"c:/Users/claud/Desktop/DnD 2024 Character Sheet\" pull)",
       "Bash(find 'c:/Users/claud/Desktop/DnD 2024 Character Sheet' -name *.json -o -name *.js)",

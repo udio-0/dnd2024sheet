@@ -3373,6 +3373,116 @@ textarea::placeholder { color: var(--ink-faint); }
   border-color: var(--gold-dark);
 }
 
+/* ---- Calc Tooltip (origin of calculated numbers) ---- */
+.calc-tip {
+  position: fixed;
+  z-index: 1200;
+  pointer-events: none;
+  min-width: 220px;
+  max-width: 320px;
+  background: var(--parchment);
+  border: 2px solid var(--gold-dark);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.3);
+  padding: 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  overflow: hidden;
+}
+.calc-tip.show { opacity: 1; transform: translateY(0); }
+.calc-tip-header {
+  padding: 8px 12px 6px;
+  background: linear-gradient(to bottom, rgba(139,26,26,0.12), rgba(139,26,26,0.04));
+  border-bottom: 1px solid var(--border);
+}
+.calc-tip-title {
+  font-family: var(--font-display, serif);
+  font-size: 0.98rem;
+  font-weight: bold;
+  color: var(--red, #8b1a1a);
+  letter-spacing: 0.2px;
+}
+.calc-tip-subtitle {
+  font-size: 0.72rem;
+  color: var(--ink-faint, #8a7060);
+  margin-top: 2px;
+  font-style: italic;
+}
+.calc-tip-body {
+  padding: 6px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.calc-tip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+.calc-tip-label {
+  color: var(--ink);
+  flex: 1;
+  min-width: 0;
+}
+.calc-tip-label > span { display: block; }
+.calc-tip-note {
+  font-size: 0.7rem;
+  color: var(--ink-faint, #8a7060);
+  font-style: italic;
+  margin-top: 1px;
+}
+.calc-tip-val {
+  font-variant-numeric: tabular-nums;
+  font-weight: bold;
+  min-width: 34px;
+  text-align: right;
+}
+.calc-tip-val.pos { color: #2d6a2d; }
+.calc-tip-val.neg { color: var(--red, #8b1a1a); }
+.calc-tip-val.neu { color: var(--ink); }
+.calc-tip-empty {
+  color: var(--ink-faint);
+  font-style: italic;
+  font-size: 0.78rem;
+}
+.calc-tip-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 7px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(218,165,32,0.1);
+  font-weight: bold;
+}
+.calc-tip-total > span:first-child {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+  color: var(--ink-faint, #8a7060);
+}
+.calc-tip-total-val {
+  font-family: var(--font-display, serif);
+  font-size: 1.1rem;
+  color: var(--red, #8b1a1a);
+  font-variant-numeric: tabular-nums;
+}
+.calc-tip-footer {
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+  background: rgba(218,165,32,0.06);
+  font-size: 0.72rem;
+  color: var(--ink-faint, #8a7060);
+}
+[data-theme="dark"] .calc-tip {
+  background: var(--parchment);
+  border-color: var(--gold-dark);
+}
+[data-theme="dark"] .calc-tip-val.pos { color: #6bbd6b; }
+
 /* ---- INVENTORY TAB ---- */
 .inventory-header {
   padding: 14px 16px;

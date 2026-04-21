@@ -136,6 +136,7 @@ window.Sheet = {
     this._initHitDice();
     this._initRestButtons();
     this._initScrollButtons();
+    this._initCalcTooltip();
 
     this.recalcAll();
     this.syncXPToLevel();
@@ -371,11 +372,33 @@ window.Sheet = {
       const score = this.getAbilityScore(ab);
       mods[ab] = this.getModFromScore(score);
       const el = this.$(`${ab}-mod`);
-      if (el) el.textContent = this.fmtMod(mods[ab]);
+      if (el) {
+        el.textContent = this.fmtMod(mods[ab]);
+        this._setCalcTip(el, {
+          title: `${this.ABILITY_NAMES[ab]} Modifier`,
+          subtitle: `(score − 10) ÷ 2, rounded down`,
+          parts: [
+            { label: 'Ability score', value: score, signed: false },
+          ],
+          total: mods[ab],
+          totalFormatted: this.fmtMod(mods[ab]),
+        });
+      }
     });
 
     const profEl = this.$('profBonus');
-    if (profEl) profEl.textContent = this.fmtMod(prof);
+    if (profEl) {
+      profEl.textContent = this.fmtMod(prof);
+      this._setCalcTip(profEl, {
+        title: 'Proficiency Bonus',
+        subtitle: `⌊(level − 1) ÷ 4⌋ + 2`,
+        parts: [
+          { label: 'Character level', value: totalLevel, signed: false, note: (totalLevel !== level) ? 'total across all classes' : null },
+        ],
+        total: prof,
+        totalFormatted: this.fmtMod(prof),
+      });
+    }
 
     // Jack of All Trades: Bard level 2+ adds half proficiency (rounded down) to non-proficient ability checks
     const _className = this.lv('charClass', '');
@@ -383,10 +406,11 @@ window.Sheet = {
     const halfProf = Math.floor(prof / 2);
 
     const initEl = this.$('initiative');
+    let _hasAlert = false;
     if (initEl) {
       // Alert feat (2024): adds Proficiency Bonus to initiative
       const _feats = this.lv('feats', []);
-      const _hasAlert = _feats.some(f => this._featName(f).toLowerCase() === 'alert');
+      _hasAlert = _feats.some(f => this._featName(f).toLowerCase() === 'alert');
       const initMod = mods.dex + (_jackOfAllTrades ? halfProf : 0) + (_hasAlert ? prof : 0);
       initEl.textContent = this.fmtMod(initMod);
       if (!initEl.dataset.rollBound) {
@@ -397,22 +421,49 @@ window.Sheet = {
           this._conditionRollD20('Initiative', mod, 'initiative', 'dex');
         });
       }
+      const initParts = [{ label: 'Dexterity modifier', value: mods.dex }];
+      if (_jackOfAllTrades) initParts.push({ label: 'Jack of All Trades', value: halfProf, note: '½ proficiency (Bard)' });
+      if (_hasAlert) initParts.push({ label: 'Alert feat', value: prof, note: 'adds proficiency bonus' });
+      this._setCalcTip(initEl, {
+        title: 'Initiative',
+        parts: initParts,
+        total: initMod,
+        totalFormatted: this.fmtMod(initMod),
+      });
     }
 
     // Saves
     const coverBonus = this._getCoverBonus();
+    const coverLvl = this.lv('coverLevel', '0');
     const SAVES = this.ABILITIES.map(a => ({ key: a, label: this.ABILITY_NAMES[a] }));
     SAVES.forEach(s => {
       const cb = this.qs(`.save-prof[data-save-ab="${s.key}"]`);
-      let total = mods[s.key] + (cb?.checked ? prof : 0);
+      const isProf = !!cb?.checked;
+      let total = mods[s.key] + (isProf ? prof : 0);
       // Cover applies to Dex saves
       if (s.key === 'dex' && coverBonus > 0) total += coverBonus;
       const el = this.$(`save-${s.key}`);
-      if (el) el.textContent = this.fmtMod(total);
+      if (el) {
+        el.textContent = this.fmtMod(total);
+        const parts = [{ label: `${s.label} modifier`, value: mods[s.key] }];
+        if (isProf) parts.push({ label: 'Proficiency bonus', value: prof, note: 'saving throw proficiency' });
+        if (s.key === 'dex' && coverBonus > 0) {
+          parts.push({ label: `${coverLvl === '5' ? 'Three-quarters' : 'Half'} cover`, value: coverBonus, note: 'bonus to Dex saves' });
+        }
+        this._setCalcTip(el, {
+          title: `${s.label} Save`,
+          parts,
+          total,
+          totalFormatted: this.fmtMod(total),
+        });
+      }
     });
 
     // Skills
     let percBonus = 0;
+    let percIsProf = false;
+    let percIsExpert = false;
+    let percIsJoat = false;
     const _divineOrder = this.lv('charDivineOrder', '');
     const _thaumaturgeBonus = (_className === 'Cleric' && _divineOrder === 'Thaumaturge')
       ? Math.max(1, mods.wis || 0) : 0;
@@ -425,10 +476,30 @@ window.Sheet = {
       const bonus = isExpert ? prof * 2 : isProficient ? prof : (_jackOfAllTrades ? halfProf : 0);
       let total = mods[s.ability] + bonus;
       // Thaumaturge: +Wisdom mod (min 1) to Arcana and Religion checks
-      if (_thaumaturgeBonus && (s.key === 'arcana' || s.key === 'religion')) total += _thaumaturgeBonus;
+      const hasThaum = _thaumaturgeBonus && (s.key === 'arcana' || s.key === 'religion');
+      if (hasThaum) total += _thaumaturgeBonus;
       const el = this.$(`skill-${s.key}`);
-      if (el) el.textContent = this.fmtMod(total);
-      if (s.key === 'perception') percBonus = bonus;
+      if (el) {
+        el.textContent = this.fmtMod(total);
+        const parts = [{ label: `${this.ABILITY_NAMES[s.ability]} modifier`, value: mods[s.ability] }];
+        if (isExpert) parts.push({ label: 'Proficiency bonus', value: prof * 2, note: 'Expertise (×2)' });
+        else if (isProficient) parts.push({ label: 'Proficiency bonus', value: prof });
+        else if (_jackOfAllTrades && halfProf > 0) parts.push({ label: 'Jack of All Trades', value: halfProf, note: '½ proficiency (Bard)' });
+        if (hasThaum) parts.push({ label: 'Thaumaturge', value: _thaumaturgeBonus, note: 'Cleric: Wis mod (min 1)' });
+        this._setCalcTip(el, {
+          title: `${s.label} Check`,
+          subtitle: this.ABILITY_NAMES[s.ability],
+          parts,
+          total,
+          totalFormatted: this.fmtMod(total),
+        });
+      }
+      if (s.key === 'perception') {
+        percBonus = bonus;
+        percIsProf = isProficient;
+        percIsExpert = isExpert;
+        percIsJoat = !isProficient && _jackOfAllTrades && halfProf > 0;
+      }
     });
 
     // Tool proficiencies
@@ -439,21 +510,81 @@ window.Sheet = {
       const state = parseInt(toggle?.dataset.state || '1');
       const bonus = state === 2 ? prof * 2 : state === 1 ? prof : 0;
       const el = this.$(`tool-val-${key}`);
-      if (el) el.textContent = this.fmtMod(bonus);
+      if (el) {
+        el.textContent = this.fmtMod(bonus);
+        const parts = [];
+        if (state === 2) parts.push({ label: 'Proficiency bonus', value: prof * 2, note: 'Expertise (×2)' });
+        else if (state === 1) parts.push({ label: 'Proficiency bonus', value: prof });
+        else parts.push({ label: 'No proficiency', value: 0, note: 'add relevant ability mod when rolling' });
+        this._setCalcTip(el, {
+          title: `${toolName} (Tool)`,
+          subtitle: 'Add relevant ability modifier when rolling',
+          parts,
+          total: bonus,
+          totalFormatted: this.fmtMod(bonus),
+        });
+      }
     });
 
     // Passive perception
     const passiveEl = this.$('passivePerception');
-    if (passiveEl) passiveEl.textContent = 10 + mods.wis + percBonus;
+    if (passiveEl) {
+      const passiveVal = 10 + mods.wis + percBonus;
+      passiveEl.textContent = passiveVal;
+      const parts = [
+        { label: 'Base', value: 10, signed: false },
+        { label: 'Wisdom modifier', value: mods.wis },
+      ];
+      if (percIsExpert) parts.push({ label: 'Perception proficiency', value: percBonus, note: 'Expertise (×2)' });
+      else if (percIsProf) parts.push({ label: 'Perception proficiency', value: percBonus });
+      else if (percIsJoat) parts.push({ label: 'Jack of All Trades', value: percBonus, note: '½ proficiency (Bard)' });
+      this._setCalcTip(passiveEl, {
+        title: 'Passive Perception',
+        subtitle: '10 + Perception check bonus',
+        parts,
+        total: passiveVal,
+        totalFormatted: String(passiveVal),
+        signedTotal: false,
+      });
+    }
 
     // Spell stats
     const spellAb = this.$('spellcastingAbility')?.value;
     if (spellAb && mods[spellAb] !== undefined) {
       const sm = mods[spellAb];
+      const abName = this.ABILITY_NAMES[spellAb] || spellAb;
       const dcEl = this.$('spellSaveDC');
       const atkEl = this.$('spellAttackBonus');
-      if (dcEl) dcEl.textContent = 8 + prof + sm;
-      if (atkEl) atkEl.textContent = this.fmtMod(prof + sm);
+      if (dcEl) {
+        const dc = 8 + prof + sm;
+        dcEl.textContent = dc;
+        this._setCalcTip(dcEl, {
+          title: 'Spell Save DC',
+          subtitle: '8 + proficiency + spellcasting modifier',
+          parts: [
+            { label: 'Base', value: 8, signed: false },
+            { label: 'Proficiency bonus', value: prof },
+            { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
+          ],
+          total: dc,
+          totalFormatted: String(dc),
+          signedTotal: false,
+        });
+      }
+      if (atkEl) {
+        const atk = prof + sm;
+        atkEl.textContent = this.fmtMod(atk);
+        this._setCalcTip(atkEl, {
+          title: 'Spell Attack Bonus',
+          subtitle: 'proficiency + spellcasting modifier',
+          parts: [
+            { label: 'Proficiency bonus', value: prof },
+            { label: `${abName} modifier`, value: sm, note: 'spellcasting ability' },
+          ],
+          total: atk,
+          totalFormatted: this.fmtMod(atk),
+        });
+      }
     }
 
     // Auto-calculate prepared spells max and spell slots
@@ -2791,8 +2922,23 @@ window.Sheet = {
   },
 
   _openAddSpellModal() {
-    const className = this.lv('charClass', '');
-    const pool = className ? getSpellsForClass(className) : DndData.spells;
+    const primaryClass = this.lv('charClass', '');
+    const mcClasses = (typeof Multiclass !== 'undefined' ? Multiclass.getMulticlasses() : [])
+      .map(m => m.className);
+    const classes = [primaryClass, ...mcClasses].filter(Boolean);
+    let pool;
+    if (classes.length) {
+      pool = [];
+      const seen = new Set();
+      classes.forEach(cls => {
+        getSpellsForClass(cls).forEach(s => {
+          const key = s.name.toLowerCase();
+          if (!seen.has(key)) { seen.add(key); pool.push(s); }
+        });
+      });
+    } else {
+      pool = DndData.spells;
+    }
 
     // Group spells by level
     const byLevel = {};
@@ -7039,36 +7185,74 @@ window.Sheet = {
     });
     const dexMod = this.getModFromScore(this.getAbilityScore('dex'));
     let ac;
+    const parts = [];
+    let subtitle = '';
     if (armor) {
       const type = (armor.type || '').toLowerCase();
       const baseAC = armor.ac || 10;
-      if (type.includes('heavy')) ac = baseAC;
-      else if (type.includes('medium')) ac = baseAC + Math.min(dexMod, 2);
-      else ac = baseAC + dexMod;
+      parts.push({ label: armor.name || 'Armor', value: baseAC, signed: false, note: 'base AC' });
+      if (type.includes('heavy')) {
+        ac = baseAC;
+        subtitle = 'Heavy armor (no Dex)';
+      } else if (type.includes('medium')) {
+        const capped = Math.min(dexMod, 2);
+        ac = baseAC + capped;
+        parts.push({ label: 'Dexterity modifier', value: capped, note: dexMod > 2 ? `capped at +2 (medium armor)` : null });
+        subtitle = 'Medium armor (Dex max +2)';
+      } else {
+        ac = baseAC + dexMod;
+        parts.push({ label: 'Dexterity modifier', value: dexMod });
+        subtitle = 'Light armor';
+      }
     } else {
       // Check for Unarmored Defense when no armor is equipped
       const unarmoredDef = this.lv('subclassUnarmoredDefense', null);
       if (unarmoredDef?.abilities?.length && !shield) {
         // Subclass unarmored defense (e.g. College of Dance: 10 + Dex + Cha)
-        ac = 10 + unarmoredDef.abilities.reduce((sum, ab) => sum + (this.getModFromScore(this.getAbilityScore(ab)) || 0), 0);
+        ac = 10;
+        parts.push({ label: 'Base', value: 10, signed: false });
+        unarmoredDef.abilities.forEach(ab => {
+          const m = this.getModFromScore(this.getAbilityScore(ab)) || 0;
+          ac += m;
+          parts.push({ label: `${this.ABILITY_NAMES[ab] || ab} modifier`, value: m });
+        });
+        subtitle = 'Subclass Unarmored Defense';
       } else {
         const className = (this.lv('charClass', '')).toLowerCase();
         if (className === 'barbarian') {
           const conMod = this.getModFromScore(this.getAbilityScore('con'));
           ac = 10 + dexMod + conMod;
+          parts.push({ label: 'Base', value: 10, signed: false });
+          parts.push({ label: 'Dexterity modifier', value: dexMod });
+          parts.push({ label: 'Constitution modifier', value: conMod });
+          subtitle = 'Barbarian Unarmored Defense';
         } else if (className === 'monk') {
           const wisMod = this.getModFromScore(this.getAbilityScore('wis'));
           ac = 10 + dexMod + wisMod;
+          parts.push({ label: 'Base', value: 10, signed: false });
+          parts.push({ label: 'Dexterity modifier', value: dexMod });
+          parts.push({ label: 'Wisdom modifier', value: wisMod });
+          subtitle = 'Monk Unarmored Defense';
         } else {
           ac = 10 + dexMod;
+          parts.push({ label: 'Base', value: 10, signed: false });
+          parts.push({ label: 'Dexterity modifier', value: dexMod });
+          subtitle = 'Unarmored';
         }
       }
     }
     const shieldProf = this.lv('classArmorProf', []).some(p => p.toLowerCase().includes('shield'));
-    if (shield && shieldProf) ac += (shield.ac || 2);
+    if (shield && shieldProf) {
+      const sAc = shield.ac || 2;
+      ac += sAc;
+      parts.push({ label: shield.name || 'Shield', value: sAc });
+    } else if (shield && !shieldProf) {
+      parts.push({ label: shield.name || 'Shield', value: 0, note: 'not proficient — no bonus' });
+    }
 
     // Store base AC before cover
     this._baseAC = ac;
+    this._acBreakdownBase = { parts, subtitle };
     this._applyCoverToAC();
   },
 
@@ -7096,11 +7280,29 @@ window.Sheet = {
     const base = this._baseAC != null ? this._baseAC : (parseInt(this.lv('armorClass', 10)) || 10);
     const cover = this.lv('coverLevel', '0');
     let ac = base;
-    if (cover === '2') ac = base + 2;
-    else if (cover === '5') ac = base + 5;
-    else if (cover === 'total') ac = base; // Total cover: can't be targeted, AC unchanged
+    let coverLabel = null;
+    let coverVal = 0;
+    if (cover === '2') { ac = base + 2; coverLabel = 'Half cover'; coverVal = 2; }
+    else if (cover === '5') { ac = base + 5; coverLabel = 'Three-quarters cover'; coverVal = 5; }
+    else if (cover === 'total') { ac = base; coverLabel = 'Total cover'; coverVal = 0; }
     acInput.value = ac;
     this.sv('armorClass', ac);
+
+    // Build AC tooltip
+    const baseBreak = this._acBreakdownBase || { parts: [], subtitle: '' };
+    const parts = baseBreak.parts.slice();
+    let footer = '';
+    if (coverLabel && coverVal > 0) parts.push({ label: coverLabel, value: coverVal, note: 'cover bonus' });
+    if (cover === 'total') footer = `<strong>Total cover:</strong> can't be targeted by attacks or spells that require a direct line.`;
+    this._setCalcTip(acInput, {
+      title: 'Armor Class',
+      subtitle: baseBreak.subtitle || null,
+      parts,
+      total: ac,
+      totalFormatted: String(ac),
+      signedTotal: false,
+      footer,
+    });
   },
 
   _getCoverBonus() {
@@ -7108,6 +7310,101 @@ window.Sheet = {
     if (cover === '2') return 2;
     if (cover === '5') return 5;
     return 0;
+  },
+
+  /* ---- CALC TOOLTIP: shows origin of calculated numbers on hover ---- */
+  _initCalcTooltip() {
+    if (this._calcTipInited) return;
+    this._calcTipInited = true;
+    document.addEventListener('mouseover', (e) => {
+      const el = e.target && e.target.closest ? e.target.closest('[data-has-calc="1"]') : null;
+      if (!el) return;
+      if (this._calcTipEl === el) return;
+      this._calcTipEl = el;
+      this._showCalcTip(el, e);
+    });
+    document.addEventListener('mouseout', (e) => {
+      const el = e.target && e.target.closest ? e.target.closest('[data-has-calc="1"]') : null;
+      if (!el) return;
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[data-has-calc="1"]') : null;
+      if (to === el) return;
+      this._calcTipEl = null;
+      this._hideCalcTip();
+    });
+    document.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('calc-tip-active');
+      if (!tip) return;
+      this._positionCalcTip(tip, e);
+    });
+    document.addEventListener('scroll', () => this._hideCalcTip(), true);
+  },
+
+  _setCalcTip(el, breakdown) {
+    if (!el || !breakdown) return;
+    el._calcBreakdown = breakdown;
+    el.setAttribute('data-has-calc', '1');
+    // Remove native title so the browser tooltip doesn't overlap the custom one
+    if (el.hasAttribute('title')) {
+      el.dataset.origTitle = el.getAttribute('title');
+      el.removeAttribute('title');
+    }
+  },
+
+  _showCalcTip(el, ev) {
+    this._hideCalcTip();
+    const b = el._calcBreakdown;
+    if (!b) return;
+    const tip = document.createElement('div');
+    tip.className = 'calc-tip';
+    tip.id = 'calc-tip-active';
+    tip.innerHTML = this._buildCalcTipHTML(b);
+    document.body.appendChild(tip);
+    this._positionCalcTip(tip, ev);
+    requestAnimationFrame(() => tip.classList.add('show'));
+  },
+
+  _positionCalcTip(tip, ev) {
+    const r = tip.getBoundingClientRect();
+    const pad = 14;
+    let left = ev.clientX + pad;
+    let top = ev.clientY + pad;
+    if (left + r.width > window.innerWidth - 8) left = ev.clientX - r.width - pad;
+    if (top + r.height > window.innerHeight - 8) top = ev.clientY - r.height - pad;
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  },
+
+  _hideCalcTip() {
+    const tip = document.getElementById('calc-tip-active');
+    if (tip) tip.remove();
+  },
+
+  _buildCalcTipHTML(b) {
+    const fmt = v => (v >= 0 ? '+' + v : '' + v);
+    const rows = (b.parts || []).map(p => {
+      const valTxt = p.formatted != null ? p.formatted : (p.signed === false ? String(p.value) : fmt(p.value));
+      const valClass = (p.value < 0) ? 'neg' : (p.signed === false || p.value === 0 ? 'neu' : 'pos');
+      const note = p.note ? `<div class="calc-tip-note">${p.note}</div>` : '';
+      return `<div class="calc-tip-row">
+        <div class="calc-tip-label"><span>${p.label}</span>${note}</div>
+        <div class="calc-tip-val ${valClass}">${valTxt}</div>
+      </div>`;
+    }).join('');
+    const totalTxt = b.totalFormatted != null ? b.totalFormatted : (b.signedTotal === false ? String(b.total) : fmt(b.total || 0));
+    const subtitle = b.subtitle ? `<div class="calc-tip-subtitle">${b.subtitle}</div>` : '';
+    const footer = b.footer ? `<div class="calc-tip-footer">${b.footer}</div>` : '';
+    return `<div class="calc-tip-header">
+        <div class="calc-tip-title">${b.title || ''}</div>
+        ${subtitle}
+      </div>
+      <div class="calc-tip-body">${rows || '<div class="calc-tip-empty">No modifiers</div>'}</div>
+      <div class="calc-tip-total">
+        <span>Total</span>
+        <span class="calc-tip-total-val">${totalTxt}</span>
+      </div>
+      ${footer}`;
   },
 
   /* ---- CONDITION EFFECTS: glow on affected roll buttons ---- */
@@ -7231,7 +7528,16 @@ window.Sheet = {
       const applyPen = el => {
         if (!el) return;
         const base = parseInt(el.textContent) || 0;
-        el.textContent = this.fmtMod(base - penalty);
+        const newVal = base - penalty;
+        el.textContent = this.fmtMod(newVal);
+        // Keep calc tooltip in sync if present
+        if (el._calcBreakdown) {
+          const b = el._calcBreakdown;
+          b.parts = (b.parts || []).filter(p => !p._isExhaustion);
+          b.parts.push({ label: `Exhaustion ${exhaustionLevel}`, value: -penalty, note: '−2 per level', _isExhaustion: true });
+          b.total = newVal;
+          b.totalFormatted = this.fmtMod(newVal);
+        }
       };
       applyPen(this.$('initiative'));
       this.ABILITIES.forEach(ab => applyPen(this.$(`save-${ab}`)));
