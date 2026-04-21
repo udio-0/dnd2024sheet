@@ -1079,7 +1079,7 @@ window.Combat = {
       });
       CharStore.sv('inventory', inv);
       this._pendingAttune = null;
-      if (typeof Sheet !== 'undefined') Sheet.renderMagicItems();
+      if (typeof Sheet !== 'undefined') { Sheet.renderMagicItems(); Sheet.recalcAll?.(); }
     }
 
     // Apply weapon mastery swap if selected
