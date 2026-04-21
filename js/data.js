@@ -712,6 +712,14 @@ function processItem(item) {
   item._src = sourceName(item.source);
   // reqAttune: true, false, or a string like "by a spellcaster"
   item._reqAttune = item.reqAttune || false;
+  // Parse "+N" bonus fields from item data (e.g. Amulet of the Devout)
+  const parseBonus = (v) => {
+    if (v === undefined || v === null) return 0;
+    const m = String(v).match(/-?\d+/);
+    return m ? parseInt(m[0]) : 0;
+  };
+  item._bonusSpellAttack = parseBonus(item.bonusSpellAttack);
+  item._bonusSpellSaveDc = parseBonus(item.bonusSpellSaveDc);
 }
 
 // ---- ITEM HELPERS ----
