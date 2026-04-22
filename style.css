@@ -8883,34 +8883,54 @@ textarea::placeholder { color: var(--ink-faint); }
   flex-wrap: wrap;
 }
 
-/* Inside the unified combat grid: match combat-box border, stack vertically, tighten */
+/* Inside the unified combat grid: stack vertically, tighten */
 .combat-grid > #hp-actions-box {
-  border: 2px solid var(--red);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
-  padding: 6px 8px 8px;
+  padding: 6px 8px 14px;
   margin-bottom: 0;
-}
-.combat-grid > #hp-actions-box > .box-title {
-  margin-bottom: 4px;
 }
 .combat-grid > #hp-actions-box .hp-actions-layout {
   flex-direction: column;
   align-items: stretch;
   flex-wrap: nowrap;
   gap: 6px;
-  height: calc(100% - 18px);
+  width: 100%;
+  flex: 1 1 auto;
 }
-.combat-grid > #hp-actions-box .hp-controls-col,
+.combat-grid > #hp-actions-box .hp-controls-col {
+  min-width: 0;
+  width: 100%;
+  gap: 4px;
+  flex: 3 1 0;
+}
 .combat-grid > #hp-actions-box .resist-summary-col {
   min-width: 0;
   width: 100%;
   gap: 4px;
+  flex: 1 1 0;
+}
+.combat-grid > #hp-actions-box .hp-action-top-btns {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.combat-grid > #hp-actions-box .hp-action-top-btns > .hp-action-btn {
+  flex: 1 1 0;
+  height: 100%;
+}
+.combat-grid > #hp-actions-box .hp-controls-col > .hp-action-input,
+.combat-grid > #hp-actions-box .hp-controls-col > .hp-action-btn {
+  flex: 1 1 0;
+  min-height: 0;
+}
+.combat-grid > #hp-actions-box .resist-summary-col > .hp-action-btn {
+  flex: 1 1 0;
+  height: 100%;
+  min-height: 0;
 }
 .combat-grid > #hp-actions-box .hp-actions-divider {
   width: auto;
   height: 1px;
   align-self: stretch;
+  flex: 0 0 auto;
 }
 .combat-grid > #hp-actions-box .hp-action-btn {
   padding: 4px 6px;
@@ -8919,6 +8939,7 @@ textarea::placeholder { color: var(--ink-faint); }
 .combat-grid > #hp-actions-box .hp-action-input {
   padding: 3px 4px;
   font-size: 1rem;
+  text-align: center;
 }
 
 /* ---- Left column: Heal / Damage controls ---- */
@@ -8948,6 +8969,9 @@ textarea::placeholder { color: var(--ink-faint); }
   transition: background 0.15s, color 0.15s, border-color 0.15s, transform 0.08s;
   white-space: nowrap;
   text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .hp-action-btn:active { transform: scale(0.96); }
 

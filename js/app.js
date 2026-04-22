@@ -280,8 +280,8 @@ window.setupAutocomplete = function (input, datalistId) {
   }
 
   function initTheme() {
-    const savedTheme = localStorage.getItem('dnd_theme_name') || 'parchment';
-    const savedFont  = localStorage.getItem('dnd_font')       || 'classic';
+    const savedTheme = localStorage.getItem('dnd_theme_name') || 'crimson';
+    const savedFont  = localStorage.getItem('dnd_font')       || 'clean';
     const savedSize  = localStorage.getItem('dnd_font_size')  || 'md';
     const savedBold  = localStorage.getItem('dnd_font_bold')  === '1';
     // Always pre-register the custom theme so it can be selected from the panel.
@@ -337,6 +337,61 @@ window.setupAutocomplete = function (input, datalistId) {
     localStorage.setItem('dnd_font_size', id);
     document.querySelectorAll('.font-size-btn').forEach(el =>
       el.classList.toggle('active', el.dataset.size === id));
+    requestAnimationFrame(fitAll);
+  }
+
+  // ---- AUTO-FIT TEXT ----
+  // Shrinks font-size on elements whose content overflows their box.
+  // Applied to inputs/elements matching AUTOFIT_SEL.
+  const AUTOFIT_SEL = '.combat-value-input, [data-autofit]';
+
+  function fitElement(el) {
+    if (!el || !el.isConnected) return;
+    el.style.fontSize = '';
+    const base = parseFloat(getComputedStyle(el).fontSize) || 16;
+    const min = Math.max(8, base * 0.4);
+    const overflow = (e) =>
+      e.tagName === 'INPUT' || e.tagName === 'TEXTAREA'
+        ? e.scrollWidth > e.clientWidth + 1
+        : e.scrollWidth > e.clientWidth + 1 || e.scrollHeight > e.clientHeight + 1;
+    let size = base;
+    let guard = 40;
+    while (overflow(el) && size > min && guard-- > 0) {
+      size -= 0.5;
+      el.style.fontSize = size + 'px';
+    }
+  }
+
+  function fitAll(root) {
+    (root || document).querySelectorAll(AUTOFIT_SEL).forEach(fitElement);
+  }
+
+  function initAutoFit() {
+    document.addEventListener('input', (e) => {
+      if (e.target.matches && e.target.matches(AUTOFIT_SEL)) fitElement(e.target);
+    });
+    window.addEventListener('resize', () => requestAnimationFrame(() => fitAll()));
+    const mo = new MutationObserver(muts => {
+      for (const m of muts) {
+        m.addedNodes.forEach(n => {
+          if (n.nodeType !== 1) return;
+          if (n.matches && n.matches(AUTOFIT_SEL)) fitElement(n);
+          if (n.querySelectorAll) n.querySelectorAll(AUTOFIT_SEL).forEach(fitElement);
+        });
+        if (m.type === 'attributes' && m.target.matches && m.target.matches(AUTOFIT_SEL)) {
+          fitElement(m.target);
+        }
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['value'] });
+    // Re-fit after programmatic value changes (which don't fire 'input').
+    document.addEventListener('change', (e) => {
+      if (e.target.matches && e.target.matches(AUTOFIT_SEL)) fitElement(e.target);
+    }, true);
+    // Catch hydration from character load that sets .value directly.
+    [100, 500, 1500].forEach(d => setTimeout(fitAll, d));
+    requestAnimationFrame(() => fitAll());
+    window.fitAutoFit = fitAll;
   }
 
   function buildThemePanel() {
@@ -345,8 +400,8 @@ window.setupAutocomplete = function (input, datalistId) {
     const fontEl  = document.getElementById('font-options');
     if (!lightEl || !darkEl || !fontEl) return;
 
-    const savedTheme = localStorage.getItem('dnd_theme_name') || 'parchment';
-    const savedFont  = localStorage.getItem('dnd_font')       || 'classic';
+    const savedTheme = localStorage.getItem('dnd_theme_name') || 'crimson';
+    const savedFont  = localStorage.getItem('dnd_font')       || 'clean';
 
     // Wire up the custom-theme color pickers (live preview on input, persist on Apply).
     const customColors = loadCustomColors();
@@ -750,6 +805,7 @@ window.setupAutocomplete = function (input, datalistId) {
   // ---- INIT ----
   document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
+    initAutoFit();
     initUAToggle();
     init2024Toggle();
     init2014Toggle();
