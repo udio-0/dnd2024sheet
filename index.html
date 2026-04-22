@@ -831,35 +831,35 @@
 
   <!-- Bug Report Modal -->
   <div id="bug-report-modal" class="dmg-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="bug-report-title">
-    <div class="dmg-modal" style="max-width:520px;width:100%;">
+    <div class="dmg-modal bug-report-dialog">
       <div class="dmg-modal-header">
         <span class="dmg-modal-title" id="bug-report-title">🐛 Report a Bug</span>
         <button class="dmg-modal-close" id="bug-report-close" title="Close">✕</button>
       </div>
       <div class="dmg-modal-subtitle">Found an issue? Send the details and they'll be emailed to the developer.</div>
-      <form id="bug-report-form" style="display:flex;flex-direction:column;gap:10px;padding:12px 16px;">
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+      <form id="bug-report-form" class="bug-report-form">
+        <label class="bug-report-field">
           <span>Your name (optional)</span>
-          <input type="text" name="reporter_name" maxlength="80" style="padding:6px 8px;">
+          <input type="text" name="reporter_name" maxlength="80">
         </label>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+        <label class="bug-report-field">
           <span>Contact email (optional, for follow-up)</span>
-          <input type="email" name="reporter_email" maxlength="120" style="padding:6px 8px;">
+          <input type="email" name="reporter_email" maxlength="120">
         </label>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
-          <span>Short title <span style="color:#c44;">*</span></span>
-          <input type="text" name="subject" required maxlength="120" placeholder="e.g. Spellcasting modifier wrong for multiclass" style="padding:6px 8px;">
+        <label class="bug-report-field">
+          <span>Short title <span class="bug-report-required">*</span></span>
+          <input type="text" name="subject" required maxlength="120" placeholder="e.g. Spellcasting modifier wrong for multiclass">
         </label>
-        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
-          <span>What happened? <span style="color:#c44;">*</span></span>
-          <textarea name="message" required rows="6" maxlength="4000" placeholder="Describe the bug and steps to reproduce it." style="padding:6px 8px;resize:vertical;"></textarea>
+        <label class="bug-report-field">
+          <span>What happened? <span class="bug-report-required">*</span></span>
+          <textarea name="message" required rows="6" maxlength="4000" placeholder="Describe the bug and steps to reproduce it."></textarea>
         </label>
         <input type="hidden" name="access_key" value="208e757e-eccf-41f4-aee2-2bb302b90c85">
         <input type="hidden" name="from_name" value="DnD Character Sheet Bug Report">
         <input type="hidden" name="context" id="bug-report-context">
-        <input type="checkbox" name="botcheck" style="display:none;" tabindex="-1" autocomplete="off">
-        <div id="bug-report-status" style="min-height:1.2em;font-size:0.85em;"></div>
-        <div class="dmg-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0;">
+        <input type="checkbox" name="botcheck" class="bug-report-botcheck" tabindex="-1" autocomplete="off">
+        <div id="bug-report-status" class="bug-report-status"></div>
+        <div class="dmg-modal-footer bug-report-footer">
           <button type="button" class="btn btn-sm" id="bug-report-cancel">Cancel</button>
           <button type="submit" class="btn btn-sm btn-primary" id="bug-report-submit">Send Report</button>
         </div>

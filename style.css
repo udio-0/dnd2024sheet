@@ -9356,3 +9356,15 @@ textarea::placeholder { color: var(--ink-faint); }
 [data-theme="dark"] .hp-actions-divider { background: var(--border); }
 [data-theme="dark"] .dmg-modal { background: var(--parchment); border-color: var(--border); }
 [data-theme="dark"] .dmg-modal-header { background: var(--parchment-dk, var(--parchment)); }
+
+/* ---- Bug Report Modal ---- */
+.bug-report-dialog { max-width: 520px; width: 100%; }
+.bug-report-form { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; }
+.bug-report-field { display: flex; flex-direction: column; gap: 4px; font-size: 0.9em; }
+.bug-report-field input,
+.bug-report-field textarea { padding: 6px 8px; }
+.bug-report-field textarea { resize: vertical; }
+.bug-report-required { color: #c44; }
+.bug-report-botcheck { display: none; }
+.bug-report-status { min-height: 1.2em; font-size: 0.85em; }
+.bug-report-footer { display: flex; gap: 8px; justify-content: flex-end; padding: 0; }
