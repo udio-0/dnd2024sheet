@@ -57,6 +57,28 @@
               <div class="theme-swatches" id="dark-swatches"></div>
             </div>
             <div class="theme-panel-section">
+              <div class="theme-panel-label">Custom Theme</div>
+              <div class="custom-theme-pickers" id="custom-theme-pickers">
+                <label class="custom-theme-row">
+                  <input type="color" data-role="bg" class="custom-theme-input">
+                  <span class="custom-theme-label">Background</span>
+                </label>
+                <label class="custom-theme-row">
+                  <input type="color" data-role="accent" class="custom-theme-input">
+                  <span class="custom-theme-label">Accent</span>
+                </label>
+                <label class="custom-theme-row">
+                  <input type="color" data-role="gold" class="custom-theme-input">
+                  <span class="custom-theme-label">Highlight</span>
+                </label>
+                <label class="custom-theme-row">
+                  <input type="color" data-role="ink" class="custom-theme-input">
+                  <span class="custom-theme-label">Text</span>
+                </label>
+                <button type="button" class="custom-theme-apply" id="custom-theme-apply">Apply Custom</button>
+              </div>
+            </div>
+            <div class="theme-panel-section">
               <div class="theme-panel-label">Font</div>
               <div class="font-options" id="font-options"></div>
             </div>
@@ -76,6 +98,9 @@
         </button>
         <button id="btn-export-pdf" class="ua-toggle" title="Export character to PDF">
           <span>PDF</span>
+        </button>
+        <button id="btn-report-bug" class="ua-toggle" title="Report a bug or issue">
+          <span>🐛</span>
         </button>
         <div class="roll-log-menu" id="roll-log-menu">
           <button id="btn-roll-log" class="theme-toggle" title="Roll History">
@@ -298,27 +323,26 @@
                 </div>
                 <button class="combat-label ds-roll-label" id="btn-death-save-roll" title="Roll Death Saving Throw (DC 10)">Death Saves</button>
               </div>
-            </div>
 
-            <!-- HP Controls & Resistances -->
-            <div class="sheet-box" id="hp-actions-box">
-              <div class="box-title">Combat Controls</div>
-              <div class="hp-actions-layout">
-                <!-- Left: Heal / Damage controls -->
-                <div class="hp-controls-col">
-                  <div class="hp-action-top-btns">
-                    <button id="btn-do-heal" class="hp-action-btn heal-btn" title="Heal HP">💚 Heal</button>
-                    <button id="btn-do-temp" class="hp-action-btn temp-btn" title="Add Temporary HP">🛡️ Temp HP</button>
+              <!-- HP Controls & Resistances -->
+              <div class="sheet-box" id="hp-actions-box">
+                <div class="box-title">Combat Controls</div>
+                <div class="hp-actions-layout">
+                  <!-- Top: Heal / Damage controls -->
+                  <div class="hp-controls-col">
+                    <div class="hp-action-top-btns">
+                      <button id="btn-do-heal" class="hp-action-btn heal-btn" title="Heal HP">💚 Heal</button>
+                      <button id="btn-do-temp" class="hp-action-btn temp-btn" title="Add Temporary HP">🛡️ Temp HP</button>
+                    </div>
+                    <input type="number" id="hp-action-amount" class="hp-action-input" min="0" placeholder="Amount">
+                    <button id="btn-do-damage" class="hp-action-btn damage-btn" title="Apply damage (choose type)">🗡️ Damage</button>
                   </div>
-                  <input type="number" id="hp-action-amount" class="hp-action-input" min="0" placeholder="Amount">
-                  <button id="btn-do-damage" class="hp-action-btn damage-btn" title="Apply damage (choose type)">🗡️ Damage</button>
-                </div>
-                <!-- Divider -->
-                <div class="hp-actions-divider"></div>
-                <!-- Right: Resistances / Vulnerabilities / Immunities summary + edit button -->
-                <div class="resist-summary-col">
-                  <button id="btn-edit-resistances" class="hp-action-btn resist-edit-btn" title="Edit resistances, vulnerabilities &amp; immunities">🛡️ Resistances…</button>
-                  <div class="resist-summary" id="resist-summary"></div>
+                  <!-- Divider -->
+                  <div class="hp-actions-divider"></div>
+                  <!-- Bottom: Resistances / Vulnerabilities / Immunities edit button -->
+                  <div class="resist-summary-col">
+                    <button id="btn-edit-resistances" class="hp-action-btn resist-edit-btn" title="Edit resistances, vulnerabilities &amp; immunities">🛡️ Resistances…</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -364,15 +388,6 @@
             <!-- INVENTORY (moved from its own tab) -->
             <div class="sheet-box">
               <div class="box-title">Inventory</div>
-              <div class="currency-bar">
-                <div class="currency-coins">
-                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="cp" value="0" min="0" data-save="cp" title="Copper Pieces"><button class="spin-btn spin-minus">−</button><label for="cp">CP</label></div>
-                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="sp" value="0" min="0" data-save="sp" title="Silver Pieces"><button class="spin-btn spin-minus">−</button><label for="sp">SP</label></div>
-                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="ep" value="0" min="0" data-save="ep" title="Electrum Pieces"><button class="spin-btn spin-minus">−</button><label for="ep">EP</label></div>
-                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="gp" value="0" min="0" data-save="gp" title="Gold Pieces"><button class="spin-btn spin-minus">−</button><label for="gp">GP</label></div>
-                  <div class="currency-coin"><button class="spin-btn spin-plus">+</button><input type="number" id="pp" value="0" min="0" data-save="pp" title="Platinum Pieces"><button class="spin-btn spin-minus">−</button><label for="pp">PP</label></div>
-                </div>
-              </div>
               <div class="item-search-bar" id="inv-search-bar"><input type="text" id="item-search" placeholder="Search items to add..." class="item-search-input" autocomplete="off"><div id="item-search-results" class="autocomplete-dropdown"></div></div>
               <div class="inventory-grid">
                 <div class="inv-section"><h3>Weapons</h3><div class="inv-cards" id="inv-weapons"></div></div>
@@ -801,13 +816,12 @@
         <span class="dmg-modal-title" id="resist-editor-title">🛡️ Damage Modifiers</span>
         <button class="dmg-modal-close" id="resist-editor-close" title="Close">✕</button>
       </div>
-      <!-- Category toggle bar -->
-      <div class="resist-cat-bar">
-        <button class="resist-cat-btn active" data-cat="resistances">Resistance <span class="resist-cat-hint">½</span></button>
-        <button class="resist-cat-btn" data-cat="vulnerabilities">Vulnerability <span class="resist-cat-hint">2×</span></button>
-        <button class="resist-cat-btn" data-cat="immunities">Immunity <span class="resist-cat-hint">0</span></button>
+      <div class="dmg-modal-subtitle resist-editor-subtitle">
+        Click to cycle through
+        <span class="resist-state-legend resist-state-r">½ Resist</span>
+        <span class="resist-state-legend resist-state-v">×2 Vuln</span>
+        <span class="resist-state-legend resist-state-i">×0 Immune</span>
       </div>
-      <div class="dmg-modal-subtitle resist-editor-subtitle">Toggle damage types for <strong id="resist-editor-cat-label">Resistance</strong>:</div>
       <div class="dmg-type-grid" id="resist-editor-grid"></div>
       <div class="dmg-modal-footer">
         <button class="btn btn-sm" id="resist-editor-done">Done</button>
@@ -815,12 +829,139 @@
     </div>
   </div>
 
+  <!-- Bug Report Modal -->
+  <div id="bug-report-modal" class="dmg-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="bug-report-title">
+    <div class="dmg-modal" style="max-width:520px;width:100%;">
+      <div class="dmg-modal-header">
+        <span class="dmg-modal-title" id="bug-report-title">🐛 Report a Bug</span>
+        <button class="dmg-modal-close" id="bug-report-close" title="Close">✕</button>
+      </div>
+      <div class="dmg-modal-subtitle">Found an issue? Send the details and they'll be emailed to the developer.</div>
+      <form id="bug-report-form" style="display:flex;flex-direction:column;gap:10px;padding:12px 16px;">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+          <span>Your name (optional)</span>
+          <input type="text" name="reporter_name" maxlength="80" style="padding:6px 8px;">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+          <span>Contact email (optional, for follow-up)</span>
+          <input type="email" name="reporter_email" maxlength="120" style="padding:6px 8px;">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+          <span>Short title <span style="color:#c44;">*</span></span>
+          <input type="text" name="subject" required maxlength="120" placeholder="e.g. Spellcasting modifier wrong for multiclass" style="padding:6px 8px;">
+        </label>
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:0.9em;">
+          <span>What happened? <span style="color:#c44;">*</span></span>
+          <textarea name="message" required rows="6" maxlength="4000" placeholder="Describe the bug and steps to reproduce it." style="padding:6px 8px;resize:vertical;"></textarea>
+        </label>
+        <input type="hidden" name="access_key" value="208e757e-eccf-41f4-aee2-2bb302b90c85">
+        <input type="hidden" name="from_name" value="DnD Character Sheet Bug Report">
+        <input type="hidden" name="context" id="bug-report-context">
+        <input type="checkbox" name="botcheck" style="display:none;" tabindex="-1" autocomplete="off">
+        <div id="bug-report-status" style="min-height:1.2em;font-size:0.85em;"></div>
+        <div class="dmg-modal-footer" style="display:flex;gap:8px;justify-content:flex-end;padding:0;">
+          <button type="button" class="btn btn-sm" id="bug-report-cancel">Cancel</button>
+          <button type="submit" class="btn btn-sm btn-primary" id="bug-report-submit">Send Report</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <script>
     // Force any [hidden] modal to stay hidden at boot, even if a cached
     // stylesheet's display rule overrides the user-agent [hidden] style.
-    document.querySelectorAll('#damage-type-modal, #resist-editor-modal, #mc-picker-backdrop').forEach(el => {
+    document.querySelectorAll('#damage-type-modal, #resist-editor-modal, #mc-picker-backdrop, #bug-report-modal').forEach(el => {
       if (el.hasAttribute('hidden')) el.style.display = 'none';
     });
+  </script>
+  <script>
+    (function () {
+      const modal = document.getElementById('bug-report-modal');
+      const openBtn = document.getElementById('btn-report-bug');
+      const closeBtn = document.getElementById('bug-report-close');
+      const cancelBtn = document.getElementById('bug-report-cancel');
+      const form = document.getElementById('bug-report-form');
+      const statusEl = document.getElementById('bug-report-status');
+      const contextInput = document.getElementById('bug-report-context');
+      const submitBtn = document.getElementById('bug-report-submit');
+      if (!modal || !openBtn) return;
+
+      function gatherContext() {
+        const ctx = {
+          url: location.href,
+          userAgent: navigator.userAgent,
+          viewport: window.innerWidth + 'x' + window.innerHeight,
+          timestamp: new Date().toISOString(),
+        };
+        try {
+          const st = (window.CharStore && window.CharStore.activeData) ? window.CharStore.activeData : null;
+          if (st) {
+            ctx.character = {
+              id: window.CharStore.activeId || null,
+              name: st.name || null,
+              class: st.class || null,
+              subclass: st.subclass || null,
+              level: st.charLevel || null,
+              race: st.race || null,
+              background: st.background || null,
+              multiclasses: Array.isArray(st.multiclasses)
+                ? st.multiclasses.map(m => ({ class: m.class, subclass: m.subclass, level: m.level }))
+                : null,
+            };
+          }
+        } catch (e) { ctx.characterError = String(e); }
+        return JSON.stringify(ctx, null, 2);
+      }
+
+      function open() {
+        statusEl.textContent = '';
+        statusEl.style.color = '';
+        form.reset();
+        contextInput.value = gatherContext();
+        modal.hidden = false;
+        modal.style.display = '';
+        const subj = form.querySelector('[name="subject"]');
+        if (subj) setTimeout(() => subj.focus(), 30);
+      }
+      function close() {
+        modal.hidden = true;
+        modal.style.display = 'none';
+      }
+
+      openBtn.addEventListener('click', open);
+      closeBtn.addEventListener('click', close);
+      cancelBtn.addEventListener('click', close);
+      modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modal.hidden) close(); });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        submitBtn.disabled = true;
+        statusEl.style.color = '';
+        statusEl.textContent = 'Sending...';
+        try {
+          const data = new FormData(form);
+          const res = await fetch('https://api.web3forms.com/submit', {
+            method: 'POST',
+            body: data,
+          });
+          const json = await res.json().catch(() => ({}));
+          if (res.ok && json.success) {
+            statusEl.style.color = '#2a7';
+            statusEl.textContent = 'Thanks! Your report was sent.';
+            setTimeout(close, 1500);
+          } else {
+            statusEl.style.color = '#c44';
+            statusEl.textContent = 'Failed to send: ' + (json.message || res.statusText || 'unknown error');
+          }
+        } catch (err) {
+          statusEl.style.color = '#c44';
+          statusEl.textContent = 'Network error: ' + err.message;
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+    })();
   </script>
   <script src="js/combat.js"></script>
   <script src="js/notes.js"></script>

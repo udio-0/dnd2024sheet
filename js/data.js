@@ -320,6 +320,35 @@ async function loadAllData(progressCallback) {
     const _2024_ITEM_SOURCES = new Set(['XPHB', 'XDMG', 'XMM', 'EFA', 'LFL', 'ABH', 'FRHoF']);
     DndData.allItems = deduplicateByName(DndData.allItems, src => _2024_ITEM_SOURCES.has(src));
 
+    // Synthetic currency items: each coin type is a searchable inventory item.
+    // 50 coins = 1 lb → 0.02 lb each. `coinKey` drives icon rendering and the
+    // "Coin Weight" carrying-capacity toggle.
+    const COIN_DEFS = [
+      { key: 'cp', name: 'Copper Piece',   value: 1 },
+      { key: 'sp', name: 'Silver Piece',   value: 10 },
+      { key: 'ep', name: 'Electrum Piece', value: 50 },
+      { key: 'gp', name: 'Gold Piece',     value: 100 },
+      { key: 'pp', name: 'Platinum Piece', value: 1000 },
+    ];
+    COIN_DEFS.forEach(c => {
+      DndData.allItems.push({
+        name: c.name,
+        weight: 0.02,
+        source: 'XPHB',
+        type: 'CUR',
+        _type: 'Currency',
+        _dmgStr: '',
+        _propStr: '',
+        _valueStr: '',
+        _category: 'gear',
+        _src: 'XPHB',
+        _coinKey: c.key,
+        _iconHtml: `<span class="coin-icon coin-${c.key}" aria-hidden="true"></span>`,
+        rarity: 'none',
+        entries: [`One ${c.name.toLowerCase()}. Fifty coins weigh one pound.`],
+      });
+    });
+
     // SPELLS - Load spell index, then ALL spell files
     progress('Loading spell index...');
     const spellIndex = await fetchJson(`${DATA_BASE}/spells/index.json`);

@@ -1276,7 +1276,7 @@ window.LevelUp = {
 
     // ASI section — 2 options: Ability Score Improvement or Take a Feat
     if (needsAsi) {
-      this._pending[level].asi = { type: null };
+      this._pending[level].asi ??= { type: null };
       const ua      = typeof isUAEnabled  === 'function' ? isUAEnabled()  : true;
       const show24f = typeof is2024Enabled === 'function' ? is2024Enabled() : true;
       const show14f = typeof is2014Enabled === 'function' ? is2014Enabled() : false;
@@ -1372,7 +1372,7 @@ window.LevelUp = {
             </select>
           `).join('')}
         </div>`;
-      this._pending[level].masteryChoices = [];
+      this._pending[level].masteryChoices ??= [];
     }
 
     // Psionic Discipline selection (Psion levels 2, 5, 10, 13, 17)
@@ -1383,7 +1383,7 @@ window.LevelUp = {
       const currentDisciplines = CharStore.lv('charPsionicDisciplines', []) || [];
       const options = typeof ClassResources !== 'undefined' ? (ClassResources.PSIONIC_DISCIPLINE_OPTIONS || []) : [];
       const available = options.filter(o => !currentDisciplines.includes(o.name));
-      this._pending[level].psionicDisciplines = [];
+      this._pending[level].psionicDisciplines ??= [];
       html += `
         <div class="lu-section" id="lu-discipline-section-${level}">
           <div class="lu-section-title">Psionic Discipline — Choose ${gainCount} New Options</div>
@@ -1430,7 +1430,7 @@ window.LevelUp = {
           </div>
           <div class="lu-points-left" id="lu-expertise-msg-${level}">Select ${expCount} skill${expCount > 1 ? 's' : ''} (<span id="lu-expertise-left-${level}">${expCount}</span> remaining)</div>
         </div>`;
-      this._pending[level].expertise = [];
+      this._pending[level].expertise ??= [];
     }
 
     // Spellbook spell selection (Wizard: gain 2 new spells per level)
@@ -1439,7 +1439,7 @@ window.LevelUp = {
     if (hasNewSpellbookSlots) {
       const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 1;
       const prevMaxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level - 1) : 1;
-      this._pending[level].newSpells = [];
+      this._pending[level].newSpells ??= [];
       // Build spell level tabs
       const tabsHtml = Array.from({ length: maxSpellLevel }, (_, i) => {
         const sl = i + 1;
@@ -1466,7 +1466,7 @@ window.LevelUp = {
     const newCantrips = cantripProg ? (cantripProg[level - 1] ?? 0) : 0;
     const cantripGain = newCantrips - prevCantrips;
     if (cantripGain > 0 && level > 1) {
-      this._pending[level].newCantrips = [];
+      this._pending[level].newCantrips ??= [];
       html += `
         <div class="lu-section" id="lu-cantrip-section-${level}">
           <div class="lu-section-title">New Cantrip${cantripGain > 1 ? 's' : ''}</div>
@@ -1488,9 +1488,9 @@ window.LevelUp = {
       : (className === 'Sorcerer' && (level === 10 || level === 17)) ? 2 : 0;
     const mmSwapAllowed = className === 'Sorcerer' && level > 2;
     if (mmGainFixed > 0 || mmSwapAllowed) {
-      this._pending[level].newMetamagic = [];
-      this._pending[level].mmSwapOut = null;
-      this._pending[level].mmSwapIn  = null;
+      this._pending[level].newMetamagic ??= [];
+      this._pending[level].mmSwapOut ??= null;
+      this._pending[level].mmSwapIn  ??= null;
       const mmOptions = ClassResources?.METAMAGIC_OPTIONS || [];
       const allMMHtml = mmOptions.map(o => `<option value="${o.name}">${o.name} (${o.cost} SP)</option>`).join('');
       if (mmGainFixed > 0) {
@@ -1535,9 +1535,9 @@ window.LevelUp = {
     const prepGain = level > 1 ? Math.max(0, newPrepMax - prevPrepMax) : 0;
     const hasPreparedGain = prepProg && level > 1 && !classInfo?.spellbookSpellsPerLevel;
     if (hasPreparedGain) {
-      this._pending[level].newPreparedSpells = [];
-      this._pending[level].swapOut = null;
-      this._pending[level].swapIn = null;
+      this._pending[level].newPreparedSpells ??= [];
+      this._pending[level].swapOut ??= null;
+      this._pending[level].swapIn ??= null;
       const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 1;
       const tabsHtml = Array.from({ length: maxSpellLevel }, (_, i) => {
         const sl = i + 1;
@@ -1583,8 +1583,8 @@ window.LevelUp = {
 
     // Cantrip swap (optional — Sorcerer, Bard, Warlock, Wizard, Psion)
     if (classInfo?.cantripSwapAllowed && level > 1) {
-      this._pending[level].cantripSwapOut = null;
-      this._pending[level].cantripSwapIn  = null;
+      this._pending[level].cantripSwapOut ??= null;
+      this._pending[level].cantripSwapIn  ??= null;
       html += `
         <div class="lu-section" id="lu-cantrip-swap-section-${level}">
           <div class="lu-section-title">Cantrip Swap <span style="font-size:0.8rem;color:var(--ink-faint)">(optional)</span></div>
@@ -1620,7 +1620,9 @@ window.LevelUp = {
     }
     // Bind mastery selects
     if (masteryIncrease > 0) {
-      sectionEl.querySelectorAll('.lu-mastery-select').forEach(sel => {
+      const savedMastery = this._pending[level].masteryChoices || [];
+      sectionEl.querySelectorAll('.lu-mastery-select').forEach((sel, i) => {
+        if (savedMastery[i]) sel.value = savedMastery[i];
         sel.addEventListener('change', () => {
           const choices = [];
           sectionEl.querySelectorAll('.lu-mastery-select').forEach(s => {
@@ -2311,10 +2313,10 @@ window.LevelUp = {
   // ---- Additional Fighting Style picker (e.g. Champion Fighter level 7) ----
   // Called from _appendLevelSection (initial render) and from subclass change handler.
   // Removes any existing picker first, then injects if the subclass grants one at this level.
-  _injectFightingStylePicker(sec, level, className, chosenSubclass) {
+  _injectFightingStylePicker(sec, level, className, chosenSubclass, resetChoices = false) {
     // Remove existing picker
     sec.querySelector(`#lu-add-fs-section-${level}`)?.remove();
-    if (this._pending[level]) delete this._pending[level].additionalFightingStyle;
+    if (resetChoices && this._pending[level]) delete this._pending[level].additionalFightingStyle;
 
     if (!chosenSubclass) return;
     const feats = this._getSubclassFeaturesAtLevel(chosenSubclass, className, level);
@@ -2329,7 +2331,8 @@ window.LevelUp = {
     const availableStyles = styles.filter(s => !existingFeats.includes(s.name.toLowerCase()));
     if (!availableStyles.length) return;
 
-    this._pending[level].additionalFightingStyle = null;
+    this._pending[level].additionalFightingStyle ??= null;
+    const existingFS = this._pending[level].additionalFightingStyle;
 
     const div = document.createElement('div');
     div.className = 'lu-section';
@@ -2359,6 +2362,11 @@ window.LevelUp = {
     // Bind radio buttons
     const fsPreview = div.querySelector(`#lu-fs-preview-${level}`);
     div.querySelectorAll('input[type="radio"]').forEach(radio => {
+      if (existingFS && radio.value === existingFS) {
+        radio.checked = true;
+        const fInfo = typeof getFeatInfo === 'function' ? getFeatInfo(radio.value) : null;
+        if (fsPreview && fInfo) fsPreview.innerHTML = `<strong>${fInfo.name}</strong>: ${fInfo.description}`;
+      }
       radio.addEventListener('change', () => {
         this._pending[level].additionalFightingStyle = radio.value;
         const fInfo = typeof getFeatInfo === 'function' ? getFeatInfo(radio.value) : null;
@@ -2369,13 +2377,13 @@ window.LevelUp = {
 
   // Called from _appendLevelSection (initial render) and from _bindSubclassForLevel (on change).
   // Removes any existing sections, then re-injects them if the subclass has picks at this level.
-  _injectSubclassSpellPicksSections(sec, level, className, chosenSubclass) {
+  _injectSubclassSpellPicksSections(sec, level, className, chosenSubclass, resetChoices = false) {
     // Always remove old sections first
     sec.querySelector(`#lu-sc-spell-picks-section-${level}`)?.remove();
     sec.querySelector(`#lu-sc-cantrip-section-${level}`)?.remove();
     sec.querySelector(`#lu-sc-skill-picks-section-${level}`)?.remove();
     sec.querySelector(`#lu-sc-magical-disc-section-${level}`)?.remove();
-    if (this._pending[level]) {
+    if (resetChoices && this._pending[level]) {
       delete this._pending[level].subclassSpellPicks;
       delete this._pending[level].conditionalCantrip;
       delete this._pending[level].subclassSkillPicks;
@@ -2396,7 +2404,7 @@ window.LevelUp = {
       const primaryKnown = knownSpells.has(conditionalCantrip.primary.toLowerCase());
       if (primaryKnown) {
         // Minor Illusion already known — show picker for an alternate cantrip
-        this._pending[level].conditionalCantrip = null;
+        this._pending[level].conditionalCantrip ??= null;
         const div = document.createElement('div');
         div.className = 'lu-section';
         div.id = `lu-sc-cantrip-section-${level}`;
@@ -2416,7 +2424,7 @@ window.LevelUp = {
 
     // --- Subclass spell picks (e.g. Illusion Savant) ---
     if (spellPicks) {
-      this._pending[level].subclassSpellPicks = [];
+      this._pending[level].subclassSpellPicks ??= [];
       const { count = 1, label = 'Subclass Spells', minLevel = 1, maxLevel: spMaxLevel = 9 } = spellPicks;
       const rangeStr = minLevel === spMaxLevel ? `level ${minLevel}` : `levels ${minLevel}–${spMaxLevel}`;
       const div = document.createElement('div');
@@ -2437,7 +2445,7 @@ window.LevelUp = {
     // --- Skill proficiency choices (e.g. College of Lore) ---
     if (skillProficiencyChoices) {
       const count = typeof skillProficiencyChoices === 'number' ? skillProficiencyChoices : skillProficiencyChoices.count || 3;
-      this._pending[level].subclassSkillPicks = [];
+      this._pending[level].subclassSkillPicks ??= [];
       const alreadyProficient = new Set(
         Sheet.SKILLS.filter(s => Sheet.lv(`skillProf_${s.key}`, false)).map(s => s.key)
       );
@@ -2465,7 +2473,7 @@ window.LevelUp = {
     // --- Magical Discoveries (e.g. College of Lore level 6) ---
     if (magicalDiscoveries) {
       const { count = 2, label = 'Magical Discoveries' } = magicalDiscoveries;
-      this._pending[level].magicalDiscoveries = [];
+      this._pending[level].magicalDiscoveries ??= [];
       const maxSpellLevel = typeof getMaxSpellLevel === 'function' ? getMaxSpellLevel(className, level) : 3;
       const div = document.createElement('div');
       div.className = 'lu-section';
@@ -2488,6 +2496,14 @@ window.LevelUp = {
     const gridEl = document.getElementById(`lu-sc-skill-grid-${level}`);
     if (!gridEl) return;
     const checkboxes = gridEl.querySelectorAll('.lu-sc-skill-cb');
+    const existing = new Set(this._pending[level]?.subclassSkillPicks || []);
+    checkboxes.forEach(cb => {
+      if (existing.has(cb.value)) cb.checked = true;
+    });
+    const initialChosen = [...gridEl.querySelectorAll('.lu-sc-skill-cb:checked')].map(c => c.value);
+    checkboxes.forEach(c => { if (!c.checked) c.disabled = initialChosen.length >= count; });
+    const initLeftEl = document.getElementById(`lu-sc-skill-left-${level}`);
+    if (initLeftEl) initLeftEl.textContent = count - initialChosen.length;
     checkboxes.forEach(cb => {
       cb.addEventListener('change', () => {
         const chosen = [...gridEl.querySelectorAll('.lu-sc-skill-cb:checked')].map(c => c.value);
@@ -3076,8 +3092,8 @@ window.LevelUp = {
       document.querySelectorAll('[id^="lu-level-section-"]').forEach(sec => {
         const secLevel = parseInt(sec.id.replace('lu-level-section-', ''));
         injectSubclassFeatures(sec, secLevel);
-        this._injectFightingStylePicker(sec, secLevel, className, chosenSubclass);
-        this._injectSubclassSpellPicksSections(sec, secLevel, className, chosenSubclass);
+        this._injectFightingStylePicker(sec, secLevel, className, chosenSubclass, true);
+        this._injectSubclassSpellPicksSections(sec, secLevel, className, chosenSubclass, true);
       });
 
       // Clear consolidated desc (features are shown per-level above)

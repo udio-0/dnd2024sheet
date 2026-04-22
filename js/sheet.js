@@ -137,6 +137,7 @@ window.Sheet = {
     this._initRestButtons();
     this._initScrollButtons();
     this._initCalcTooltip();
+    this._initThemeTooltip();
 
     this.recalcAll();
     this.syncXPToLevel();
@@ -847,10 +848,20 @@ window.Sheet = {
       const firstMastery = masteryVal.split(/[,/]/)[0].trim();
       const key = Object.keys(MASTERY_DESCS).find(k => k.toLowerCase() === firstMastery.toLowerCase());
       const desc = key ? MASTERY_DESCS[key] : '';
+      masteryInput.removeAttribute('title');
       if (desc) {
-        masteryInput.title = (isActive ? `Weapon Mastery active — ${key}\n\n` : `${key}\n\n`) + desc;
+        this._setThemeTip(masteryInput, {
+          title: key,
+          subtitle: isActive ? 'Weapon Mastery active' : 'Weapon property',
+          body: desc,
+        });
+      } else if (isActive && masteryVal) {
+        this._setThemeTip(masteryInput, {
+          title: 'Weapon Mastery active',
+          body: masteryVal,
+        });
       } else {
-        masteryInput.title = isActive ? 'Weapon Mastery active: ' + masteryVal : '';
+        this._setThemeTip(masteryInput, null);
       }
     };
     tr._refreshRow = refreshRow;
@@ -3957,7 +3968,7 @@ window.Sheet = {
         if (item._propStr) detail += ` | ${item._propStr}`;
         if (item.rarity && item.rarity !== 'none') detail += ` | ${item.rarity}`;
         div.innerHTML = `
-          <span class="ac-item-name">${item.name} <small style="color:var(--ink-faint)">[${item._src || ''}]</small></span>
+          <span class="ac-item-name">${item._iconHtml || ''}${item.name} <small style="color:var(--ink-faint)">[${item._src || ''}]</small></span>
           <span class="ac-item-detail">${detail}</span>`;
         div.addEventListener('mousedown', e => e.preventDefault());
         div.addEventListener('click', () => {
@@ -4127,6 +4138,7 @@ window.Sheet = {
       isContainer, containerOpen: true, containerId: null,
       itemId: Date.now().toString(36) + Math.random().toString(36).slice(2),
       ...(item._scrollSpell && { scrollSpell: item._scrollSpell }),
+      ...(item._coinKey && { isCoin: true, coinKey: item._coinKey }),
       ...(isContainer && { containerKey, containerCapacity: item.containerCapacity || null, capacityStr: item.capacity || null }),
       ...(isLiquid && { pints: maxPints, emptyWeight, liquidKey: Date.now().toString(36) + Math.random().toString(36).slice(2) }),
     });
@@ -4502,12 +4514,15 @@ window.Sheet = {
       });
     } else {
       // Normal items: qty controls
+      const nameIcon = item.isCoin && item.coinKey
+        ? `<span class="coin-icon coin-${item.coinKey}" aria-hidden="true"></span>`
+        : '';
       card.innerHTML = `
         <button class="inv-del-btn" title="Remove">✕</button>
         <button class="inv-merge-btn" title="Merge stacks">⊕</button>
-        ${item.qty > 1 ? '<button class="inv-split-btn" title="Split stack">⇄</button>' : ''}
+        <button class="inv-split-btn" title="Split stack" style="${item.qty > 1 ? '' : 'display:none;'}">⇄</button>
         <div class="inv-card-info">
-          <div class="inv-card-name">${item.name}</div>
+          <div class="inv-card-name">${nameIcon}${item.name}</div>
           ${detail ? `<div class="inv-card-detail">${detail}</div>` : ''}
         </div>
         <div class="inv-card-qty">
@@ -4527,6 +4542,8 @@ window.Sheet = {
         input.value = qty;
         const tw = card.querySelector('.inv-card-total-weight');
         if (tw && item.weight) { const t = item.weight * qty; tw.textContent = `${Number.isInteger(t) ? t : t.toFixed(2)} lb.`; }
+        const splitBtn = card.querySelector('.inv-split-btn');
+        if (splitBtn) splitBtn.style.display = qty > 1 ? '' : 'none';
         this._saveInvQty(item.itemId, qty);
       };
       input.addEventListener('change', e => applyQty(parseInt(e.target.value) || 1));
@@ -4644,6 +4661,32 @@ window.Sheet = {
     let migrated = false;
     // Backfill itemId for items added before this field existed
     inv.forEach(item => { if (!item.itemId) { item.itemId = Date.now().toString(36) + Math.random().toString(36).slice(2); migrated = true; } });
+
+    // LEGACY COIN MIGRATION: old sheets stored coins as cp/sp/ep/gp/pp fields.
+    // Convert any non-zero legacy values to coin inventory items (once).
+    // TODO: remove this block once all test sheets have been opened and migrated.
+    const COIN_NAMES = { cp: 'Copper Piece', sp: 'Silver Piece', ep: 'Electrum Piece', gp: 'Gold Piece', pp: 'Platinum Piece' };
+    ['cp','sp','ep','gp','pp'].forEach(key => {
+      const qty = parseInt(this.lv(key, 0)) || 0;
+      if (qty <= 0) return;
+      const existing = inv.find(i => i.isCoin && i.coinKey === key);
+      if (existing) {
+        existing.qty = (existing.qty || 0) + qty;
+      } else {
+        inv.push({
+          name: COIN_NAMES[key], type: 'Currency', typeCode: 'CUR',
+          damage: '', mastery: '', properties: '', weight: 0.02,
+          value: '', ac: 0, rarity: 'none', category: 'gear', qty,
+          reqAttune: false, attuned: false,
+          bonusSpellAttack: 0, bonusSpellSaveDc: 0,
+          description: '', isContainer: false, containerOpen: true, containerId: null,
+          itemId: Date.now().toString(36) + Math.random().toString(36).slice(2),
+          isCoin: true, coinKey: key,
+        });
+      }
+      this.sv(key, 0);
+      migrated = true;
+    });
     inv.forEach(item => {
       if (!item.isContainer && !item.containerId) {
         const found = allItems.find(i => i.name.toLowerCase() === item.name.toLowerCase());
@@ -4838,12 +4881,6 @@ window.Sheet = {
     };
     _syncBtn('coin-weight-btn', 'coinWeight');
     _syncBtn('carry-rule-btn', 'encumbrance');
-
-    // Update when coins change
-    ['cp','sp','ep','gp','pp'].forEach(id => {
-      const el = this.$(id);
-      if (el) el.addEventListener('input', () => this.renderCarryCapacity());
-    });
   },
 
   _WEIGHTLESS_CONTAINERS: /^(bags? of holding|portable holes?|heward'?s? handy haversacks?)$/i,
@@ -4854,14 +4891,12 @@ window.Sheet = {
       inv.filter(i => i.isContainer && this._WEIGHTLESS_CONTAINERS.test(i.name || ''))
         .map(i => i.containerKey)
     );
-    let w = inv.reduce((sum, i) => {
+    const countCoinWeight = this.lv('coinWeight', false);
+    const w = inv.reduce((sum, i) => {
       if (i.containerId && weightlessKeys.has(i.containerId)) return sum;
+      if (i.isCoin && !countCoinWeight) return sum;
       return sum + (i.weight || 0) * (i.qty || 1);
     }, 0);
-    if (this.lv('coinWeight', false)) {
-      const coins = ['cp','sp','ep','gp','pp'].reduce((s, id) => s + (parseFloat(this.$(id)?.value) || 0), 0);
-      w += coins * 0.02; // 50 coins = 1 lb.
-    }
     return Math.round(w * 100) / 100;
   },
 
@@ -5333,20 +5368,6 @@ window.Sheet = {
         speedInput.dispatchEvent(new Event('input'));
       });
     }
-
-    // Clamp coins to 0+ on manual input; default blank to 0
-    ['cp', 'sp', 'ep', 'gp', 'pp'].forEach(id => {
-      const el = this.$(id);
-      if (!el) return;
-      el.addEventListener('change', () => {
-        const v = parseInt(el.value);
-        el.value = (isNaN(v) || v < 0) ? 0 : v;
-        el.dispatchEvent(new Event('input'));
-      });
-      el.addEventListener('blur', () => {
-        if (el.value === '') el.value = 0;
-      });
-    });
 
     // Clamp armorClass to 0–99 on manual input
     const acInput = this.$('armorClass');
@@ -6138,31 +6159,44 @@ window.Sheet = {
     return Math.floor(baseCost * this._getScribeDiscount());
   },
 
+  _getCoinQty(key) {
+    const inv = this.lv('inventory', []);
+    return inv
+      .filter(i => i.isCoin && i.coinKey === key)
+      .reduce((sum, i) => sum + (parseInt(i.qty) || 0), 0);
+  },
+
   _getTotalGold() {
-    const cp = parseInt(this.$('cp')?.value) || 0;
-    const sp = parseInt(this.$('sp')?.value) || 0;
-    const ep = parseInt(this.$('ep')?.value) || 0;
-    const gp = parseInt(this.$('gp')?.value) || 0;
-    const pp = parseInt(this.$('pp')?.value) || 0;
+    const cp = this._getCoinQty('cp');
+    const sp = this._getCoinQty('sp');
+    const ep = this._getCoinQty('ep');
+    const gp = this._getCoinQty('gp');
+    const pp = this._getCoinQty('pp');
     return pp * 10 + gp + ep * 0.5 + sp * 0.1 + cp * 0.01;
   },
 
   _deductGold(amount) {
     let remaining = Math.round(amount * 100);
-    const coins = ['pp', 'gp', 'ep', 'sp', 'cp'];
-    const values = [1000, 100, 50, 10, 1];
-    coins.forEach((coin, i) => {
-      const el = this.$(coin);
-      let have = parseInt(el?.value) || 0;
-      const coinVal = values[i];
-      const spend = Math.min(have, Math.floor(remaining / coinVal));
-      if (spend > 0) {
-        have -= spend;
-        remaining -= spend * coinVal;
-        if (el) el.value = have;
-        this.sv(coin, have);
+    const inv = this.lv('inventory', []);
+    const values = { pp: 1000, gp: 100, ep: 50, sp: 10, cp: 1 };
+    ['pp', 'gp', 'ep', 'sp', 'cp'].forEach(key => {
+      const coinVal = values[key];
+      // Deduct proportionally across every stack of this coin type (e.g. multiple pouches).
+      const stacks = inv.filter(i => i.isCoin && i.coinKey === key);
+      for (const stack of stacks) {
+        if (remaining <= 0) break;
+        const have = parseInt(stack.qty) || 0;
+        const spend = Math.min(have, Math.floor(remaining / coinVal));
+        if (spend > 0) {
+          stack.qty = have - spend;
+          remaining -= spend * coinVal;
+        }
       }
     });
+    // Drop any stacks that were fully spent so they disappear from inventory.
+    const pruned = inv.filter(i => !(i.isCoin && (parseInt(i.qty) || 0) <= 0));
+    this.sv('inventory', pruned);
+    this.renderInventory();
   },
 
   _openLearnScrollModal() {
@@ -7601,7 +7635,7 @@ window.Sheet = {
     const tip = document.createElement('div');
     tip.className = 'calc-tip';
     tip.id = 'calc-tip-active';
-    tip.innerHTML = this._buildCalcTipHTML(b);
+    tip.innerHTML = this._buildCalcTipHTML(b, el._condEffect);
     document.body.appendChild(tip);
     this._positionCalcTip(tip, ev);
     requestAnimationFrame(() => tip.classList.add('show'));
@@ -7625,7 +7659,7 @@ window.Sheet = {
     if (tip) tip.remove();
   },
 
-  _buildCalcTipHTML(b) {
+  _buildCalcTipHTML(b, condEffect) {
     const fmt = v => (v >= 0 ? '+' + v : '' + v);
     const rows = (b.parts || []).filter(p => {
       // Hide zero-valued signed modifiers — they contribute nothing to the total.
@@ -7644,6 +7678,10 @@ window.Sheet = {
     const totalTxt = b.totalFormatted != null ? b.totalFormatted : (b.signedTotal === false ? String(b.total) : fmt(b.total || 0));
     const subtitle = b.subtitle ? `<div class="calc-tip-subtitle">${b.subtitle}</div>` : '';
     const footer = b.footer ? `<div class="calc-tip-footer">${b.footer}</div>` : '';
+    const condWords = { fail: 'Auto-Fail', dis: 'Disadvantage', pen: 'Penalty', adv: 'Advantage' };
+    const condBlock = condEffect ? `<div class="calc-tip-cond type-${condEffect.type}">
+        <span class="calc-tip-cond-kw">${condWords[condEffect.type] || 'Effect'}</span>${condEffect.text || ''}
+      </div>` : '';
     return `<div class="calc-tip-header">
         <div class="calc-tip-title">${b.title || ''}</div>
         ${subtitle}
@@ -7653,7 +7691,81 @@ window.Sheet = {
         <span>Total</span>
         <span class="calc-tip-total-val">${totalTxt}</span>
       </div>
+      ${condBlock}
       ${footer}`;
+  },
+
+  /* ---- THEME TOOLTIP: simple title + body hover tooltip matching parchment theme ---- */
+  _initThemeTooltip() {
+    if (this._themeTipInited) return;
+    this._themeTipInited = true;
+    document.addEventListener('mouseover', (e) => {
+      const el = e.target && e.target.closest ? e.target.closest('[data-has-theme-tip="1"]') : null;
+      if (!el) return;
+      if (this._themeTipEl === el) return;
+      this._themeTipEl = el;
+      this._showThemeTip(el, e);
+    });
+    document.addEventListener('mouseout', (e) => {
+      const el = e.target && e.target.closest ? e.target.closest('[data-has-theme-tip="1"]') : null;
+      if (!el) return;
+      const to = e.relatedTarget && e.relatedTarget.closest ? e.relatedTarget.closest('[data-has-theme-tip="1"]') : null;
+      if (to === el) return;
+      this._themeTipEl = null;
+      this._hideThemeTip();
+    });
+    document.addEventListener('mousemove', (e) => {
+      const tip = document.getElementById('theme-tip-active');
+      if (!tip) return;
+      this._positionThemeTip(tip, e);
+    });
+    document.addEventListener('scroll', () => this._hideThemeTip(), true);
+  },
+
+  _setThemeTip(el, data) {
+    if (!el) return;
+    if (!data || (!data.title && !data.body)) {
+      el.removeAttribute('data-has-theme-tip');
+      el._themeTipData = null;
+      return;
+    }
+    el._themeTipData = data;
+    el.setAttribute('data-has-theme-tip', '1');
+    if (el.hasAttribute('title')) el.removeAttribute('title');
+  },
+
+  _showThemeTip(el, ev) {
+    this._hideThemeTip();
+    const d = el._themeTipData;
+    if (!d) return;
+    const tip = document.createElement('div');
+    tip.className = 'theme-tip';
+    tip.id = 'theme-tip-active';
+    const subtitle = d.subtitle ? `<div class="theme-tip-subtitle">${d.subtitle}</div>` : '';
+    const header = (d.title || d.subtitle) ? `<div class="theme-tip-header"><div class="theme-tip-title">${d.title || ''}</div>${subtitle}</div>` : '';
+    const body = d.body ? `<div class="theme-tip-body">${d.body}</div>` : '';
+    tip.innerHTML = header + body;
+    document.body.appendChild(tip);
+    this._positionThemeTip(tip, ev);
+    requestAnimationFrame(() => tip.classList.add('show'));
+  },
+
+  _positionThemeTip(tip, ev) {
+    const r = tip.getBoundingClientRect();
+    const pad = 14;
+    let left = ev.clientX + pad;
+    let top = ev.clientY + pad;
+    if (left + r.width > window.innerWidth - 8) left = ev.clientX - r.width - pad;
+    if (top + r.height > window.innerHeight - 8) top = ev.clientY - r.height - pad;
+    if (left < 8) left = 8;
+    if (top < 8) top = 8;
+    tip.style.left = left + 'px';
+    tip.style.top = top + 'px';
+  },
+
+  _hideThemeTip() {
+    const tip = document.getElementById('theme-tip-active');
+    if (tip) tip.remove();
   },
 
   /* ---- CONDITION EFFECTS: glow on affected roll buttons ---- */
@@ -7664,6 +7776,7 @@ window.Sheet = {
       el.classList.remove('cond-fail-glow', 'cond-dis-glow', 'cond-pen-glow', 'cond-adv-glow');
       el.removeAttribute('data-cond-tip');
       el.removeAttribute('title');
+      el._condEffect = null;
       // Remove old hover listeners by replacing with clone
       if (el._condEnter) {
         el.removeEventListener('mouseenter', el._condEnter);
@@ -7815,6 +7928,9 @@ window.Sheet = {
     const glowClasses = { fail: 'cond-fail-glow', dis: 'cond-dis-glow', pen: 'cond-pen-glow', adv: 'cond-adv-glow' };
     el.classList.add(glowClasses[type] || 'cond-dis-glow');
     el.dataset.condTip = tipText;
+    el._condEffect = { type, text: tipText };
+    // If the element already has a calc tooltip, the effect is merged into it — skip the standalone tooltip.
+    if (el.getAttribute('data-has-calc') === '1') return;
     // Rich tooltip on hover (same style as condition tooltips)
     const enter = (e) => {
       this._hideConditionTooltip();
@@ -8215,9 +8331,6 @@ window.Sheet = {
       gradient: 'linear-gradient(145deg, #e090c0 0%, #a04080 55%, #5c1040 100%)' },
   ],
 
-  // Active category in the resistance editor modal
-  _resistEditorCat: 'resistances',
-
   _giCache: {},
 
   // Fetch all game-icons SVGs, strip the opaque background path, and cache transparent data URLs.
@@ -8293,17 +8406,6 @@ window.Sheet = {
       if (e.target === this.$('resist-editor-modal')) this._closeResistEditor();
     });
 
-    // Category toggle buttons
-    this.$('resist-editor-modal')?.querySelectorAll('.resist-cat-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        this._resistEditorCat = btn.dataset.cat;
-        this.$('resist-editor-modal').querySelectorAll('.resist-cat-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this._updateResistEditorLabel();
-        this._buildResistEditorGrid();
-      });
-    });
-
     // Escape key closes whichever modal is open
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape') return;
@@ -8325,68 +8427,84 @@ window.Sheet = {
   _openResistEditor() {
     const modal = this.$('resist-editor-modal');
     if (!modal) return;
-    // Reset to Resistances tab
-    this._resistEditorCat = 'resistances';
-    modal.querySelectorAll('.resist-cat-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.cat === 'resistances');
-    });
-    this._updateResistEditorLabel();
     this._buildResistEditorGrid();
+    modal.removeAttribute('hidden');
     modal.style.display = 'flex';
   },
 
   _closeResistEditor() {
     const modal = this.$('resist-editor-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('hidden', '');
+    }
     this._updateResistSummary();
   },
 
-  _updateResistEditorLabel() {
-    const labels = { resistances: 'Resistance', vulnerabilities: 'Vulnerability', immunities: 'Immunity' };
-    const el = this.$('resist-editor-cat-label');
-    if (el) el.textContent = labels[this._resistEditorCat] || this._resistEditorCat;
+  // Cycle order for the 4-state toggle on each damage type.
+  _RESIST_CYCLE: [null, 'resistances', 'vulnerabilities', 'immunities'],
+  _RESIST_BADGE: { resistances: '½', vulnerabilities: '×2', immunities: '×0' },
+
+  _getResistState(key) {
+    const cats = ['resistances', 'vulnerabilities', 'immunities'];
+    return cats.find(c => this.lv(c, []).includes(key)) || null;
+  },
+
+  // Set `key` to `state` (null = clear) and ensure it appears in only that one list.
+  _setResistState(key, state) {
+    ['resistances', 'vulnerabilities', 'immunities'].forEach(c => {
+      const list = new Set(this.lv(c, []));
+      if (state === c) list.add(key); else list.delete(key);
+      this.sv(c, [...list]);
+    });
   },
 
   _buildResistEditorGrid() {
     const grid = this.$('resist-editor-grid');
     if (!grid) return;
     grid.innerHTML = '';
-    const active = new Set(this.lv(this._resistEditorCat, []));
 
-    this.DAMAGE_TYPES.forEach(dt => {
+    // Magical BPS resistance/vulnerability/immunity isn't a thing in 2024 rules —
+    // the "magical" variants only exist as damage types, not as defensive keywords.
+    const MAGICAL_BPS = new Set(['slashing-magical', 'piercing-magical', 'bludgeoning-magical']);
+    const PHYSICAL_BPS = new Set(['slashing', 'piercing', 'bludgeoning']);
+
+    // Group the three physical-BPS buttons into a merged container that occupies
+    // the visual width of two normal buttons (grid-column: span 2).
+    const bpsGroup = document.createElement('div');
+    bpsGroup.className = 'dmg-bps-group';
+    grid.appendChild(bpsGroup);
+
+    const STATE_CODE = { resistances: 'r', vulnerabilities: 'v', immunities: 'i' };
+
+    this.DAMAGE_TYPES.filter(dt => !MAGICAL_BPS.has(dt.key)).forEach(dt => {
       const btn = document.createElement('button');
-      btn.className = 'dmg-type-btn' + (active.has(dt.key) ? ' selected' : '');
+      const state = this._getResistState(dt.key);
+      btn.className = 'dmg-type-btn' + (state ? ` selected resist-state-${STATE_CODE[state]}` : '');
       btn.style.background = dt.gradient || dt.color;
       btn.style.borderColor = dt.color;
 
+      const badge = state
+        ? `<span class="resist-state-badge resist-state-${STATE_CODE[state]}">${this._RESIST_BADGE[state]}</span>`
+        : '';
       btn.innerHTML = `
+        ${badge}
         ${this._giIconHtml(dt)}
         <span class="dmg-label">${dt.label}${dt.magical ? '<span class="dmg-magical-tag">✦ Magical</span>' : ''}</span>
       `;
-      btn.title = (active.has(dt.key) ? 'Remove' : 'Add') + ` ${dt.label}${dt.magical ? ' (Magical)' : ''}`;
+      const stateLabel = { resistances: '½ Resistance', vulnerabilities: '×2 Vulnerability', immunities: '×0 Immunity' };
+      btn.title = `${dt.label}${dt.magical ? ' (Magical)' : ''} — ${state ? stateLabel[state] : 'None'} (click to cycle)`;
 
       btn.addEventListener('click', () => {
-        const current = new Set(this.lv(this._resistEditorCat, []));
-        if (current.has(dt.key)) {
-          current.delete(dt.key);
-        } else {
-          current.add(dt.key);
-          // Enforce mutual exclusivity — remove from the other two categories
-          const ALL_CATS = ['resistances', 'vulnerabilities', 'immunities'];
-          ALL_CATS.filter(c => c !== this._resistEditorCat).forEach(otherCat => {
-            const other = new Set(this.lv(otherCat, []));
-            if (other.has(dt.key)) {
-              other.delete(dt.key);
-              this.sv(otherCat, [...other]);
-            }
-          });
-        }
-        this.sv(this._resistEditorCat, [...current]);
-        btn.classList.toggle('selected', current.has(dt.key));
+        const cur = this._getResistState(dt.key);
+        const idx = this._RESIST_CYCLE.indexOf(cur);
+        const next = this._RESIST_CYCLE[(idx + 1) % this._RESIST_CYCLE.length];
+        this._setResistState(dt.key, next);
+        this._buildResistEditorGrid();
         this._buildDamageTypeGrid();
       });
 
-      grid.appendChild(btn);
+      (PHYSICAL_BPS.has(dt.key) ? bpsGroup : grid).appendChild(btn);
     });
   },
 
@@ -8467,13 +8585,17 @@ window.Sheet = {
     if (!modal || !amtEl) return;
     amtEl.textContent = amount;
     this._buildDamageTypeGrid();
+    modal.removeAttribute('hidden');
     modal.style.display = 'flex';
     requestAnimationFrame(() => modal.querySelector('.dmg-type-btn')?.focus());
   },
 
   _closeDamageTypeModal() {
     const modal = this.$('damage-type-modal');
-    if (modal) modal.style.display = 'none';
+    if (modal) {
+      modal.style.display = 'none';
+      modal.setAttribute('hidden', '');
+    }
   },
 
   // ---- Apply HP changes ----

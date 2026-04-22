@@ -135,55 +135,14 @@ const Multiclass = {
       nameEl.className = 'mc-class-display';
       nameEl.textContent = mc.className;
 
-      const ctrl = document.createElement('div');
-      ctrl.className = 'mc-level-ctrl';
-
-      const dec = document.createElement('button');
-      dec.className = 'mc-lvl-btn';
-      dec.textContent = '−';
-      dec.title = 'Decrease level';
-      dec.disabled = mc.level <= 1;
-      dec.addEventListener('click', () => {
-        if (mc.level <= 1) return;
-        this._applyLevelDirect(mc.className, mc.level - 1);
-      });
-
       const num = document.createElement('span');
       num.className = 'mc-level-num';
       num.textContent = mc.level;
 
-      const inc = document.createElement('button');
-      inc.className = 'mc-lvl-btn';
-      inc.textContent = '+';
-      inc.title = 'Increase level';
-      inc.disabled = this.getTotalLevel() >= 20;
-      inc.addEventListener('click', () => {
-        if (this.getTotalLevel() >= 20) return;
-        this._applyLevelDirect(mc.className, mc.level + 1);
-      });
-
-      ctrl.append(dec, num, inc);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.className = 'mc-remove-btn';
-      removeBtn.title = `Remove ${mc.className} multiclass`;
-      removeBtn.textContent = '×';
-      removeBtn.addEventListener('click', () => {
-        this.removeMulticlass(mc.className);
-      });
-
-      row.append(nameEl, ctrl, removeBtn);
+      row.append(nameEl, num);
       section.appendChild(row);
     });
 
-    // "+ Multiclass" button
-    const addBtn = document.createElement('button');
-    addBtn.className = 'mc-add-btn';
-    addBtn.textContent = '+ Multiclass';
-    addBtn.disabled = atCap;
-    if (atCap) addBtn.title = 'Level 20 reached';
-    addBtn.addEventListener('click', () => this._openPicker());
-    section.appendChild(addBtn);
   },
 
   // ---- Picker Modal ----
@@ -208,12 +167,18 @@ const Multiclass = {
   _openPicker() {
     this._buildPickerContent();
     const backdrop = document.getElementById('mc-picker-backdrop');
-    if (backdrop) backdrop.style.display = 'flex';
+    if (backdrop) {
+      backdrop.hidden = false;
+      backdrop.style.display = 'flex';
+    }
   },
 
   _closePicker() {
     const backdrop = document.getElementById('mc-picker-backdrop');
-    if (backdrop) backdrop.style.display = 'none';
+    if (backdrop) {
+      backdrop.hidden = true;
+      backdrop.style.display = '';
+    }
     this._pendingTotalLevel = null;
   },
 

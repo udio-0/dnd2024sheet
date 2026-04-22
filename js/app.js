@@ -168,6 +168,93 @@ window.setupAutocomplete = function (input, datalistId) {
       }},
   };
 
+  // ---- CUSTOM THEME ----
+  // User-picked 4-color theme (bg, accent, gold, ink). Other CSS vars are derived.
+  const CUSTOM_DEFAULTS = { bg: '#FDF1DC', accent: '#58180D', gold: '#C9AD6A', ink: '#1A1208' };
+
+  function _hexToRgb(hex) {
+    const c = (hex || '').replace('#','');
+    const v = c.length === 3 ? c.split('').map(ch => ch + ch).join('') : c;
+    return { r: parseInt(v.slice(0,2),16) || 0, g: parseInt(v.slice(2,4),16) || 0, b: parseInt(v.slice(4,6),16) || 0 };
+  }
+  function _rgbToHex(r, g, b) {
+    const h = v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+    return '#' + h(r) + h(g) + h(b);
+  }
+  // Linear blend in RGB space. t in [0,1]: 0 = a, 1 = b.
+  function _mix(hexA, hexB, t) {
+    const a = _hexToRgb(hexA), b = _hexToRgb(hexB);
+    return _rgbToHex(a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t);
+  }
+  // Relative luminance (0..1) — only used to set the data-theme attribute, not for derivations.
+  function _lum(hex) {
+    const { r, g, b } = _hexToRgb(hex);
+    const ch = v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b);
+  }
+
+  // Derive a full theme from the 4 picked colors using smooth blends only.
+  // Every output is a continuous function of the inputs, so dragging any picker
+  // produces a smooth visual change with no threshold jumps.
+  function buildCustomTheme(colors) {
+    const c = Object.assign({}, CUSTOM_DEFAULTS, colors || {});
+    const W = '#FFFFFF', K = '#000000';
+    return {
+      dark: _lum(c.bg) < 0.45, label: 'Custom', bg: c.bg, accent: c.accent,
+      vars: {
+        // Accent shades
+        '--red':           c.accent,
+        '--red-accent':    _mix(c.accent, W, 0.20),
+        // Gold shades
+        '--gold':          c.gold,
+        '--gold-light':    _mix(c.gold, W, 0.30),
+        '--gold-dark':     _mix(c.gold, K, 0.30),
+        // Background shades
+        '--parchment':     c.bg,
+        '--parchment-dk': _mix(c.bg, K, 0.10),
+        // Ink — secondary tones are blended toward bg so they always read as "softer"
+        '--ink':           c.ink,
+        '--ink-light':    _mix(c.ink, c.bg, 0.40),
+        '--ink-faint':    _mix(c.ink, c.bg, 0.65),
+        // Raised surface ("white") — slightly lifted from bg toward white in every theme
+        '--white':        _mix(c.bg, W, 0.30),
+        // Muted gold edge
+        '--border':       _mix(c.gold, c.ink, 0.20),
+        // Page chrome — frame around the parchment, derived from accent
+        '--body-bg':      _mix(c.accent, K, 0.55),
+        '--topbar-bg':     c.accent,
+        '--tab-bar-bg':   _mix(c.accent, K, 0.30),
+        '--combat-border': c.accent,
+        '--input-bg':      c.bg,
+        '--ac-bg':        _mix(c.bg, W, 0.30),
+        '--ac-hover':     _mix(c.bg, c.ink, 0.08),
+      }
+    };
+  }
+
+  function loadCustomColors() {
+    try {
+      const raw = localStorage.getItem('dnd_custom_theme');
+      if (raw) return Object.assign({}, CUSTOM_DEFAULTS, JSON.parse(raw));
+    } catch (_) {}
+    return Object.assign({}, CUSTOM_DEFAULTS);
+  }
+
+  function saveCustomColors(colors) {
+    localStorage.setItem('dnd_custom_theme', JSON.stringify(colors));
+  }
+
+  function applyCustomTheme(colors) {
+    const t = buildCustomTheme(colors);
+    THEMES.custom = t;
+    const root = document.documentElement;
+    root.setAttribute('data-theme', t.dark ? 'dark' : 'light');
+    Object.entries(t.vars).forEach(([k, v]) => root.style.setProperty(k, v));
+    localStorage.setItem('dnd_theme_name', 'custom');
+    document.querySelectorAll('.theme-swatch').forEach(el =>
+      el.classList.toggle('active', el.dataset.theme === 'custom'));
+  }
+
   const FONTS = [
     { id: 'classic',  label: 'Classic',  title: "'Cinzel', serif",                    body: "'Crimson Text', Georgia, serif" },
     { id: 'elegant',  label: 'Elegant',  title: "'Playfair Display', Georgia, serif",  body: "'Libre Baskerville', Georgia, serif" },
@@ -197,6 +284,8 @@ window.setupAutocomplete = function (input, datalistId) {
     const savedFont  = localStorage.getItem('dnd_font')       || 'classic';
     const savedSize  = localStorage.getItem('dnd_font_size')  || 'md';
     const savedBold  = localStorage.getItem('dnd_font_bold')  === '1';
+    // Always pre-register the custom theme so it can be selected from the panel.
+    THEMES.custom = buildCustomTheme(loadCustomColors());
     applyTheme(savedTheme);
     applyFont(savedFont);
     applyFontSize(savedSize);
@@ -219,6 +308,7 @@ window.setupAutocomplete = function (input, datalistId) {
   }
 
   function applyTheme(name) {
+    if (name === 'custom') { applyCustomTheme(loadCustomColors()); return; }
     const t = THEMES[name];
     if (!t) return;
     const root = document.documentElement;
@@ -257,6 +347,21 @@ window.setupAutocomplete = function (input, datalistId) {
 
     const savedTheme = localStorage.getItem('dnd_theme_name') || 'parchment';
     const savedFont  = localStorage.getItem('dnd_font')       || 'classic';
+
+    // Wire up the custom-theme color pickers (live preview on input, persist on Apply).
+    const customColors = loadCustomColors();
+    document.querySelectorAll('#custom-theme-pickers .custom-theme-input').forEach(inp => {
+      const role = inp.dataset.role;
+      if (customColors[role]) inp.value = customColors[role];
+      inp.addEventListener('input', () => {
+        customColors[role] = inp.value;
+        applyCustomTheme(customColors);
+      });
+    });
+    document.getElementById('custom-theme-apply')?.addEventListener('click', () => {
+      saveCustomColors(customColors);
+      applyCustomTheme(customColors);
+    });
 
     Object.entries(THEMES).forEach(([key, t]) => {
       const colors = [t.bg, t.vars['--gold'], t.accent, t.vars['--ink'] || '#000'];
