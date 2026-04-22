@@ -471,7 +471,7 @@ window.setupAutocomplete = function (input, datalistId) {
 
   // ---- UA TOGGLE ----
   function isUAEnabled() {
-    return localStorage.getItem('dnd_show_ua') !== 'false';
+    return localStorage.getItem('dnd_show_ua') === 'true';
   }
 
   function initUAToggle() {
