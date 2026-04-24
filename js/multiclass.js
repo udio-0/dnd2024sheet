@@ -118,31 +118,13 @@ const Multiclass = {
 
   // ---- Main-sheet multiclass section ----
 
-  // Render (or re-render) the multiclass row below the char-header.
+  // Re-render the class summary and the popover's multiclass list.
+  // Kept as renderSection() for backwards compatibility with existing callers.
   renderSection() {
-    const section = document.getElementById('mc-section');
-    if (!section) return;
-
-    const multiclasses = this.getMulticlasses();
-    const atCap = this.getTotalLevel() >= 20;
-    section.innerHTML = '';
-
-    multiclasses.forEach(mc => {
-      const row = document.createElement('div');
-      row.className = 'mc-row';
-
-      const nameEl = document.createElement('div');
-      nameEl.className = 'mc-class-display';
-      nameEl.textContent = mc.className;
-
-      const num = document.createElement('span');
-      num.className = 'mc-level-num';
-      num.textContent = mc.level;
-
-      row.append(nameEl, num);
-      section.appendChild(row);
-    });
-
+    if (typeof ClassSummary !== 'undefined') {
+      ClassSummary.renderMulticlassList();
+      ClassSummary.update();
+    }
   },
 
   // ---- Picker Modal ----

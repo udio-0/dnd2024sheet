@@ -117,7 +117,6 @@ window.Sheet = {
     this.bindSimpleFields();
     this.buildSpellSlots();
     this.buildSpellLevelSections();
-    this.initDiceRoller();
     this.initSheetButtons();
     this.initNumberSpinners();
     this.initClassSelect();
@@ -146,6 +145,7 @@ window.Sheet = {
     this.initEquippedGear();
     if (typeof LevelUp !== 'undefined') LevelUp.init();
     if (typeof Multiclass !== 'undefined') Multiclass.init();
+    if (typeof ClassSummary !== 'undefined') ClassSummary.init();
     if (typeof NotesManager !== 'undefined') NotesManager.init();
     this.migrateSubclassGrants();
 
@@ -641,6 +641,9 @@ window.Sheet = {
         if (key === 'charLevel') this.updateSubclassAccess();
         if (key === 'spellPreparedMax') this._updatePreparedCount();
         if (key === 'charSubclass') { const cls = this.lv('charClass', ''); if (cls) this.displayClassFeatures(cls); }
+        if (key === 'charClass' || key === 'charSubclass' || key === 'charLevel') {
+          if (typeof ClassSummary !== 'undefined') ClassSummary.update();
+        }
         if (key === 'charName') {
           const titleEl = this.$('topbar-title');
           if (titleEl) titleEl.textContent = el.value || 'Character Sheet';

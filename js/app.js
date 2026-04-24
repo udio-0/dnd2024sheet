@@ -810,6 +810,7 @@ window.setupAutocomplete = function (input, datalistId) {
     init2024Toggle();
     init2014Toggle();
     Dice.initLogPanel();
+    Sheet.initDiceRoller();
     CharStore.initUndo();
 
     // Init file sync (await so directory handle is restored before router starts)

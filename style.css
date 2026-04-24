@@ -366,7 +366,7 @@ body {
 
 .char-info-row {
   display: grid;
-  grid-template-columns: 2fr 0.8fr 1fr auto 1.5fr 2fr 1fr 1fr;
+  grid-template-columns: 2fr 2fr 1.5fr 2fr 1fr 1fr;
   padding-top: 8px;
   gap: 8px;
   align-items: end;
@@ -379,17 +379,129 @@ body {
 .info-field-class { min-width: 0; }
 .info-field-background { min-width: 0; }
 
+/* ---- CONSOLIDATED CLASS FIELD (summary button + popover) ---- */
+.class-field { position: relative; min-width: 0; }
+
+.class-field-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.class-summary-btn {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+.class-summary-btn:hover { border-color: var(--gold); background-color: rgba(255,255,255,0.08); }
+.class-summary-btn:hover .class-summary-caret { color: var(--gold); }
+.class-summary-btn:focus { outline: none; border-color: var(--gold); background-color: rgba(255,255,255,0.1); }
+.class-summary-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+.class-summary-text.is-empty { color: rgba(255,255,255,0.3); font-style: italic; }
+.class-summary-caret {
+  color: var(--gold);
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-left: 4px;
+  border-left: 1px solid var(--input-border-header);
+  margin-left: 2px;
+  padding: 0 0 0 8px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+
+.class-popover {
+  position: absolute;
+  top: calc(100% + 1px);
+  left: 0;
+  right: auto;
+  min-width: 320px;
+  max-width: 440px;
+  z-index: 9100;
+  background: var(--red);
+  border: 2px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+  padding: 10px;
+}
+.class-popover-inner { display: flex; flex-direction: column; gap: 6px; }
+
+.class-popover-header {
+  font-family: var(--font-title);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  border-bottom: 1px solid var(--gold-dark);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+
+.class-popover-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 60px;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.class-chip {
+  background: var(--input-bg-header);
+  border: 1px solid var(--input-border-header);
+  border-radius: var(--radius);
+  color: var(--gold-light);
+  padding: 5px 10px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.class-chip.is-empty { color: rgba(255,255,255,0.3); font-style: italic; }
+.class-chip-level {
+  justify-content: center;
+  color: var(--gold);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.class-popover-mc { display: flex; flex-direction: column; gap: 6px; }
+.class-popover-mc:empty { display: none; }
+
 @media (max-width: 1100px) {
   .char-info-row {
     display: grid;
     grid-template-columns: 1.5fr 1fr 1fr 0.5fr;
     grid-template-rows: auto auto;
   }
-  /* Row 2: Species, Background, Alignment, XP */
-  .char-info-row > :nth-child(5) { grid-row: 2; grid-column: 1; }     /* Species */
-  .char-info-row > :nth-child(6) { grid-row: 2; grid-column: 2; }     /* Background */
-  .char-info-row > :nth-child(7) { grid-row: 2; grid-column: 3; }     /* Alignment */
-  .char-info-row > :nth-child(8) { grid-row: 2; grid-column: 4; }     /* XP - smallest */
+  /* Row 1: Name (span 2) + Class (span 2); Row 2: Species, Background, Alignment, XP */
+  .char-info-row > :nth-child(1) { grid-row: 1; grid-column: 1 / span 2; }
+  .char-info-row > :nth-child(2) { grid-row: 1; grid-column: 3 / span 2; }
+  .char-info-row > :nth-child(3) { grid-row: 2; grid-column: 1; }     /* Species */
+  .char-info-row > :nth-child(4) { grid-row: 2; grid-column: 2; }     /* Background */
+  .char-info-row > :nth-child(5) { grid-row: 2; grid-column: 3; }     /* Alignment */
+  .char-info-row > :nth-child(6) { grid-row: 2; grid-column: 4; }     /* XP - smallest */
 }
 
 /* ---- MULTICLASS SECTION (inside .char-header) ---- */
@@ -638,7 +750,8 @@ body {
 [data-theme="dark"] .mc-card-blocked { background: rgba(0,0,0,0.2); }
 
 .info-field input,
-.info-field select {
+.info-field select,
+.info-field .class-summary-btn {
   width: 100%;
   background: var(--input-bg-header);
   border: 1px solid var(--input-border-header);
@@ -962,10 +1075,10 @@ body {
 }
 
 /* ---- COMBAT STATS ---- */
-/* Unified grid: 4 equal columns; combat-controls column spans both rows */
+/* Unified grid: 35/25/20/20 column widths; combat-controls column spans both rows */
 .combat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: minmax(0,35fr) minmax(0,25fr) minmax(0,20fr) minmax(0,20fr);
   grid-template-areas:
     "ac    cc   init  speed"
     "hp    cc   rest  ds";

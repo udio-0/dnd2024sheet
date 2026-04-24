@@ -186,20 +186,31 @@
               <input type="text" id="charName" class="char-name-input" placeholder="Character Name" data-save="charName">
               <div class="field-label">Name</div>
             </div>
-            <div class="info-field info-field-class">
-              <input type="text" id="charClass" placeholder="Class" data-save="charClass" autocomplete="off">
+            <div class="info-field class-field">
+              <div class="class-field-row">
+                <button type="button" class="class-summary-btn" id="class-summary-btn">
+                  <span class="class-summary-text" id="class-summary-text">—</span>
+                  <span class="class-summary-caret" aria-hidden="true">▾</span>
+                </button>
+                <button type="button" class="btn-level-up" id="btn-level-up" title="Level Up">
+                  <span class="level-num" id="charLevel-display">1</span>
+                </button>
+                <input type="hidden" id="charLevel" value="1" data-save="charLevel">
+              </div>
+              <input type="hidden" id="charClass" data-save="charClass">
+              <input type="hidden" id="charSubclass" data-save="charSubclass">
               <div class="field-label">Class</div>
-            </div>
-            <div class="info-field info-field-sm">
-              <input type="text" id="charSubclass" placeholder="Subclass" data-save="charSubclass" autocomplete="off">
-              <div class="field-label">Subclass</div>
-            </div>
-            <div class="info-field info-field-xs level-field">
-              <button class="btn-level-up" id="btn-level-up" title="Level Up">
-                <span class="level-num" id="charLevel-display">1</span>
-              </button>
-              <input type="hidden" id="charLevel" value="1" data-save="charLevel">
-              <div class="field-label">Level</div>
+              <div class="class-popover" id="class-popover" hidden>
+                <div class="class-popover-inner">
+                  <div class="class-popover-header">Classes</div>
+                  <div class="class-popover-row class-popover-primary">
+                    <div class="class-chip class-chip-name" id="class-chip-name">—</div>
+                    <div class="class-chip class-chip-sub" id="class-chip-sub">—</div>
+                    <div class="class-chip class-chip-level" id="class-chip-level">Lv 1</div>
+                  </div>
+                  <div class="class-popover-mc" id="class-popover-mc"></div>
+                </div>
+              </div>
             </div>
             <div class="info-field">
               <input type="text" id="charSpecies" placeholder="Species" data-save="charSpecies" autocomplete="off">
@@ -229,8 +240,6 @@
               <div class="field-label">XP</div>
             </div>
           </div>
-          <!-- Multiclass row: rendered by Multiclass.renderSection() -->
-          <div class="mc-section" id="mc-section"></div>
         </div>
 
         <div class="sheet-body">
@@ -968,6 +977,7 @@
   <script src="js/sheet.js"></script>
   <script src="js/levelup.js"></script>
   <script src="js/multiclass.js"></script>
+  <script src="js/classsummary.js"></script>
   <script src="js/app.js"></script>
 </body>
 </html>
